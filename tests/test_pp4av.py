@@ -55,3 +55,9 @@ def test_report_renders(fake_root):
     rep["meta"] = {"generated": "now", "commit": "abc", "detector": "oracle", "imgsz": 1280, "min_conf": 0.15, "uncertain_below": 0.35}
     md = pp4av.to_markdown(rep)
     assert "| face | 1.00 (1) | >= 0.95 | 1.00 | 1.00 |" in md and "CC BY-NC-ND 4.0" in md
+
+
+def test_face_padding_only_widens_faces():
+    dets = [("face", (100, 100, 200, 200), 0.9), ("license plate", (300, 300, 400, 340), 0.9)]
+    base, wide = pp4av.mask_rects(dets, 1000, 1000), pp4av.mask_rects(dets, 1000, 1000, {"face": 0.5})
+    assert wide[0][2] - wide[0][0] > base[0][2] - base[0][0] and wide[1] == base[1]
