@@ -233,7 +233,7 @@ def to_markdown(rep: dict) -> str:
     L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} | {f(part.get(c, {}).get('half_covered'))} | "
           f"{f(part.get(c, {}).get('touched'))} |" for c in CLASSES.values()]
     if rep.get("labeled_plates_plate_shaped") is not None:
-        L += ["", f"Labeled plates that pass the weak-plate shape test (width/height >= 1.5, height <= 25% of the image): "
+        L += ["", f"Labeled plates that pass the weak-plate shape test (width/height >= 1.2, height <= 25% of the image): "
                   f"{rep['labeled_plates_plate_shaped']:.1%}."]
     fa = rep.get("false_alarms", {})
     L += ["", "False alarms (detections overlapping no label of their category): " + ", ".join(

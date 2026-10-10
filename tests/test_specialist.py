@@ -119,4 +119,4 @@ def test_weak_persistent_tracks_must_be_plate_shaped():
     assert not sp.confirmed(track((1051, 705, 1097, 809)), rule, 1080) # weak, steady, 0.44:1 (a sign post)
     assert not sp.confirmed(track((0, 0, 900, 400)), rule, 720)        # wide but over a quarter of the frame tall
     assert sp.confirmed(track((565, 56, 1150, 1009), 0.9), rule, 1080) # confident: trusted whatever the shape
-    assert sp.plate_shaped((0, 0, 150, 100), 720) and not sp.plate_shaped((0, 0, 140, 100), 720)
+    assert sp.plate_shaped((0, 0, 120, 100), 720, 1.2) and not sp.plate_shaped((0, 0, 110, 100), 720, 1.2)

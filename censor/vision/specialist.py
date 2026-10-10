@@ -36,11 +36,11 @@ LINK_IOU = 0.3
 # lights), which the renderer would otherwise pad twice and hold for HOLD_FRAMES. Weak frames inside a
 # confirmed track are kept. Faces have no rule: they don't show the problem. Tune with bench/pp4av.py --plate-conf.
 # A weak-only plate track that persists must also look like a plate: wider than tall and not huge. Static
-# things (signs, patterns on clothes) can be detected weakly in every frame; plates are about 2:1 to 5:1.
+# things (signs, patterns on clothes) can be detected weakly in every frame; plates are about 2:1 to 5:1, two-line ones squarer.
 CONFIRM = {"license plate": {
     "min_conf": float(os.environ.get("CENSOR_PLATE_CONFIRM_CONF", "0.5")),
     "min_frames": int(os.environ.get("CENSOR_PLATE_CONFIRM_FRAMES", "3")),
-    "min_aspect": float(os.environ.get("CENSOR_PLATE_MIN_ASPECT", "1.5")),        # width / height
+    "min_aspect": float(os.environ.get("CENSOR_PLATE_MIN_ASPECT", "1.2")),        # width / height; PP4AV: 96.7% of real plates pass
     "max_height_frac": float(os.environ.get("CENSOR_PLATE_MAX_HEIGHT", "0.25")),  # of the frame height
 }}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
