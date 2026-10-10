@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "video": {"fps": 30, "width": 1280, "height": 720, "n_frames": 180},
+  "targets": {
+    "trk_2": {
+      "label": "face",
+      "source": "detector",
+      "effect": "pixelate",
+      "padding": 0.25,
+      "keyframes": [
+        {"f": 30, "box": [855, 90, 945, 210], "conf": 0.91, "state": "detected"},
+        {"f": 45, "box": [855, 110, 945, 230], "conf": 0.00, "state": "tracked"},
+        {"f": 60, "box": [855, 95, 945, 215], "conf": 0.00, "state": "held"}
+      ]
+    },
+    "trk_3": {
+      "label": "user box",
+      "source": "user_box",
+      "effect": "box",
+      "padding": 0.0,
+      "keyframes": [
+        {"f": 90,  "box": [1050, 300, 1230, 420], "conf": 1.0, "state": "detected"},
+        {"f": 179, "box": [1050, 300, 1230, 420], "conf": 0.5, "state": "tracked"}
+      ]
+    }
+  }
+}

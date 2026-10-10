@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "video": {"fps": 30, "width": 1280, "height": 720, "n_frames": 180},
+  "targets": {
+    "trk_1": {
+      "label": "license plate",
+      "source": "detector",
+      "effect": "blur",
+      "padding": 0.15,
+      "keyframes": [
+        {"f": 0,   "box": [50, 560, 210, 600],  "conf": 0.88, "state": "detected"},
+        {"f": 10,  "box": [99, 560, 259, 600],  "conf": 0.00, "state": "tracked"},
+        {"f": 20,  "box": [148, 560, 308, 600], "conf": 0.81, "state": "detected"},
+        {"f": 60,  "box": [344, 560, 504, 600], "conf": 0.30, "state": "uncertain"},
+        {"f": 90,  "box": [491, 560, 651, 600], "conf": 0.84, "state": "detected"}
+      ]
+    }
+  }
+}

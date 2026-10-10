@@ -1,0 +1,243 @@
+{
+  "$comment": "Generated from censor/core/timeline.py. Do not edit by hand; run `python -m censor.core.timeline`.",
+  "Timeline": {
+    "$defs": {
+      "Keyframe": {
+        "properties": {
+          "f": {
+            "minimum": 0,
+            "title": "F",
+            "type": "integer"
+          },
+          "box": {
+            "maxItems": 4,
+            "minItems": 4,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Box",
+            "type": "array"
+          },
+          "conf": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Conf",
+            "type": "number"
+          },
+          "state": {
+            "default": "detected",
+            "enum": [
+              "detected",
+              "tracked",
+              "held",
+              "uncertain"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "f",
+          "box"
+        ],
+        "title": "Keyframe",
+        "type": "object"
+      },
+      "Target": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "detector",
+              "user_box",
+              "rule"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "effect": {
+            "default": "blur",
+            "enum": [
+              "blur",
+              "pixelate",
+              "box"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "padding": {
+            "default": 0.15,
+            "title": "Padding",
+            "type": "number"
+          },
+          "keyframes": {
+            "items": {
+              "$ref": "#/$defs/Keyframe"
+            },
+            "title": "Keyframes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "label",
+          "source",
+          "keyframes"
+        ],
+        "title": "Target",
+        "type": "object"
+      },
+      "VideoInfo": {
+        "properties": {
+          "fps": {
+            "title": "Fps",
+            "type": "number"
+          },
+          "width": {
+            "title": "Width",
+            "type": "integer"
+          },
+          "height": {
+            "title": "Height",
+            "type": "integer"
+          },
+          "n_frames": {
+            "title": "N Frames",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fps",
+          "width",
+          "height",
+          "n_frames"
+        ],
+        "title": "VideoInfo",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "version": {
+        "default": 1,
+        "title": "Version",
+        "type": "integer"
+      },
+      "video": {
+        "$ref": "#/$defs/VideoInfo"
+      },
+      "targets": {
+        "additionalProperties": {
+          "$ref": "#/$defs/Target"
+        },
+        "title": "Targets",
+        "type": "object"
+      }
+    },
+    "required": [
+      "video"
+    ],
+    "title": "Timeline",
+    "type": "object"
+  },
+  "Op": {
+    "properties": {
+      "op_id": {
+        "title": "Op Id",
+        "type": "string"
+      },
+      "request_id": {
+        "default": "manual",
+        "title": "Request Id",
+        "type": "string"
+      },
+      "kind": {
+        "enum": [
+          "add_targets",
+          "remove_targets",
+          "set_effect",
+          "add_rule"
+        ],
+        "title": "Kind",
+        "type": "string"
+      },
+      "targets": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Targets",
+        "type": "array"
+      },
+      "effect": {
+        "default": "blur",
+        "enum": [
+          "blur",
+          "pixelate",
+          "box"
+        ],
+        "title": "Effect",
+        "type": "string"
+      },
+      "padding": {
+        "default": 0.15,
+        "maximum": 2.0,
+        "minimum": 0.0,
+        "title": "Padding",
+        "type": "number"
+      },
+      "time_range": {
+        "anyOf": [
+          {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Time Range"
+      },
+      "category": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Category"
+      }
+    },
+    "required": [
+      "op_id",
+      "kind"
+    ],
+    "title": "Op",
+    "type": "object"
+  }
+}

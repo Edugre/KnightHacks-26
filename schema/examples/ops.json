@@ -1,0 +1,7 @@
+{
+  "ops": [
+    {"op_id": "op_1", "request_id": "r_1", "kind": "add_targets", "targets": ["trk_1"], "effect": "blur", "padding": 0.15, "time_range": null},
+    {"op_id": "op_2", "request_id": "r_2", "kind": "add_targets", "targets": ["trk_2"], "effect": "pixelate", "padding": 0.25, "time_range": [1.0, 2.0]},
+    {"op_id": "op_3", "request_id": "ui_box", "kind": "set_effect", "targets": ["trk_2"], "effect": "blur"}
+  ]
+}

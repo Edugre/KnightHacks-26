@@ -1,0 +1,11 @@
+# Torch is NOT listed on purpose: the GPU server's ROCm build (2.9.1+rocm7.13) is preinstalled and must not be replaced.
+# GPU server: bash scripts/setup.sh   |   laptop (stub mode): pip install -r requirements.txt
+fastapi
+uvicorn
+python-multipart
+pydantic>=2
+numpy
+opencv-python-headless
+httpx
+pytest
+# GPU server only (installed by scripts/setup.sh): ultralytics, CLIP (--no-deps), transformers, accelerate, pillow

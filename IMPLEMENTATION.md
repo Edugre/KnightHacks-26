@@ -143,11 +143,13 @@ Each milestone has an exit check that someone runs and posts in the team chat. T
 
 ### M0: Stack proven (target Sat 10:00), Gate 1
 Owner: A (Vision and stack), with C helping.
-- `rocminfo` reports gfx1151. Record the ROCm and driver versions.
-- `scripts/smoke_test.py` loads one small model on each of PyTorch ROCm, ONNX Runtime and llama.cpp. Results go into `docs/STACK.md`.
-- Detector on 640 px frames: fps and peak memory recorded.
-- Agent LLM and VLM candidates served; tokens/s recorded.
-- Timeline schema v1 committed with two hand-written examples.
+
+**Status (Sat 02:50): M0 complete.** Details in [docs/STACK.md](docs/STACK.md).
+- [x] `rocminfo` reports gfx1201; ROCm 7.13, PyTorch 2.9.1+rocm7.13.
+- [x] PyTorch ROCm works on the GPU, so ONNX Runtime and llama.cpp weren't needed. Smoke tests are `scripts/smoke_yoloe.py` and `scripts/smoke_vlm.py`.
+- [x] Detector at 640 px: 191 fps, 0.26 GB. (Re-measure at 1280 px.)
+- [x] Qwen3-VL-8B: VLM check 311 ms, agent 28 tok/s, 17.9 GB peak.
+- [x] Timeline schema v1 committed (`schema/timeline.schema.json`, generated from `censor/core/timeline.py`) with examples in `schema/examples/`.
 
 **Exit:** `docs/STACK.md` names the backend for each model, and the detector runs at ≥ 10 fps or we've switched to a fallback.
 **If it fails:** run the detector on ONNX Runtime CPU with detection every 5th frame plus the tracker, and run the LLM on llama.cpp Vulkan. Don't spend more than 2 hours on any one ROCm problem.
@@ -184,7 +186,7 @@ All roles.
 - About 10 labeled clips. Full bench report including baselines (fixed-prompt detector without the VLM check; our pipeline with fail-closed off).
 - Stage latency and peak memory in the report.
 
-**Exit:** demo steps 1, 2 and 4 from PLAN.md run end to end on the Strix Halo without anyone touching code. After this point, only bug fixes go in.
+**Exit:** demo steps 1, 2 and 4 from PLAN.md run end to end on the R9700 server without anyone touching code. After this point, only bug fixes go in.
 
 ### M5: Ship (target Sun 06:00)
 Owner: D, with everyone helping.
@@ -206,7 +208,7 @@ Owner: C. Starts only after M4 passes.
 ## 6. Success conditions
 
 **Must hit (pass/fail):**
-1. `./run.sh` brings up the whole app on the Strix Halo from a fresh clone.
+1. `./run.sh` brings up the whole app on the R9700 server from a fresh clone.
 2. The 3-minute demo flow from PLAN.md runs live, with the backup video ready in case it doesn't.
 3. `bench/run_bench.py` regenerates the numbers we show, from committed labels.
 4. No network calls during inference. Show this by running the demo with outbound network blocked, or by showing the egress log.
@@ -223,9 +225,9 @@ Owner: C. Starts only after M4 passes.
 | Request success | ≥ 15 / 20 |
 | Fail-closed rate on uncertain frames | 100% (it's a rule, not a hope) |
 | Offline speed, 1080p | ≥ 0.5× real time |
-| Peak memory, all models loaded | ≤ 100 GB (leaves headroom on 128 GB) |
+| Peak GPU memory, all models loaded | ≤ 28 GB (leaves headroom on the 32 GB R9700) |
 
-**Judging story:** recall and fail-closed behavior show it's safe. Plain-language requests and draw-a-box show it's useful. Stage latency and memory on a single Strix Halo show it's AMD-native. Fully local operation shows it's private.
+**Judging story:** recall and fail-closed behavior show it's safe. Plain-language requests and draw-a-box show it's useful. Stage latency and memory on a single Radeon AI PRO R9700 show it's AMD-native. Fully local operation shows it's private.
 
 ---
 
@@ -233,7 +235,8 @@ Owner: C. Starts only after M4 passes.
 
 | When | Signal | Decision |
 | --- | --- | --- |
-| M0 | GPU backend crashes or is slow | Switch that model to ONNX/CPU or llama.cpp Vulkan. Detect less often and lean on the tracker. |
+| M0 | GPU backend crashes or is slow | Resolved: PyTorch ROCm works for every model (see docs/STACK.md). |
+| M3 | Agent tool calls too slow (> 3 s per call) or GPU memory tight | Serve the LLM with llama.cpp (ROCm/HIP build) from a Q4/Q8 GGUF, and keep transformers for the VLM checks. |
 | M2 | Plate recall < 0.8 | Do the 2-hour plate fine-tune, or switch to a dedicated plate detector. Never ship worse plates silently. |
 | M3 | Agent < 14/20 | Make template intents the primary path and the LLM a bonus. |
 | M3 | VLM > 1 s per crop | Use HSV color heuristics for clothing color; keep the VLM only for questions color can't answer. |

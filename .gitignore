@@ -1,0 +1,14 @@
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+logs/
+*.pt
+*.ts
+*.gguf
+*.safetensors
+bus.jpg
+bench/clips/*
+!bench/clips/manifest.yaml
+.env
