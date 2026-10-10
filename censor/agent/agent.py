@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 import uuid
 
@@ -81,19 +82,23 @@ class Agent:
         return {"request_id": rid, "path": path, "calls": calls, "message": message, "summary": self.s.summarize()}
 
     def _call(self, name: str, args: dict, rid: str, calls: list[dict]):
+        t0 = time.perf_counter()
+        ms = lambda: round(1000 * (time.perf_counter() - t0))  # noqa: E731
         try:
             res = call_tool(self.s, name, args, rid)
-            calls.append({"tool": name, "args": args, "result": res})
+            calls.append({"tool": name, "args": args, "result": res, "ms": ms()})
             return res
         except ToolError as e:
-            calls.append({"tool": name, "args": args, "error": str(e)})
+            calls.append({"tool": name, "args": args, "error": str(e), "ms": ms()})
             raise
 
     def _run_llm(self, text: str, rid: str, calls: list[dict]) -> str:
         messages = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": f"Video: {json.dumps(self.s.video_info())}\nRequest: {text}"}]
         for _ in range(MAX_STEPS):
+            t0 = time.perf_counter()
             reply = _chat(messages)
+            calls.append({"tool": "_llm_step", "ms": round(1000 * (time.perf_counter() - t0))})
             messages.append({"role": "assistant", "content": reply})
             try:
                 obj = _parse_json(reply)

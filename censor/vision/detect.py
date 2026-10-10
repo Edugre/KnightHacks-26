@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Protocol
 
@@ -46,13 +47,25 @@ class StubDetector:
 
 
 class YoloeDetector:
+    # Loading YOLOE and its text encoder took several seconds per search, so the model stays loaded.
+    # One lock per process: runs share the model, and set_classes/track must not interleave.
+    _models: dict = {}
+    _lock = threading.Lock()
+
     def __init__(self, weights: str = "yoloe-11s-seg.pt", device: int | str = 0):
         from ultralytics import YOLOE  # imported lazily so laptops don't need it
         self._YOLOE = YOLOE
         self.weights, self.device = weights, device
 
     def run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
-        model = self._YOLOE(self.weights)  # fresh model per run: tracker state must not leak
+        with self._lock:
+            return self._run(video, queries, store)
+
+    def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+        model = self._models.get(self.weights)
+        if model is None:
+            model = self._models[self.weights] = self._YOLOE(self.weights)
+        model.predictor = None  # new predictor, so tracker state from the last video can't leak in
         model.set_classes(queries, model.get_text_pe(queries))
         by_key: dict[tuple[int, int], list[Keyframe]] = {}
         untracked: list[tuple[int, Keyframe]] = []
