@@ -125,8 +125,12 @@ class Session:
         self.save()
         return {"track_id": t.track_id, "start": round(t.start / self.info.fps, 2), "end": round(t.end / self.info.fps, 2)}
 
-    def add_masks(self, track_ids: list[str], effect: str = "blur", padding: float = 0.15,
-                  time_range: Optional[list[float]] = None, request_id: str = "manual") -> str:
+    def add_masks(self, track_ids: Optional[list[str]] = None, effect: str = "blur", padding: float = 0.15,
+                  time_range: Optional[list[float]] = None, labels: Optional[list[str]] = None,
+                  request_id: str = "manual") -> str:
+        # labels: mask every track found for these queries, so the LLM doesn't spell out dozens of ids
+        track_ids = list(track_ids or []) + [t.track_id for q in labels or [] for t in self.tracks.by_label(q)
+                                             if t.track_id not in (track_ids or [])]
         self._check_ids(track_ids)
         if effect not in EFFECTS:
             raise ToolError(f"effect must be one of {EFFECTS}")
@@ -178,10 +182,10 @@ TOOL_SCHEMAS = [
         "frame": {"type": "integer"}, "box": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}},
         "required": ["frame", "box"]}},
     {"name": "add_masks", "parameters": {"type": "object", "properties": {
-        "track_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "track_ids": {"type": "array", "items": {"type": "string"}},
+        "labels": {"type": "array", "items": {"type": "string"}, "description": "mask every track found for these queries"},
         "effect": {"enum": list(EFFECTS)}, "padding": {"type": "number"},
-        "time_range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}},
-        "required": ["track_ids"]}},
+        "time_range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}}},
     {"name": "remove_masks", "parameters": {"type": "object", "properties": {
         "track_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, "required": ["track_ids"]}},
     {"name": "set_effect", "parameters": {"type": "object", "properties": {

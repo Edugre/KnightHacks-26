@@ -50,3 +50,28 @@ def test_prescan_and_request_share_one_pass(clip, tmp_path, monkeypatch):
 def test_tool_calls_are_timed(clip, tmp_path):
     r = Agent(Session(clip, tmp_path / "w", detector=StubDetector())).run("blur all plates")
     assert r["calls"] and all(isinstance(c["ms"], int) for c in r["calls"])
+
+
+def test_plain_requests_skip_the_llm_and_exceptions_use_it(clip, tmp_path, monkeypatch):
+    from censor.agent import agent as agent_mod
+    steps = []
+
+    def fake_chat(messages):
+        steps.append(messages[-1]["content"])
+        return '{"tool": "add_masks", "args": {"labels": ["person"]}}' if len(steps) == 1 else '{"done": true, "message": "ok"}'
+
+    monkeypatch.setattr(agent_mod, "MODEL_URL", "http://model")
+    monkeypatch.setattr(agent_mod, "_chat", fake_chat)
+    s = Session(clip, tmp_path / "w", detector=StubDetector())
+    s.find_objects("person")
+    r = Agent(s).run("blur all plates")
+    assert r["path"] == "template" and steps == []  # no LLM call for a plain request
+    r = Agent(s).run("blur everyone except the guy in red")
+    assert r["path"] == "llm" and len(steps) == 2
+    assert r["summary"]["by_label"]["person"] == 2  # add_masks by label, no ids spelled out
+
+
+def test_nothing_is_not_an_exception_word():
+    from censor.agent.agent import NEEDS_LLM
+    assert not NEEDS_LLM.search("blur the button and nothing else on the other side".replace("other", "far"))
+    assert NEEDS_LLM.search("blur everyone except me") and NEEDS_LLM.search("only the plates")
