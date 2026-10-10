@@ -163,7 +163,9 @@ def to_markdown(rep: dict) -> str:
           "", "## By subset", "", "| Subset | Faces | Plates |", "| --- | --- | --- |"]
     L += [f"| {k} | {cell(v, 'face')} | {cell(v, 'license plate')} |" for k, v in rep["by_subset"].items()]
     L += ["", "## By labeled box height", "", "| Height | Faces | Plates |", "| --- | --- | --- |"]
-    L += [f"| {k} | {cell(v, 'face')} | {cell(v, 'license plate')} |" for k, v in rep["by_size"].items()]
+    order = [f"{lo}-{hi}px" if hi < 10**6 else f">={lo}px" for lo, hi in SIZE_BUCKETS]
+    L += [f"| {k} | {cell(rep['by_size'][k], 'face')} | {cell(rep['by_size'][k], 'license plate')} |"
+          for k in order if k in rep["by_size"]]
     return "\n".join(L) + "\n"
 
 
