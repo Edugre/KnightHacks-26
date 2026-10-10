@@ -3,6 +3,7 @@
 #   ./run.sh          GPU server: starts the resident model server (if not up), then the API + test UI on :8000
 #   ./run.sh stub     laptop / no GPU: stub detector, no models, API + test UI on :8000
 #   ./run.sh test     run the test suite (no GPU needed)
+#   ./run.sh bench    benchmark -> bench/report.md (extra args go to bench/run_bench.py; CENSOR_STUB=1 for no GPU)
 # On AUP Learning Cloud, open the UI at  https://dub.aupcloud.io/user/<your-user>/proxy/8000/
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -32,6 +33,11 @@ case "${1:-gpu}" in
     fi
     curl -sf "$CENSOR_MODEL_URL/health" && echo || { echo "model server not healthy; see logs/model_server.log" >&2; exit 1; }
     exec python3 -m uvicorn censor.server.app:app --host 0.0.0.0 --port "$PORT" ;;
+  bench)
+    shift
+    # Use the resident model server for the agent and VLM checks when it's up; it is not started here.
+    curl -sf "http://127.0.0.1:$MODEL_PORT/health" >/dev/null && export CENSOR_MODEL_URL="http://127.0.0.1:$MODEL_PORT"
+    exec python3 -m bench.run_bench "$@" ;;
   *)
-    echo "usage: ./run.sh [gpu|stub|test]" >&2; exit 2 ;;
+    echo "usage: ./run.sh [gpu|stub|test|bench]" >&2; exit 2 ;;
 esac

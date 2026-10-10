@@ -1,0 +1,25 @@
+# Benchmark clips. Video files are gitignored; this list records where each one came from.
+#   id         name used by bench/labels/<id>.json and bench/requests.yaml
+#   file       path under bench/clips/
+#   source     who recorded it or where it was downloaded from
+#   consent    who agreed to be filmed, or why no consent is needed (IMPLEMENTATION.md section 1)
+#   duration   seconds
+#   synthetic  true = bench/run_bench.py regenerates it with scripts/make_test_clip.py when missing
+clips:
+  - id: synthetic
+    file: synthetic.mp4
+    source: scripts/make_test_clip.py (1280x720, 30 fps, shapes only)
+    consent: not needed, no real people, faces or plates
+    duration: 6.0
+    synthetic: true
+    notes: >-
+      Plumbing check for the stub detector, which replays the ground-truth sidecar.
+      YOLOE finds nothing in it, so it says nothing about real recall.
+
+# Template for a real clip. Copy it, fill it in, then label every 10th frame in bench/labels/<id>.json.
+#  - id: street_01
+#    file: street_01.mp4
+#    source: recorded by <name> on <date> at <place>
+#    consent: everyone identifiable agreed on camera
+#    duration: 45.0
+#    notes: two parked cars, one pedestrian, a phone screen around 0:30

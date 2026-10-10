@@ -1,0 +1,45 @@
+# Requests scored by bench/run_bench.py. Each runs on a fresh op log over the clip's cached detections.
+#   must_mask      gt_ids that must be covered on >= 90% of their labeled frames inside `window`
+#   must_not_mask  gt_ids that must stay visible: covered on <= 10% of their labeled frames inside `window`
+#   window         optional [start_s, end_s]; only labeled frames inside it are checked (default: whole clip)
+#   before         optional requests applied first and not scored, e.g. blur something, then "unblur ..."
+# Target (IMPLEMENTATION.md section 6): 20 requests over the real clips, at least 15 correct.
+#
+# Synthetic clip objects: license_plate_1 (moving plate), face_1, person_1 (red), person_2 (blue),
+# screen_1 (second half only, 3.0 to 6.0 s).
+requests:
+  - clip: synthetic
+    text: blur all plates
+    must_mask: [license_plate_1]
+    must_not_mask: [face_1, person_1, person_2, screen_1]
+
+  - clip: synthetic
+    text: pixelate every face and screen
+    must_mask: [face_1, screen_1]
+    must_not_mask: [license_plate_1, person_1, person_2]
+
+  - clip: synthetic
+    text: blur the person in the red shirt
+    must_mask: [person_1]
+    must_not_mask: [person_2, license_plate_1, face_1, screen_1]
+
+  - clip: synthetic
+    text: black box the screen in the last 2 seconds
+    window: [4.0, 6.0]
+    must_mask: [screen_1]
+    must_not_mask: [license_plate_1, face_1, person_1, person_2]
+
+  - clip: synthetic
+    text: blur both people
+    must_mask: [person_1, person_2]
+    must_not_mask: [license_plate_1, screen_1]
+
+  - clip: synthetic
+    text: unblur the faces
+    before: [blur all plates and faces]
+    must_mask: [license_plate_1]
+    must_not_mask: [face_1]
+
+  - clip: synthetic
+    text: make it look cinematic
+    must_not_mask: [license_plate_1, face_1, person_1, person_2, screen_1]
