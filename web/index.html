@@ -79,6 +79,7 @@ $('undo').onclick = async () => { const j = await api(`api/videos/${vid}/undo`, 
 $('export').onclick = async () => {
   log('rendering…'); const j = await api(`api/videos/${vid}/export`, { method: 'POST' });
   log(j); $('dl').href = j.url; $('dl').textContent = 'Download export.mp4'; $('dl').hidden = false;
+  $('player').src = `${j.url}?t=${Date.now()}`;  // play the blurred result, not the original
 };
 // draw-a-box on the preview image
 const cv = $('draw'); let start = null;
