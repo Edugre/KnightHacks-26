@@ -6,6 +6,7 @@ Two implementations behind one interface:
   so the UI, agent and renderer can be built on a laptop with no GPU.
 
 Pick with CENSOR_STUB=1 (stub) or default (YOLOE, falling back to stub if Ultralytics is missing).
+By default face and plate queries are routed to EgoBlur (censor/vision/specialist.py) when its models exist.
 CLI: python -m censor.vision.detect clip.mp4 "license plate" ["face" ...]   # prints tracks JSON
 """
 from __future__ import annotations
@@ -85,7 +86,8 @@ def get_detector() -> Detector:
     if os.environ.get("CENSOR_STUB") == "1":
         return StubDetector()
     try:
-        return YoloeDetector()
+        from censor.vision.specialist import routed_or
+        return routed_or(YoloeDetector())  # faces and plates -> EgoBlur when its models are present
     except ImportError:
         print("[detect] ultralytics not installed; using StubDetector", file=sys.stderr)
         return StubDetector()

@@ -96,29 +96,13 @@ def yoloe_detector(prompts: dict[str, list[str]], imgsz: int = detect_mod.DETECT
     return detect
 
 
-EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets" / "egoblur"))
-
-
-def egoblur_detector(conf: float, model_dir: Path = EGOBLUR_DIR, device: str = "cuda", nms_iou: float = 0.3) -> Detector:
-    """Meta's EgoBlur Gen1 face and plate models (Apache 2.0), called the way its demo script does:
-    a BGR uint8 CHW tensor in, (boxes, labels, scores, dims) out, then NMS and a score threshold."""
-    import torch
-    import torchvision
-    models = {}
-    for cat, name in (("face", "ego_blur_face_gen1.jit"), ("license plate", "ego_blur_lp_gen1.jit")):
-        m = torch.jit.load(str(model_dir / name), map_location="cpu").to(device)
-        m.eval()
-        models[cat] = m
+def egoblur_detector(conf: float) -> Detector:
+    """Meta's EgoBlur Gen1 face and plate models, loaded the same way the app loads them."""
+    from censor.vision.specialist import load_egoblur
+    infer = load_egoblur()
 
     def detect(img: np.ndarray) -> list[tuple[str, Box, float]]:
-        t = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1))).to(device)
-        out = []
-        with torch.no_grad():
-            for cat, m in models.items():
-                boxes, _, scores, _ = m(t)
-                keep = torchvision.ops.nms(boxes, scores, nms_iou)
-                out += [(cat, tuple(b), float(s)) for b, s in zip(boxes[keep].tolist(), scores[keep].tolist()) if s >= conf]
-        return out
+        return [(cat, b, s) for cat, run in infer.items() for b, s in run(img) if s >= conf]
     return detect
 
 
@@ -239,7 +223,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"[pp4av] scoring {len(samples)} images", file=sys.stderr)
     prompts = {"face": a.face_prompts, "license plate": a.plate_prompts}
     if a.detector == "egoblur":
-        detector, described = egoblur_detector(a.conf), f"EgoBlur Gen1 face + plate ({EGOBLUR_DIR})"
+        detector, described = egoblur_detector(a.conf), "EgoBlur Gen1 face + plate"
     else:
         detector, described = yoloe_detector(prompts, a.imgsz, a.conf), f"YOLOE-11s-seg, prompts {prompts}, imgsz {a.imgsz}"
     if a.debug:
