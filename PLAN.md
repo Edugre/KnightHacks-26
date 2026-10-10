@@ -2,7 +2,7 @@
 
 Oct 10, 2026 · @Eduardo Goncalvez
 
-> **Update (Sat 03:40):** we build on the AUP Learning Cloud's Radeon AI PRO R9700 (gfx1201, 32 GB), not the Strix Halo this plan describes, which avoids concerns 1 and 2 below ([docs/STACK.md](docs/STACK.md)). Current status and next steps are in [IMPLEMENTATION.md](IMPLEMENTATION.md) section 5.
+> **Update (Sat 03:40):** we build on the AUP Learning Cloud's Radeon AI PRO R9700 (gfx1201, 32 GB), not the Strix Halo this plan describes, which avoids concerns 1 and 2 below ([docs/STACK.md](docs/STACK.md)). Detection changed too: faces and plates go to Meta's EgoBlur models and everything else to YOLOE, because YOLOE found 0% of faces on the PP4AV benchmark. Current status and next steps are in [IMPLEMENTATION.md](IMPLEMENTATION.md) section 5.
 
 ## The idea
 

@@ -32,6 +32,7 @@ These are fixed. Design inside them.
 
 ```
 censor/
+  netguard.py          # egress guard: refuses and logs outbound connections when CENSOR_OFFLINE=1
   core/
     timeline.py        # pydantic models for the mask timeline, op log, fold/undo
     tracks.py          # track store (detector output cached per video)
@@ -39,6 +40,7 @@ censor/
   vision/
     detect.py          # YOLOE text-prompt detector + tracker; StubDetector replays ground truth
     track.py           # draw-a-box tracking (OpenCV MIL)
+    specialist.py      # router: faces + plates -> EgoBlur (every 3rd frame, IoU tracker), the rest -> YOLOE
     vlm.py             # yes/no attribute checks on track crops, via the model server
   agent/
     tools.py           # typed tool definitions + implementations
@@ -62,11 +64,14 @@ bench/
   run_bench.py         # writes bench/report.md + report.json
   gt.py                # label format; `prelabel` writes detector drafts
   label_server.py      # labeling tool (+ label.html), runs on a laptop
+  pp4av.py             # face + plate recall on the public PP4AV images (data in ~/datasets/pp4av, never committed)
 scripts/
   setup.sh             # server env (never replaces the ROCm torch)
   smoke_yoloe.py       # M0 detector check
   smoke_vlm.py         # M0 VLM + agent check (loads its own 18 GB copy of the model)
   make_test_clip.py    # synthetic clip + ground-truth sidecar for stub mode
+  fetch_clips.sh       # downloads the three Pexels benchmark clips
+  check_offline.py     # proves every model loads with the network off
 run.sh                 # one command: model server + API + UI (gpu), stub, test, bench
 run.ps1                # Windows laptops: stub, test, bench
 ```
@@ -148,6 +153,13 @@ About ten typed tools. Arguments are JSON-schema constrained so a small model ca
 
 Each milestone has an exit check that someone runs and posts in the team chat. Times assume a Sun ~09:00 deadline.
 
+**Where we are (Sat 05:35): start here.** Faces and plates now go to EgoBlur and everything else to YOLOE (0.74 / 0.65 face / plate recall on PP4AV, up from 0.00 / 0.07), inference runs offline with an egress log, and plain requests answer in 0.03 s. Next, in order:
+1. **Use the GPU better:** decode each video once and feed every detector from that pass, batch frames on the GPU, and decode on a CPU thread while the GPU works. Today detection runs one frame at a time and re-reads the video per query.
+2. **The LLM path is slow:** "blur everyone except the person in the red hoodie" took over 2 minutes (LLM steps plus a VLM check on each of 18 person tracks). Batch the VLM crops, merge fragmented person tracks, and keep tool results short.
+3. **Label the three Pexels clips** (`bash scripts/fetch_clips.sh`, then `python -m bench.label_server ...`; `python3 -m bench.gt prelabel` gives EgoBlur drafts) and write about 20 requests in `bench/requests.yaml`.
+4. **Plate false alarms:** EgoBlur at conf 0.1 gives many one-frame plate tracks; tune once the clips are labeled.
+5. **Demo UI** (`web/index.html` is still the test page), then M5: fresh-clone test, backup video, Devpost.
+
 ### M0: Stack proven (target Sat 10:00), Gate 1
 Owner: A (Vision and stack), with C helping.
 
@@ -170,11 +182,11 @@ All four roles, against stubs.
 
 **Exit:** upload, type a request, export a blurred MP4 through the real API path. Stubs are allowed anywhere except the renderer.
 
-**Status (Sat 03:40): exit met on stubs; real tracks wait on a real clip.**
+**Status (Sat 05:35): exit met, including real tracks on a real clip.**
 - [x] C: the renderer applies timelines and exports MP4 (`tests/test_core.py`, `tests/test_e2e_stub.py`).
 - [x] B: the agent turns "blur all plates" into `add_masks` against the stub (template fallback, in the tests). On the server the LLM path ran, but the synthetic clip gave it nothing to mask.
 - [~] D: `web/index.html` uploads, sends requests, previews masked frames, draws a box, undoes and exports. No timeline strip yet, and the React UI isn't started.
-- [ ] A: YOLOE runs on the server (147.5 fps at 640 px, Sat 03:15), but there is no real clip yet. The synthetic clip is drawn shapes, so YOLOE finds nothing in it.
+- [x] A: real tracks on the Pexels clip `street_walk` through the router (EgoBlur faces, YOLOE people), rendered with 0 failed frames (see M2).
 
 ### M2: Real detection and tracking (target Sat 18:00)
 Owner: A, plus C for flicker handling.
@@ -184,15 +196,16 @@ Owner: A, plus C for flicker handling.
 
 **Exit:** a bench report exists for 3 clips. Note per-category recall. If plate recall is under 0.8, start the time-boxed plate fine-tune (2 hours max, see PLAN.md concern 5).
 
-**Status (Sat 03:40): tooling done, clips next.**
+**Status (Sat 05:35): detection works; labels for the real clips are next.**
 - [x] Hold-after-loss, interpolation and padding are in the renderer.
 - [x] `bench/run_bench.py` scores recall, over-blur, request success, both baselines, latency and GPU memory (`./run.sh bench`, `.\run.ps1 bench`). Its report on the synthetic clip only checks the plumbing.
 - [x] Labeling tool: `python -m bench.label_server bench/clips/<id>.mp4`, plus `python3 -m bench.gt prelabel` for detector drafts on the server. Steps are in README, "Adding a real clip".
 - [x] PP4AV image benchmark (`bench/pp4av.py`): 3,447 public driving images with face and plate boxes, so no hand labeling. Data stays in `~/datasets/pp4av/` on the server, shared by every clone (CC BY-NC-ND 4.0, never committed).
-- [ ] **Blocking (found Sat 04:25 on PP4AV): YOLOE can't find faces.** With the shipped settings (prompts "face" and "license plate", conf 0.15, imgsz 1280), face recall is **0.00** over 3,893 faces and plate recall 0.06 over 8,028 plates; over-blur 0.0%, so it barely detects anything. On a 300-image sample with conf 0.05 and extra prompts ("human face", "head", "number plate"), faces only reach 0.04 (0.19 at 32 to 64 px tall) while plates reach 0.95 at 32 to 64 px but 0.17 under 16 px. **Next:** swap in a dedicated face detector (EgoBlur face, Apache 2.0, is the first candidate; EgoBlur also has a plate model) and lower the plate threshold. Compare with `python3 -m bench.pp4av run --limit 300 ...`.
+- [x] **Resolved by the router below. Found Sat 04:25 on PP4AV: YOLOE can't find faces.** With the shipped settings (prompts "face" and "license plate", conf 0.15, imgsz 1280), face recall is **0.00** over 3,893 faces and plate recall 0.06 over 8,028 plates; over-blur 0.0%, so it barely detects anything. On a 300-image sample with conf 0.05 and extra prompts ("human face", "head", "number plate"), faces only reach 0.04 (0.19 at 32 to 64 px tall) while plates reach 0.95 at 32 to 64 px but 0.17 under 16 px. **Next:** swap in a dedicated face detector (EgoBlur face, Apache 2.0, is the first candidate; EgoBlur also has a plate model) and lower the plate threshold. Compare with `python3 -m bench.pp4av run --limit 300 ...`.
 - [x] **EgoBlur tried (Sat 05:10, 300-image PP4AV sample, Gen1 face + plate models in `~/datasets/egoblur`).** Recall, faces / plates: YOLOE as shipped 0.00 / 0.07; EgoBlur conf 0.3: 0.23 / 0.52; conf 0.1: 0.32 / 0.64; conf 0.1 with face padding 0.5: **0.74 / 0.65** at 2.8% over-blur; face padding 1.0: 0.79 / 0.67 at 5.0% over-blur. EgoBlur touches 78% of faces: most "misses" were its tight face boxes against PP4AV's whole-head labels, hence the wider face padding. Plate misses are real and mostly under 16 px. Cost: about 0.2 s per image for both models on the R9700, so on video run it every few frames and let the tracker fill in. **Next:** route faces and plates to EgoBlur (conf 0.1, face padding 0.5) and everything else to YOLOE. Reproduce with `python3 -m bench.pp4av run --detector egoblur --conf 0.1 --face-padding 0.5 --limit 300`. The model files are 420 MB each and Meta's CDN refuses the AUP server, so download them on a laptop and upload them.
 - [x] **Router (Sat 05:25):** `censor/vision/specialist.py` sends face and plate queries to EgoBlur (every 3rd frame, IoU-linked, face boxes widened) and everything else to YOLOE; `get_detector()` uses it when the models are in `~/datasets/egoblur`. On `street_walk` (8.8 s): all 3 faces found on nearly every checked frame (224 keyframes), 18 YOLOE person tracks, render 221 frames with 0 failures; 27 s including model loading. Open issue: plates at conf 0.1 give 41 short tracks (81 keyframes), mostly false alarms; try a higher plate threshold or dropping one-keyframe tracks once the clips are labeled.
-- [x] Three Pexels clips in `bench/clips/manifest.yaml` (`bash scripts/fetch_clips.sh` downloads them) (`street_talk`, `street_walk`, `street_plates`) for requests and tracking; labels still to do (detector drafts via `bench.gt prelabel` once the face detector works).
+- [x] Three Pexels clips in `bench/clips/manifest.yaml` (`street_talk`, `street_walk`, `street_plates`; `bash scripts/fetch_clips.sh` downloads them) for requests and tracking.
+- [ ] **Next:** label them. `python3 -m bench.gt prelabel` now gives EgoBlur drafts for faces and plates, so labeling is mostly confirming frames.
 
 ### M3: Agent works for real (target Sat 21:00), Gate 2
 Owner: B.
@@ -203,10 +216,12 @@ Owner: B.
 **Exit:** ≥ 14/20 requests resolve correctly with the template fallback enabled.
 **If it fails:** demo template intents plus draw-a-box only, and present the LLM path as experimental.
 
-**Status (Sat 03:40): in progress.**
+**Status (Sat 05:35): plain requests are fast; LLM requests are slow.**
 - [x] `find_objects` rejects compound queries ("person in a red shirt"); the agent searches for the plain object and then calls `check_attribute`.
 - [x] The scorer runs. `bench/requests.yaml` has 7 synthetic requests; the 20 real ones come with the real clips.
-- [ ] **Open issue: one request took 75 s on the server** (Sat 03:15, real models, synthetic clip). Likely causes: `YoloeDetector.run` loads a fresh model and makes a full-video pass for every new query, and when the LLM makes no edit the template fallback runs the same searches again. Section 7 sets 3 s per tool call as the line for switching to llama.cpp, so measure where the time goes first.
+- [x] **75 s request fixed (Sat 05:30):** YOLOE stays loaded (a fresh predictor per run instead of a fresh model), uploads start a background scan for face, license plate and person (`CENSOR_PRESCAN`), and requests the template parser understands skip the LLM. "blur every person and any license plate" on `street_walk`: 75 s -> **0.03 s**. Agent results now time every tool call and LLM step (`ms`).
+- [x] `add_masks` takes `labels` (e.g. `{"labels": ["person"]}`), so the LLM no longer spells out dozens of track ids; before, it ran past its token limit at 7 to 9.6 s per step.
+- [ ] **Open issue:** requests that need the LLM ("everyone except ...", "only ...") are still slow, over 2 minutes for "blur everyone except the person in the red hoodie" on `street_walk`. See the priorities at the top of this section.
 
 ### M4: Feature freeze (target Sun 01:00), Gate 3
 All roles.
@@ -281,7 +296,7 @@ Owner: C. Starts only after M4 passes.
 - Each module ships with a CLI and at least one test that runs on the stubs in `schema/examples/`.
 - Model weights, clips and outputs are gitignored. `scripts/setup.sh` downloads weights; `bench/clips/manifest.yaml` records clip sources and consent.
 - Record every number in `bench/report.md` from a script, never by hand.
-- Owners from PLAN.md: A Vision and stack · B Agent and toolbox · C Renderer and video I/O · D App, benchmark and demo. Fill in names there. So far (Sat 03:40), Eduardo has built the stack, scaffold and agent; Alex the benchmark, labeling tool and Windows launcher.
+- Owners from PLAN.md: A Vision and stack · B Agent and toolbox · C Renderer and video I/O · D App, benchmark and demo. Fill in names there. So far (Sat 05:35), Eduardo has built the stack, scaffold and agent; Alex the benchmark, labeling tool, offline guard, PP4AV benchmark, EgoBlur router, latency fixes and Windows launcher.
 - Before opening a PR: `git pull --rebase origin main`, then run the tests (`./run.sh test`, or `.\run.ps1 test` on Windows).
 - Shared files need a heads-up in chat before you edit them: `censor/core/timeline.py`, `censor/server/app.py` (the UI's API), `run.sh`, `scripts/setup.sh`, `requirements.txt`.
 

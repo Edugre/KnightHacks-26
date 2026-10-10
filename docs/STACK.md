@@ -25,6 +25,7 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 | VLM attribute check | Qwen3-VL-8B-Instruct, bf16 | transformers on PyTorch ROCm | **311 ms** per yes/no question on one image. Answer correct |
 | Agent LLM | Same Qwen3-VL-8B model (shared) | transformers | **28 tok/s** greedy. Produced valid JSON for a tool call |
 | Memory, VLM + agent | | | 17.5 GB loaded, **17.9 GB peak**. About 14 GB headroom on the card |
+| Face + plate detector (added Sat 05:25) | EgoBlur Gen1 face and plate (`~/datasets/egoblur`, Apache 2.0) | TorchScript on PyTorch ROCm | About 0.2 s per image for both models; PP4AV recall 0.74 faces / 0.65 plates (conf 0.1, face padding 0.5) vs YOLOE's 0.00 / 0.07 |
 
 ## Re-check (Sat Oct 10, ~03:15 ET, commit ccfc82f)
 
@@ -36,7 +37,7 @@ Run on the shared session while the model server and app were already up (GPU me
 | `./run.sh test` | 19 passed in 4.8 s |
 | `smoke_yoloe.py` at 640 px | **147.5 fps / 6.8 ms per frame**, 0.17 GB peak. Slower than M0's 191 fps, probably because the GPU was shared with the resident model server |
 | Model server `/health` | Qwen3-VL-8B resident, 17.7 GB |
-| One request through the API, real models, synthetic clip | **75 s** for "blur every person and any license plate"; found nothing (expected on drawn shapes); export fine. See IMPLEMENTATION.md M3 status |
+| One request through the API, real models, synthetic clip | **75 s** for "blur every person and any license plate"; found nothing (expected on drawn shapes); export fine. Fixed at 05:30: 0.03 s (IMPLEMENTATION.md M3) |
 
 ## Decisions
 
@@ -46,6 +47,8 @@ Run on the shared session while the model server and app were already up (GPU me
 4. **Constrain the agent's output.** In the smoke test the model called `add_masks` with an empty `track_ids` instead of calling `find_objects` first. The agent loop has to feed tool results back and validate arguments (for example, reject empty `track_ids`). See IMPLEMENTATION.md section 4.
 5. **Don't let pip touch torch.** Always install with `--user --break-system-packages`, and use `--no-deps` for anything that pins torch (CLIP). Check with `python3 -c "import torch; print(torch.__version__)"`, which must print `+rocm7.13`.
 6. **Download at setup, run offline.** Without flags, Ultralytics looks up two DNS hosts on every import (`is_online()`), sends usage analytics when that succeeds, and downloads missing weights into the working directory; transformers checks the Hugging Face Hub when loading. `scripts/setup.sh` now fetches Qwen3-VL (Hugging Face cache) and YOLOE + MobileCLIP (into `<repo>/weights`: Ultralytics' `weights_dir` is the relative path `weights`, resolved from the working directory, and run.sh runs from the repo root), and `./run.sh` sets `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `YOLO_OFFLINE` and `CENSOR_OFFLINE` (egress guard, `censor/netguard.py`).
+7. **Faces and plates go to EgoBlur, everything else to YOLOE** (`censor/vision/specialist.py`). YOLOE is an open-vocabulary object detector and misses faces entirely; EgoBlur is built for exactly these two categories. EgoBlur runs every 3rd frame and a simple IoU tracker links detections.
+8. **Keep models loaded and scan at upload.** YOLOE stays loaded between searches, and each upload starts a background scan for faces, plates and people, so requests read cached tracks.
 
 ## Known noise (harmless)
 
