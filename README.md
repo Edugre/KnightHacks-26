@@ -46,6 +46,16 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 bench    # Windows laptop: st
 ```
 Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), labels live in `bench/labels/<clip>.json` (every 10th frame) and test requests in `bench/requests.yaml`. Options: `python -m bench.run_bench --help`. The stub detector replays ground truth, so on the synthetic clip the report checks the plumbing, not detection quality.
 
+**Adding a real clip**
+1. Record 20 to 40 s in landscape, 1080p at 30 fps, H.264 (iPhone: Settings > Camera > Formats > Most Compatible). Only film people who agree to it.
+2. Copy it to `bench/clips/<id>.mp4` and add an entry to `bench/clips/manifest.yaml` (source, consent). Share the video file with the team directly; git ignores it.
+3. Label it in the browser, no GPU needed. Pick an object, drag its box, press `C` to carry boxes to the next frame, fix them, press `Enter` to confirm:
+   ```bash
+   python -m bench.label_server bench/clips/<id>.mp4      # http://localhost:8020; Windows: .venv\Scripts\python.exe -m ...
+   ```
+   Optional head start on the GPU server: `python3 -m bench.gt prelabel bench/clips/<id>.mp4` writes detector drafts. They are not scored until you confirm each frame, so check every frame for objects the detector missed.
+4. Add requests for the clip to `bench/requests.yaml` (20 across the real clips is the target), then commit the labels, manifest and requests.
+
 ## Layout
 
 | Path | What | Owner |
@@ -58,7 +68,7 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
 | `web/index.html` | minimal test UI; replace with the real app | D |
 | `schema/` | generated JSON schema + hand-written examples | C |
 | `scripts/` | setup, smoke tests, synthetic clip | A |
-| `bench/` | `run_bench.py` (scores + report), `gt.py` (label format, sidecar converter), clips manifest, labels, requests | D |
+| `bench/` | `run_bench.py` (scores + report), `gt.py` (label format, prelabel drafts), `label_server.py` + `label.html` (labeling tool), clips manifest, labels, requests | D |
 | `tests/` | pytest suite | all |
 
 ## Useful CLIs
