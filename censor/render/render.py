@@ -92,11 +92,13 @@ def apply_effect(frame: np.ndarray, rect: tuple[int, int, int, int], effect: str
     elif effect == "pixelate":
         small = cv2.resize(roi, (max(1, w // 12), max(1, h // 12)), interpolation=cv2.INTER_LINEAR)
         roi[:] = cv2.resize(small, (w, h), interpolation=cv2.INTER_NEAREST)
-    else:  # blur: downscale hard then Gaussian, so nothing legible survives
-        small = cv2.resize(roi, (max(1, w // 24), max(1, h // 24)), interpolation=cv2.INTER_AREA)
-        up = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
-        k = max(3, (min(w, h) // 2) | 1)
-        roi[:] = cv2.GaussianBlur(up, (k, k), 0)
+    else:  # blur: downscale hard so nothing legible survives, smooth at that size, scale back up
+        # Smoothing the small image instead of the full-size one is ~80x cheaper per box (a 151 px kernel on a
+        # padded face took 17 ms; a crowd's export took 193 s) and leaves no streaks of the original.
+        sw, sh = max(1, w // 24), max(1, h // 24)
+        small = cv2.resize(roi, (sw, sh), interpolation=cv2.INTER_AREA)
+        k = max(3, (min(sw, sh) // 2) | 1)
+        roi[:] = cv2.resize(cv2.GaussianBlur(small, (k, k), 0), (w, h), interpolation=cv2.INTER_LINEAR)
 
 
 def full_frame_blur(frame: np.ndarray) -> None:
