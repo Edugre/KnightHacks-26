@@ -2,8 +2,11 @@
 
 Rules (IMPLEMENTATION.md section 3), all fail-closed:
 - interpolate boxes between keyframes up to MAX_GAP frames apart;
-- after a target's track is lost, hold the last box for HOLD_FRAMES, growing 5% per frame;
-- 'uncertain' keyframes double the padding;
+- after a target's track is lost, keep masking for HOLD_FRAMES: the box keeps moving at the target's last
+  speed and grows HOLD_GROWTH per frame;
+- start masking LEAD_FRAMES before the first keyframe (detectors that check every few frames see an object
+  up to that late), moving back at the first speed;
+- 'uncertain' keyframes double the padding; every box gets at least MIN_PAD_PX on each side;
 - an error while processing a frame blurs the whole frame and is counted in the stats.
 
 CLI: python -m censor.render.render input.mp4 timeline.json out.mp4
@@ -22,8 +25,14 @@ from censor.core.timeline import Target, Timeline
 from censor.core.video import frames
 
 HOLD_FRAMES = 15
-HOLD_GROWTH = 0.05
+# Growth only covers what the speed estimate misses. 0.05 per frame, without following the motion, let a
+# small plate slide out of its mask and still padded big plates by 75% a side (bench/review.py).
+HOLD_GROWTH = 0.02
+LEAD_FRAMES = 3
 MAX_GAP = 15
+MIN_PAD_PX = 3  # a 15x6 px plate at 720p moves a few pixels between checks; relative padding alone is 1 px
+SPEED_KEYFRAMES = 4  # keyframes the speed for lead-in and hold is measured over
+MAX_SPEED = 0.25     # box sizes per frame; a 13 px plate crossing the frame moved about 0.2
 FFMPEG = os.environ.get("CENSOR_FFMPEG", "ffmpeg")
 
 Box = tuple[float, float, float, float]
@@ -40,8 +49,29 @@ def _lerp(a: Box, b: Box, t: float) -> Box:
     return tuple(a[i] + (b[i] - a[i]) * t for i in range(4))  # type: ignore[return-value]
 
 
+def _speed(kfs: list, end: bool) -> Box:
+    """Per-frame movement of the box at one end of a track (the last keyframes for end=True, the first ones
+    otherwise): the center's speed over up to SPEED_KEYFRAMES keyframes, at most MAX_SPEED box sizes a frame,
+    and no change in size. Two noisy boxes alone once sent a held face box flying across half the frame."""
+    ks = kfs[-SPEED_KEYFRAMES:] if end else kfs[:SPEED_KEYFRAMES]
+    a, b = ks[0], ks[-1]
+    gap = b.f - a.f
+    if gap <= 0 or gap > MAX_GAP * (len(ks) - 1):
+        return (0.0, 0.0, 0.0, 0.0)
+    vx = ((b.box[0] + b.box[2]) - (a.box[0] + a.box[2])) / 2 / gap
+    vy = ((b.box[1] + b.box[3]) - (a.box[1] + a.box[3])) / 2 / gap
+    ref = b.box if end else a.box
+    cap = MAX_SPEED * max(ref[2] - ref[0], ref[3] - ref[1])
+    vx, vy = max(-cap, min(cap, vx)), max(-cap, min(cap, vy))
+    return (vx, vy, vx, vy)
+
+
+def _moved(box: Box, v: Box, k: int) -> Box:
+    return tuple(box[i] + v[i] * k for i in range(4))  # type: ignore[return-value]
+
+
 def expand_target(target: Target, n_frames: int) -> dict[int, tuple[Box, float]]:
-    """Per-frame (box, padding) for one target, with interpolation and hold-after-loss applied."""
+    """Per-frame (box, padding) for one target, with interpolation, lead-in and hold-after-loss applied."""
     out: dict[int, tuple[Box, float]] = {}
     kfs = sorted(target.keyframes, key=lambda k: k.f)
     if not kfs:
@@ -50,12 +80,20 @@ def expand_target(target: Target, n_frames: int) -> dict[int, tuple[Box, float]]
     def pad_for(state: str) -> float:
         return target.padding * (2.0 if state == "uncertain" else 1.0)
 
-    def hold(after, start: int, limit: int):
+    def hold(i: int, limit: int):
+        after = kfs[i]
+        v = _speed(kfs[:i + 1], end=True)
         for k in range(1, HOLD_FRAMES + 1):
-            f = start + k
+            f = after.f + k
             if f >= limit or f >= n_frames:
                 break
-            out[f] = (after.box, pad_for(after.state) + HOLD_GROWTH * k)
+            out[f] = (_moved(after.box, v, k), pad_for(after.state) + HOLD_GROWTH * k)
+
+    first = kfs[0]
+    v0 = _speed(kfs, end=False)
+    for k in range(1, LEAD_FRAMES + 1):
+        if first.f - k >= 0:
+            out[first.f - k] = (_moved(first.box, v0, -k), pad_for(first.state) + HOLD_GROWTH * k)
 
     for i, kf in enumerate(kfs):
         out[kf.f] = (kf.box, pad_for(kf.state))
@@ -67,17 +105,18 @@ def expand_target(target: Target, n_frames: int) -> dict[int, tuple[Box, float]]
                 for f in range(kf.f + 1, nxt.f):
                     out[f] = (_lerp(kf.box, nxt.box, (f - kf.f) / gap), pad_for(state))
             else:
-                hold(kf, kf.f, nxt.f)
+                hold(i, nxt.f)
         else:
-            hold(kf, kf.f, n_frames)
+            hold(i, n_frames)
     return out
 
 
 def _padded(box: Box, pad: float, w: int, h: int) -> tuple[int, int, int, int]:
     x1, y1, x2, y2 = box
     bw, bh = x2 - x1, y2 - y1
-    x1, x2 = x1 - bw * pad, x2 + bw * pad
-    y1, y2 = y1 - bh * pad, y2 + bh * pad
+    px, py = max(bw * pad, MIN_PAD_PX), max(bh * pad, MIN_PAD_PX)
+    x1, x2 = x1 - px, x2 + px
+    y1, y2 = y1 - py, y2 + py
     return (max(0, int(x1)), max(0, int(y1)), min(w, int(np.ceil(x2))), min(h, int(np.ceil(y2))))
 
 

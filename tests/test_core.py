@@ -69,6 +69,17 @@ def test_interpolation_and_hold_after_loss():
     assert MAX_GAP < 90
 
 
+def test_lead_in_and_hold_follow_the_motion():
+    from censor.core.timeline import Target
+    from censor.render.render import LEAD_FRAMES, MIN_PAD_PX, _padded
+    kfs = [Keyframe(f=f, box=(100 + 3 * f, 50, 120 + 3 * f, 60), conf=0.9) for f in (30, 33, 36)]
+    per = expand_target(Target(label="p", source="detector", keyframes=kfs), 200)
+    assert 30 - LEAD_FRAMES in per and per[29][0][0] == pytest.approx(187)   # masked before its first detection
+    assert per[40][0][0] == pytest.approx(220)                              # held box keeps moving at 3 px/frame
+    assert _padded((100, 100, 110, 104), 0.15, 640, 480) == (100 - MIN_PAD_PX, 100 - MIN_PAD_PX, 110 + MIN_PAD_PX,
+                                                           104 + MIN_PAD_PX)  # tiny boxes get a few pixels
+
+
 def test_uncertain_doubles_padding():
     t = fold([Op(op_id="op_1", kind="add_targets", targets=["t"], padding=0.2)],
              store_with(trk("t", [5], state="uncertain")), VIDEO).targets["t"]

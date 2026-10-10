@@ -36,17 +36,31 @@ DECODE_AHEAD = 8  # frames a CPU thread decodes ahead of the GPU
 WARM_SIZES = ((1080, 1920), (720, 1280))  # frame sizes warm_up runs the models on (height, width)
 FACE_EXPAND = 0.3     # per side; with the default 0.15 mask padding this matches the benchmark's face padding 0.5
 LINK_IOU = 0.3
+LINK_NEAR = 0.8  # or centers within this many box sizes (similar size): 0.8 kept every labeled plate, 1.0 added false links
 # A track has to earn its blur: at least one confident detection, or seen in enough checked frames. Detection
 # itself stays at EGOBLUR_CONF (0.1) so faint plates aren't missed; this drops isolated weak blips (signs, tail
 # lights), which the renderer would otherwise pad twice and hold for HOLD_FRAMES. Weak frames inside a
-# confirmed track are kept. Faces have no rule: they don't show the problem. Tune with bench/pp4av.py --plate-conf.
+# confirmed track are kept. Faces get their own rule below. Tune with bench/review.py and bench/pp4av.py --plate-conf.
 # A weak-only plate track that persists must also look like a plate: wider than tall and not huge. Static
 # things (signs, patterns on clothes) can be detected weakly in every frame; plates are about 2:1 to 5:1, two-line ones squarer.
+# One confident detection isn't enough: on street_plates, 47 of the 52 false plate tracks the app kept were a
+# single confident blip (tail light, sign, shoe) that the renderer then padded and held, while every real plate
+# track had 6 or more (bench/review.py). Such a track is judged like a weak one instead.
 CONFIRM = {"license plate": {
     "min_conf": float(os.environ.get("CENSOR_PLATE_CONFIRM_CONF", "0.5")),
+    "min_confident": int(os.environ.get("CENSOR_PLATE_CONFIRM_HITS", "2")),  # detections >= min_conf
     "min_frames": int(os.environ.get("CENSOR_PLATE_CONFIRM_FRAMES", "3")),
+    # A faint but persistent track (the "7 7" street sign: 31 frames, mean 0.26) blurred a sign the whole clip;
+    # no real plate on the labeled clips relied on a track this faint.
+    "weak_min_mean": float(os.environ.get("CENSOR_PLATE_WEAK_MEAN", "0.3")),
     "min_aspect": float(os.environ.get("CENSOR_PLATE_MIN_ASPECT", "1.2")),        # width / height; PP4AV: 96.7% of real plates pass
     "max_height_frac": float(os.environ.get("CENSOR_PLATE_MAX_HEIGHT", "0.25")),  # of the frame height
+}, "face": {
+    # A big "face" needs a confident detection. EgoBlur's false faces are car backs: 300-900 px boxes at
+    # 0.1-0.68 that blurred half the frame on street_plates; real faces that big were all detected at 1.00
+    # (bench/review.py on the three clips). Small faint faces stay: in a crowd many real faces never pass 0.3.
+    "big_frac": float(os.environ.get("CENSOR_FACE_BIG_FRAC", "0.2")),        # of the frame height, median box
+    "big_min_conf": float(os.environ.get("CENSOR_FACE_BIG_CONF", "0.8")),
 }}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
 
@@ -103,8 +117,25 @@ def _expand(box: Box, by: float) -> Box:
     return (box[0] - w * by, box[1] - h * by, box[2] + w * by, box[3] + h * by)
 
 
+def _near(a: Box, b: Box) -> float:
+    """How far apart two similar-sized boxes' centers are, in box sizes; inf when the sizes differ over 2x."""
+    aa, ba = (a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1])
+    if aa <= 0 or ba <= 0 or not 0.5 <= ba / aa <= 2:
+        return float("inf")
+    size = max(a[2] - a[0], a[3] - a[1], b[2] - b[0], b[3] - b[1])
+    return max(abs(a[0] + a[2] - b[0] - b[2]), abs(a[1] + a[3] - b[1] - b[3])) / 2 / size
+
+
+def _same(a: Box, b: Box) -> bool:
+    """The test link() uses to continue a track: enough overlap, or a similar-sized box close by. (Any overlap at
+    all is not enough: a huge false "face" overlaps every real face near it.)"""
+    return _iou(a, b) >= LINK_IOU or _near(a, b) <= LINK_NEAR
+
+
 def link(detections: list[tuple[int, list[tuple[Box, float]]]], uncertain_below: float) -> list[list[Keyframe]]:
-    """Greedy IoU tracker: each detection extends the best-overlapping recent track, or starts a new one."""
+    """Greedy tracker: each detection extends the best-overlapping recent track, or starts a new one. A small
+    object moving fast barely overlaps itself between checked frames (a 13 px plate moving 3 px a frame), so a
+    detection of about the same size within LINK_NEAR box sizes of the track's last box also continues it."""
     tracks: list[list[Keyframe]] = []
     for f, dets in detections:
         live = [t for t in tracks if f - t[-1].f <= LINK_GAP]
@@ -113,10 +144,13 @@ def link(detections: list[tuple[int, list[tuple[Box, float]]]], uncertain_below:
             if not free:
                 break
             j = max(free, key=lambda j: _iou(t[-1].box, dets[j][0]))
-            if _iou(t[-1].box, dets[j][0]) >= LINK_IOU:
-                box, conf = dets[j]
-                t.append(Keyframe(f=f, box=box, conf=min(conf, 1.0), state="detected" if conf >= uncertain_below else "uncertain"))
-                free.remove(j)
+            if _iou(t[-1].box, dets[j][0]) < LINK_IOU:
+                j = min(free, key=lambda j: _near(t[-1].box, dets[j][0]))
+                if _near(t[-1].box, dets[j][0]) > LINK_NEAR:
+                    continue
+            box, conf = dets[j]
+            t.append(Keyframe(f=f, box=box, conf=min(conf, 1.0), state="detected" if conf >= uncertain_below else "uncertain"))
+            free.remove(j)
         for j in free:
             box, conf = dets[j]
             tracks.append([Keyframe(f=f, box=box, conf=min(conf, 1.0),
@@ -133,11 +167,17 @@ def plate_shaped(box: Box, frame_h: int, min_aspect: Optional[float] = None, max
 
 
 def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0) -> bool:
-    """Confident tracks always count. Weak-only ones need enough frames and, when the rule asks, the median
-    box of the track has to be plate-shaped (a median, so one odd frame doesn't decide)."""
-    if rule is None or max(k.conf for k in kfs) >= rule["min_conf"]:
+    """Tracks with enough confident detections always count. The rest need enough frames and, when the rule
+    asks, the median box of the track has to be plate-shaped (a median, so one odd frame doesn't decide)."""
+    if rule is None:
         return True
-    if len(kfs) < rule["min_frames"]:
+    if "big_frac" in rule and frame_h:
+        heights = sorted(k.box[3] - k.box[1] for k in kfs)
+        if heights[len(heights) // 2] > rule["big_frac"] * frame_h and max(k.conf for k in kfs) < rule["big_min_conf"]:
+            return False
+    if "min_conf" not in rule or sum(k.conf >= rule["min_conf"] for k in kfs) >= rule.get("min_confident", 1):
+        return True
+    if len(kfs) < rule["min_frames"] or sum(k.conf for k in kfs) / len(kfs) < rule.get("weak_min_mean", 0.0):
         return False
     if "min_aspect" not in rule or not frame_h:
         return True
@@ -145,6 +185,38 @@ def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0) -> bo
     heights = sorted(k.box[3] - k.box[1] for k in kfs)
     median = (0.0, 0.0, widths[len(widths) // 2], heights[len(heights) // 2])
     return plate_shaped(median, frame_h, rule["min_aspect"], rule["max_height_frac"])
+
+
+def absorb(kept: list[list[Keyframe]], dropped: list[list[Keyframe]], gap: int = LINK_GAP) -> list[list[Keyframe]]:
+    """Fold a dropped fragment into a kept track when it ends just before the track starts (or starts just after
+    it ends) and the boxes match there as link() matches them: the tracker split one object, often where it sped up, and
+    dropping the piece left the plate visible for those frames. Returns the fragments still dropped."""
+    rest = sorted(dropped, key=lambda t: t[0].f)
+    merged = True
+    while merged:
+        merged = False
+        for d in list(rest):
+            for t in kept:
+                if 0 < t[0].f - d[-1].f <= gap and _same(d[-1].box, t[0].box):
+                    t[:0] = d
+                elif 0 < d[0].f - t[-1].f <= gap and _same(t[-1].box, d[0].box):
+                    t.extend(d)
+                else:
+                    continue
+                rest.remove(d)
+                merged = True
+                break
+    return rest
+
+
+def build_tracks(seq: list[tuple[int, list[tuple[Box, float]]]], rule: Optional[dict], frame_h: int,
+                 uncertain_below: float = 0.35) -> tuple[list[list[Keyframe]], list[list[Keyframe]]]:
+    """(kept, dropped) tracks from per-frame detections: link, apply the confirmation rule, fold fragments in.
+    bench/review.py replays this on cached detections, so keep the app's logic here and only here."""
+    kept, dropped = [], []
+    for kfs in link(seq, uncertain_below):
+        (kept if confirmed(kfs, rule, frame_h) else dropped).append(kfs)
+    return kept, absorb(kept, dropped)
 
 
 class EgoBlurDetector:
@@ -200,10 +272,10 @@ class EgoBlurDetector:
         found = []
         self.dropped = {}
         for q, cat in wanted.items():
-            for kfs in link(per_cat[cat], self.uncertain_below):
-                if not confirmed(kfs, self.confirm.get(cat), frame_h):
-                    self.dropped[cat] = self.dropped.get(cat, 0) + 1
-                    continue
+            kept, dropped = build_tracks(per_cat[cat], self.confirm.get(cat), frame_h, self.uncertain_below)
+            if dropped:
+                self.dropped[cat] = self.dropped.get(cat, 0) + len(dropped)
+            for kfs in kept:
                 t = Track(track_id=store.next_id(), label=q, source="detector", keyframes=kfs)
                 store.add(t)
                 found.append(t)

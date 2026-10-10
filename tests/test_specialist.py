@@ -97,7 +97,8 @@ def test_weak_plate_blips_are_dropped_but_steady_and_strong_plates_stay(clip):
     def plate(img):
         calls.append(1)
         dets = [((100, 500, 180, 530), 0.9),     # a real plate, strongly detected every time
-                ((700, 500, 760, 520), 0.15)]    # a distant plate, weak but steady
+                ((700, 500, 760, 520), 0.32),    # a distant plate, weak but steady
+                ((1000, 300, 1060, 320), 0.15)]  # a plate-shaped sign, faint in every frame
         if len(calls) == 1:
             dets.append(((1000, 100, 1040, 115), 0.2))  # a sign mistaken for a plate, once
         return dets
@@ -105,7 +106,7 @@ def test_weak_plate_blips_are_dropped_but_steady_and_strong_plates_stay(clip):
     det = sp.EgoBlurDetector(infer={"face": lambda img: [], "license plate": plate}, every=3)
     found = det.run(str(clip), ["license plate"], TrackStore())
     kept = sorted(round(t.keyframes[0].box[0]) for t in found)
-    assert kept == [100, 700] and det.dropped == {"license plate": 1}
+    assert kept == [100, 700] and det.dropped == {"license plate": 2}
     weak = next(t for t in found if t.keyframes[0].box[0] == 700)
     assert all(k.state == "uncertain" for k in weak.keyframes)  # kept, and still padded extra
 
@@ -113,8 +114,9 @@ def test_weak_plate_blips_are_dropped_but_steady_and_strong_plates_stay(clip):
 def test_weak_persistent_tracks_must_be_plate_shaped():
     from censor.core.tracks import Keyframe
     rule = sp.CONFIRM["license plate"]
-    track = lambda box, c=0.2: [Keyframe(f=f, box=box, conf=c) for f in (0, 3, 6)]  # noqa: E731
+    track = lambda box, c=0.32: [Keyframe(f=f, box=box, conf=c) for f in (0, 3, 6)]  # noqa: E731
     assert sp.confirmed(track((100, 500, 260, 540)), rule, 720)        # weak, steady, 4:1: a distant plate
+    assert not sp.confirmed(track((100, 500, 260, 540), 0.2), rule, 720)  # faint all along (the "7 7" sign)
     assert not sp.confirmed(track((565, 56, 1150, 1009)), rule, 1080)  # weak, steady, taller than wide (a dress)
     assert not sp.confirmed(track((1051, 705, 1097, 809)), rule, 1080) # weak, steady, 0.44:1 (a sign post)
     assert not sp.confirmed(track((0, 0, 900, 400)), rule, 720)        # wide but over a quarter of the frame tall
@@ -128,3 +130,38 @@ def test_warm_up_runs_each_model_on_each_size():
     fake = {c: (lambda img, c=c: seen.append((c, img.shape)) or []) for c in ("face", "license plate")}
     sp.EgoBlurDetector(infer=fake).warm_up(sizes=((72, 128),))
     assert sorted(seen) == [("face", (72, 128, 3))] * 2 + [("license plate", (72, 128, 3))] * 2
+
+
+def test_one_confident_blip_is_not_enough():
+    """On street_plates most false plate tracks were one confident detection on a tail light or sign."""
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["license plate"]
+    kf = lambda f, c: Keyframe(f=f, box=(100, 500, 260, 540), conf=c)  # noqa: E731
+    assert not sp.confirmed([kf(0, 0.9)], rule, 720)
+    assert sp.confirmed([kf(0, 0.9), kf(3, 0.8)], rule, 720)
+
+
+def test_link_follows_a_small_fast_plate():
+    """A 13 px plate moving 10 px between checked frames barely overlaps itself; it is still one track."""
+    dets = [(f, [((100 + 3.3 * f, 424, 113 + 3.3 * f, 434), 0.6)]) for f in (27, 30, 33, 36)]
+    assert len(sp.link(dets, 0.35)) == 1
+    far = [(0, [((100, 424, 113, 434), 0.6)]), (3, [((140, 424, 153, 434), 0.6)])]  # 3 box sizes apart
+    assert len(sp.link(far, 0.35)) == 2
+
+
+def test_absorb_folds_a_fragment_into_the_track_it_precedes():
+    from censor.core.tracks import Keyframe
+    k = lambda f, x, c=0.6: Keyframe(f=f, box=(x, 0, x + 40, 20), conf=c)  # noqa: E731
+    kept = [[k(9, 100), k(12, 102), k(15, 104)]]
+    left = sp.absorb(kept, [[k(6, 98, 0.2)], [k(6, 600, 0.2)]])  # one fragment touches the track, one doesn't
+    assert [kf.f for kf in kept[0]] == [6, 9, 12, 15] and len(left) == 1
+
+
+def test_big_faint_faces_are_dropped():
+    """EgoBlur's false faces were car backs: big boxes at low confidence. Real faces that big score ~1.0."""
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["face"]
+    track = lambda box, c: [Keyframe(f=f, box=box, conf=c) for f in (0, 3, 6)]  # noqa: E731
+    assert not sp.confirmed(track((0, 100, 700, 900), 0.47), rule, 1080)  # 800 px "face" at 0.47: a car back
+    assert sp.confirmed(track((0, 100, 300, 460), 1.0), rule, 720)        # a close-up face
+    assert sp.confirmed(track((500, 300, 545, 360), 0.15), rule, 1080)    # a small faint face in a crowd stays

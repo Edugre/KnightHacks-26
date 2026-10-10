@@ -172,9 +172,23 @@ Each milestone has an exit check that someone runs and posts in the team chat. T
    **Export was the next bottleneck (fixed 08:05):** the blur ran a Gaussian with a kernel half the box's size on the full-size box (17 ms per padded face), so exporting `street_plates` with its 148 face tracks took 193 s and the browser got a Cloudflare timeout at about 100 s. The blur now smooths the 24x-downscaled box before scaling it back up: 0.2 ms per box, the same export in **2.8 s** (5,912 masked boxes), and no faint streaks of plate digits left as the old blur had. **End to end through the proxy:** pick `street_plates`, "blur all faces and plates" answered 11.4 s after the upload (the upload scan for faces and plates), export done 2.8 s later, 14.7 s in all.
 
    Settings: `CENSOR_EGOBLUR_FP16=0` (back to fp32), `CENSOR_WARMUP=0` (no warm-up). Reproduce: `python3 -m bench.profile_scan <clip> [--warm-up] [--cpu-scan]`. **Next here, if needed:** YOLOE `half=True` (0.008 vs 0.011 s per frame, not yet checked for accuracy) for the person scan, now 37% of the total.
-4. **The LLM path is slow:** "blur everyone except the person in the red hoodie" took over 2 minutes (LLM steps plus a VLM check on each of 18 person tracks). Batch the VLM crops, merge fragmented person tracks, and keep tool results short.
-5. **Label the three Pexels clips** (`bash scripts/fetch_clips.sh`, then `python -m bench.label_server ...`; `python3 -m bench.gt prelabel` gives EgoBlur drafts) and write about 20 requests in `bench/requests.yaml`.
-6. **Demo polish and M5:** timeline strip in the UI, fresh-clone test, backup video, Devpost.
+4. **Over-blur and missed plates: fixed (Sat 09:30), measured with labels.** New tool `bench/review.py`: EgoBlur runs once per clip on every frame (cached in `data/review/<clip>/raw.json`), the app's track rules are replayed from the cache in milliseconds, crop sheets of every candidate track let a person mark the real ones (`bench/labels/<clip>.plate.json`, done for `street_plates` and `street_walk`), and `score` reports, per real plate, the share of frames masked and the longest stretch it stays visible, plus over-blur (masked area outside labeled plates). It runs on any CUDA GPU, so the review loop runs on a laptop (see README). What it found and what changed:
+   - **False plate tracks were single confident blips:** 47 of the 52 false plate tracks kept on `street_plates` had one detection >= 0.5 (tail lights, signs, shoes); every real plate track had 6 or more. A plate track now needs 2 confident detections (`CENSOR_PLATE_CONFIRM_HITS`), and a track without them also needs a mean confidence of 0.3 (`CENSOR_PLATE_WEAK_MEAN`; the "7 7" street sign was blurred all clip at mean 0.26).
+   - **False faces were car backs:** 300-900 px "faces" at 0.1-0.68 blurred up to the whole frame; every real face that big scored 1.00. A face track taller than 20% of the frame now needs a detection >= 0.8 (`CENSOR_FACE_BIG_FRAC`, `CENSOR_FACE_BIG_CONF`). Small faint faces stay: in a crowd, many real faces never pass 0.3.
+   - **Small fast plates were split into one-frame tracks:** a 13 px plate moving 10 px between checked frames doesn't overlap itself, so linking also accepts a similar-sized box within 0.8 box sizes (`LINK_NEAR`), and a dropped fragment right before or after a kept track is folded into it.
+   - **Masks started late and slid off small plates:** detection runs every 3rd frame, so masks now start 3 frames before the first detection, and after a track ends the mask follows the object's speed (measured over 4 keyframes, at most 0.25 box sizes per frame, no resizing) instead of standing still while growing 5% per frame; growth is now 2%, and every box gets at least 3 px of padding.
+
+   | Clip | Plates masked (frames) | Longest a plate stays visible | Plate over-blur, mean / worst frame | All masks (faces + plates), mean / worst frame |
+   | --- | --- | --- | --- | --- |
+   | `street_plates` before | 98.1% | 0.08 s | 9.7% / 45% | 51% / 100% |
+   | `street_plates` after | **100%** | **0 s** | **3.0% / 10%** | **14% / 24%** (mostly real faces in the crowd) |
+   | `street_walk` before | 72.3% | 0.28 s | 0.2% / 1% | |
+   | `street_walk` after | **94.6%** | 0.16 s (an 11x7 px plate seen once at 0.4-0.5) | 0.1% / 0% | 11% / 18% |
+
+   Still open: the taxi's round sticker on `street_plates` is detected as a plate at 0.97 and stays blurred; `street_talk` has no plate labels yet. Reproduce: `python -m bench.review score bench/clips/street_plates.mp4 --cat plate`.
+5. **The LLM path is slow:** "blur everyone except the person in the red hoodie" took over 2 minutes (LLM steps plus a VLM check on each of 18 person tracks). Batch the VLM crops, merge fragmented person tracks, and keep tool results short.
+6. **Label the three Pexels clips** (`bash scripts/fetch_clips.sh`, then `python -m bench.label_server ...`; `python3 -m bench.gt prelabel` gives EgoBlur drafts) and write about 20 requests in `bench/requests.yaml`.
+7. **Demo polish and M5:** timeline strip in the UI, fresh-clone test, backup video, Devpost.
 
 ### M0: Stack proven (target Sat 10:00), Gate 1
 Owner: A (Vision and stack), with C helping.
