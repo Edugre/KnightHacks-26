@@ -16,6 +16,45 @@ clips:
       Plumbing check for the stub detector, which replays the ground-truth sidecar.
       YOLOE finds nothing in it, so it says nothing about real recall.
 
+  - id: street_talk
+    file: street_talk.mp4
+    source: >-
+      Pexels video 4625295 "Video Of People Talking On Side Street" by olia danilevich,
+      https://www.pexels.com/video/video-of-people-talking-on-side-street-4625295/
+      (file: https://videos.pexels.com/video-files/4625295/4625295-hd_1920_1080_25fps.mp4)
+    consent: Pexels license (free to use, no attribution required); stock footage published by the creator
+    duration: 20.6
+    notes: >-
+      1920x1080, 25 fps. Three people talking face to face: man in a navy tee, man in a dark denim shirt with
+      a backpack, woman in a salmon-red tee. Parked cars behind them, plates too small to read.
+
+  - id: street_walk
+    file: street_walk.mp4
+    source: >-
+      Pexels video 4625331 "Video Of People Talking While Walking" by olia danilevich,
+      https://www.pexels.com/video/video-of-people-talking-while-walking-4625331/
+      (file: https://videos.pexels.com/video-files/4625331/4625331-hd_1920_1080_25fps.mp4, served as 1280x720)
+    consent: Pexels license (free to use, no attribution required); stock footage published by the creator
+    duration: 8.8
+    notes: >-
+      1280x720, 25 fps. The same three people walking toward the camera; one man wears a bright red hoodie.
+      A dark car with a visible front plate on the left in the first ~2 s.
+
+  - id: street_plates
+    file: street_plates.mp4
+    source: >-
+      Pexels video 5845229 "Busy People In The Street Wearing Face Masks",
+      https://www.pexels.com/video/busy-people-in-the-street-wearing-face-masks-5845229/
+      (file: https://videos.pexels.com/video-files/5845229/5845229-hd_1920_1080_25fps.mp4),
+      first 13.0 s only: ffmpeg -i <file> -t 13 -c:v libx264 -preset veryfast -crf 18 -pix_fmt yuv420p -an street_plates.mp4
+    consent: Pexels license (free to use, no attribution required); stock footage published by the creator
+    duration: 13.0
+    notes: >-
+      1920x1080, 25 fps, night street in Hong Kong. Rear plates of taxis: "UL 7246" close up at the start,
+      partial plates as cars pass, "UK 2189" sharp from ~11 s. Masked pedestrians appear in the background
+      from ~11 s; only plates are labeled in this clip. The full video's crowd half (13 s on) was cut because
+      30+ faces per frame are too slow to label by hand.
+
 # Template for a real clip. Copy it, fill it in, then label every 10th frame in bench/labels/<id>.json.
 #  - id: street_01
 #    file: street_01.mp4

@@ -48,6 +48,8 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 bench    # Windows laptop: st
 ```
 Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), labels live in `bench/labels/<clip>.json` (every 10th frame) and test requests in `bench/requests.yaml`. Options: `python -m bench.run_bench --help`. The stub detector replays ground truth, so on the synthetic clip the report checks the plumbing, not detection quality.
 
+**Face and plate recall without labeling:** `bench/pp4av.py` scores the detector on PP4AV, 3,447 public driving images with face and plate boxes (CC BY-NC-ND 4.0, so the data stays in `data/pp4av/` and is never committed). On the GPU server: `python3 -m bench.pp4av download` once (4.5 GB), then `python3 -m bench.pp4av run` writes `bench/report_pp4av.md`. Options for comparing detectors: `--limit`, `--conf`, `--face-prompts`, `--plate-prompts`, `--debug N`.
+
 **Adding a real clip**
 1. Record 20 to 40 s in landscape, 1080p at 30 fps, H.264 (iPhone: Settings > Camera > Formats > Most Compatible). Only film people who agree to it.
 2. Copy it to `bench/clips/<id>.mp4` and add an entry to `bench/clips/manifest.yaml` (source, consent). Share the video file with the team directly; git ignores it.
