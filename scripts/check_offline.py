@@ -2,8 +2,8 @@
 
   python3 scripts/check_offline.py [clip.mp4]
 
-With the egress guard on, confirms the Qwen3-VL cache is complete, YOLOE and MobileCLIP load from
-Ultralytics' weights_dir from any directory and, given a clip, that a detection pass makes no network
+With the egress guard on, confirms the Qwen3-VL cache is complete, YOLOE and MobileCLIP load without
+downloading (from the repo root, like run.sh) and, given a clip, that a detection pass makes no network
 call. It never loads the 18 GB VLM, so it's safe to run while the model server is up. Exit code 1 on failure.
 """
 import json
@@ -15,7 +15,8 @@ from pathlib import Path
 LOG = Path(tempfile.gettempdir()) / f"egress_check_{os.getpid()}.log"
 os.environ.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", YOLO_OFFLINE="true", CENSOR_OFFLINE="1",
                   CENSOR_EGRESS_LOG=str(LOG))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 from censor import netguard  # noqa: E402
 
 netguard.install_from_env()
@@ -45,11 +46,11 @@ def vlm_cache() -> str:
 
 
 def yoloe_weights() -> str:
-    os.chdir(tempfile.mkdtemp())  # an empty working directory: the weights must come from weights_dir
+    os.chdir(ROOT)  # run.sh runs from the repo root, and Ultralytics resolves its weights_dir ("weights") from here
     from ultralytics import YOLOE
     m = YOLOE("yoloe-11s-seg.pt")
     m.set_classes(["person"], m.get_text_pe(["person"]))  # loads MobileCLIP
-    return "yoloe-11s-seg.pt and mobileclip_blt.ts load from an empty directory"
+    return "yoloe-11s-seg.pt and mobileclip_blt.ts load with downloads disabled"
 
 
 def detect(clip: str) -> str:

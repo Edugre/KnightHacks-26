@@ -13,3 +13,4 @@ bench/clips/*
 !bench/clips/manifest.yaml
 .env
 .venv/
+weights/

@@ -34,7 +34,9 @@ python3 -c "import torch, cv2, clip, lap, ultralytics, transformers; assert torc
 ffmpeg -version | head -1
 
 # Fetch every model now, while the network is allowed: ./run.sh loads them offline (censor/netguard.py).
-# YOLOE and MobileCLIP go to Ultralytics' weights_dir, which it searches from any working directory.
+# Ultralytics' weights_dir is the relative path "weights", so YOLOE and MobileCLIP land in <repo>/weights:
+# run this from the repo root, which is where run.sh runs.
+cd "$(dirname "$0")/.."
 python3 - <<'EOF'
 import os
 from huggingface_hub import snapshot_download
