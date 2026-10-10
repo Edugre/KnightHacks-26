@@ -13,6 +13,7 @@ from typing import Optional
 
 from censor.core.timeline import Op, OpLog, Timeline, VideoInfo, fold
 from censor.core.tracks import TrackStore
+from censor.agent import intents
 from censor.core.video import probe
 from censor.vision import detect as detect_mod
 from censor.vision import track as track_mod
@@ -125,6 +126,9 @@ class Session:
 
     def find_objects(self, query: str, time_range: Optional[list[float]] = None) -> list[dict]:
         q = query.lower().strip()
+        if q in intents.SUBJECTS:  # the detector finds people; who they are is the VLM's question
+            raise ToolError(f"query {query!r} is a kind of person. Call find_objects with 'person', then check_attribute "
+                            f"with a question like 'Is this a {intents.SUBJECTS[q]}?' on the returned track ids.")
         if COMPOUND_QUERY.search(q) or len(q.split()) > 3:
             raise ToolError(f"query {query!r} mixes an object with attributes. Call find_objects with just the "
                             "object (e.g. 'person'), then check_attribute on the returned track ids.")
@@ -143,7 +147,7 @@ class Session:
     def check_attribute(self, track_ids: list[str], question: str) -> list[dict]:
         self._check_ids(track_ids)
         tracks = [self.tracks.get(t) for t in track_ids]
-        return [{"track_id": a.track_id, "answer": a.answer, "conf": a.conf}
+        return [{"track_id": a.track_id, "answer": a.answer, "conf": a.conf, "p_yes": round(a.p_yes, 3)}
                 for a in vlm_mod.check_attribute(self.video, tracks, question)]
 
     def track_box(self, frame: int, box: list[float], label: str = "user box") -> dict:

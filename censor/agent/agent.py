@@ -32,10 +32,10 @@ Reply with exactly ONE JSON object per turn and nothing else:
   {"done": true, "message": "<one sentence for the user>"}   when finished.
 Rules:
 - Always call find_objects (or track_box) first to get track ids. Never invent ids.
-- For attributes (colors, clothing, actions) call check_attribute on the candidate tracks; keep answers "yes" AND "unknown" (fail closed).
+- For attributes (man or woman, child, age, hair, colors, clothing, what they hold, actions) call check_attribute on the candidate tracks; keep answers "yes" AND "unknown" (fail closed).
 - Turn time phrases into seconds with resolve_time and pass them as time_range.
 - find_objects takes a plain object noun only ("person", "face", "license plate", "screen", "text", "car").
-  Never put clothing, colors or actions in the query; check those with check_attribute.
+  Never put gender, age, clothing, colors or actions in the query ("person", not "woman"); check those with check_attribute.
 - Default effect is "blur".
 - To mask everything a query found, call add_masks with "labels" (e.g. {"labels": ["person"]}) instead of listing ids.
   List track_ids only for a subset, such as the tracks check_attribute kept.
@@ -140,9 +140,12 @@ class Agent:
                 ids = [o["track_id"] for o in found]
                 if not ids:
                     continue
-                if plan.attribute_question and q == "person":
-                    answers = self._call("check_attribute", {"track_ids": ids, "question": plan.attribute_question}, rid, calls)
-                    ids = [a["track_id"] for a in answers if a["answer"] in ("yes", "unknown")]
+                if plan.attribute_questions and q == "person":
+                    keep: set[str] = set()  # "the woman and the kid": a person matching either description
+                    for question in plan.attribute_questions:
+                        answers = self._call("check_attribute", {"track_ids": ids, "question": question}, rid, calls)
+                        keep |= {a["track_id"] for a in answers if a["answer"] in ("yes", "unknown")}
+                    ids = [i for i in ids if i in keep]
                     if not ids:
                         continue
                 if plan.action == "remove":

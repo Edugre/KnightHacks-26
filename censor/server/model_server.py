@@ -1,6 +1,6 @@
 """Resident model server: loads Qwen3-VL-8B ONCE (~3.5 min from NFS) and serves both jobs.
 
-  POST /vlm/yesno  {"images": [b64 jpg...], "question": str}         -> {"answer": "yes"|"no"|"unknown", "conf": float, "ms": int}
+  POST /vlm/yesno  {"images": [b64 jpg...], "question": str}         -> {"answer": "yes"|"no"|"unknown", "p_yes": float, "conf": float, "ms": int}
   POST /llm/chat   {"messages": [{"role","content"}...], "max_new_tokens": int} -> {"text": str, "tokens": int, "ms": int}
   GET  /health
 
@@ -61,16 +61,34 @@ def health():
             "offline": netguard.active()}
 
 
+# Token ids that start a yes or a no answer, found once from the tokenizer.
+_YES_NO = {w: proc.tokenizer.encode(w, add_special_tokens=False)[0] for w in ("yes", "Yes", "no", "No", "YES", "NO")}
+# p_yes between these is "unknown", which the agent treats as a match (fail closed). Outside them the model is sure
+# enough: a clear "no" leaves the person unmasked instead of blurring everyone it hesitated on.
+UNSURE = (float(os.environ.get("CENSOR_VLM_NO_BELOW", "0.35")), float(os.environ.get("CENSOR_VLM_YES_ABOVE", "0.65")))
+
+
 @app.post("/vlm/yesno")
 def yesno(req: YesNo):
+    """P(yes) from the model's first answer token, rather than parsing generated text: the text gave only yes/no
+    with no way to tell a sure answer from a guess."""
     content = [{"type": "image", "image": Image.open(io.BytesIO(base64.b64decode(b))).convert("RGB")}
                for b in req.images]
     content.append({"type": "text", "text": req.question + "\nThe images are crops of the same object over time. "
                     "Answer only yes or no."})
-    text, _, ms = _generate([{"role": "user", "content": content}], 4)
-    t = text.lower()
-    answer = "yes" if t.startswith("yes") else "no" if t.startswith("no") else "unknown"
-    return {"answer": answer, "conf": 0.9 if answer != "unknown" else 0.0, "ms": ms, "raw": text}
+    inp = proc.apply_chat_template([{"role": "user", "content": content}], add_generation_prompt=True, tokenize=True,
+                                   return_dict=True, return_tensors="pt").to("cuda")
+    with _lock, torch.inference_mode():
+        t = time.time()
+        logits = model(**inp).logits[0, -1].float()
+        ms = int((time.time() - t) * 1000)
+    probs = torch.softmax(logits, -1)
+    py = float(sum(probs[i] for w, i in _YES_NO.items() if w.lower() == "yes"))
+    pn = float(sum(probs[i] for w, i in _YES_NO.items() if w.lower() == "no"))
+    p_yes = py / (py + pn) if py + pn > 0 else 0.5
+    answer = "yes" if p_yes >= UNSURE[1] else "no" if p_yes <= UNSURE[0] else "unknown"
+    return {"answer": answer, "p_yes": round(p_yes, 3), "conf": round(abs(p_yes - 0.5) * 2, 3), "ms": ms,
+            "raw": proc.tokenizer.decode([int(logits.argmax())]).strip(), "yes_no_mass": round(py + pn, 3)}
 
 
 @app.post("/llm/chat")

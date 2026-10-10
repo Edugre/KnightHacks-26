@@ -123,6 +123,11 @@ def test_masker_fails_closed(monkeypatch):
     ("blur all plates and the person in the red shirt around halfway", ["license plate", "person"], "blur",
      "Is this person wearing red shirt?", "halfway"),
     ("black box the screens in the first 10 seconds", ["screen"], "box", None, "first 10 seconds"),
+    ("blur the woman", ["person"], "blur", "Is this a woman?", None),
+    ("blur the guy in the blue shirt", ["person"], "blur", "Is this a man wearing blue shirt?", None),
+    ("pixelate the tall man with a backpack", ["person"], "pixelate", "Is this a tall man with backpack?", None),
+    ("blur the old man holding a phone", ["person"], "blur", "Is this an old man holding phone?", None),  # not screens
+    ("blur everyone", ["person"], "blur", None, None),
 ])
 def test_intents(text, queries, effect, attr, time):
     p = intents.parse(text)
@@ -140,6 +145,14 @@ def test_intents(text, queries, effect, attr, time):
 ])
 def test_time_phrases_bind_to_their_own_objects(text, times):
     assert intents.parse(text).times == times
+
+
+def test_each_person_described_gets_a_question():
+    """Before, "woman", "guy" and "girl" only meant "person", so "blur the woman" blurred everyone."""
+    p = intents.parse("blur the woman and the kid")
+    assert p.queries == ["person"] and p.attribute_questions == ["Is this a woman?", "Is this a child?"]
+    assert intents.parse("blur blonde women").attribute_questions == ["Is this a woman?"]  # no "the": no adjective
+    assert intents.parse("blur the blonde girl").attribute_questions == ["Is this a blonde girl?"]
 
 
 def test_intents_remove_undo_unknown():
@@ -163,6 +176,17 @@ def test_detector_failure_is_reported_not_raised(tmp_path):
     r = Agent(s).run("blur all plates")
     assert "Detection failed" in r["message"] and "lap" in r["message"]
     assert s.summarize()["n_targets"] == 0 and s.tracks.queries == []
+
+
+def test_find_objects_sends_kinds_of_people_to_the_vlm(tmp_path):
+    import subprocess, sys
+    from censor.agent.tools import Session, ToolError
+    from censor.vision.detect import StubDetector
+    clip = tmp_path / "c.mp4"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "make_test_clip.py"), str(clip), "1"], check=True)
+    s = Session(clip, tmp_path / "w", detector=StubDetector())
+    with pytest.raises(ToolError, match="Is this a woman"):
+        s.find_objects("woman")
 
 
 def test_find_objects_rejects_compound_queries(tmp_path):
