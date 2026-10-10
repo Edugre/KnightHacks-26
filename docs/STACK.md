@@ -26,6 +26,18 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 | Agent LLM | Same Qwen3-VL-8B model (shared) | transformers | **28 tok/s** greedy. Produced valid JSON for a tool call |
 | Memory, VLM + agent | | | 17.5 GB loaded, **17.9 GB peak**. About 14 GB headroom on the card |
 
+## Re-check (Sat Oct 10, ~03:15 ET, commit ccfc82f)
+
+Run on the shared session while the model server and app were already up (GPU memory at 56% before the checks).
+
+| Check | Result |
+| --- | --- |
+| `bash scripts/setup.sh` (adds `lap`) | Passed; torch unchanged at 2.9.1+rocm7.13.0 |
+| `./run.sh test` | 19 passed in 4.8 s |
+| `smoke_yoloe.py` at 640 px | **147.5 fps / 6.8 ms per frame**, 0.17 GB peak. Slower than M0's 191 fps, probably because the GPU was shared with the resident model server |
+| Model server `/health` | Qwen3-VL-8B resident, 17.7 GB |
+| One request through the API, real models, synthetic clip | **75 s** for "blur every person and any license plate"; found nothing (expected on drawn shapes); export fine. See IMPLEMENTATION.md M3 status |
+
 ## Decisions
 
 1. **Detection runs on every frame, at 1280 px for small targets.** At 5 ms/frame there's no need to skip frames. Larger input helps distant plates and faces. Re-measure fps at 1280.
@@ -38,6 +50,7 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 
 - `MIOpen(HIP): Warning [ParseAndLoadDb] File is unreadable ... gfx1201_32.HIP.fdb.txt`: no prebuilt tuning DB, so the first run of a new layer shape is slightly slower.
 - `warning: xnack 'Off' was requested for a processor that does not support it!`: compiler noise.
+- `WARNING NMS time limit 2.050s exceeded` from Ultralytics on the first frame: warm-up only.
 
 ## Setup on a fresh session
 
@@ -46,3 +59,4 @@ bash scripts/setup.sh          # idempotent; installs into ~/.local and ~/bin
 python3 scripts/smoke_yoloe.py # detector check
 python3 scripts/smoke_vlm.py   # VLM + agent check (first run downloads ~17 GB)
 ```
+`smoke_vlm.py` loads its own 18 GB copy of the model, so skip it while the resident model server is running; check `curl -s localhost:8100/health` instead.

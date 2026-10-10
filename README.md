@@ -3,7 +3,7 @@
 Say what to hide in a video ("blur every license plate and the person in the red shirt around halfway") or draw a box. A local agent turns the request into a **mask timeline**, and a deterministic renderer applies it. Uncertain frames fail closed (more blur, never less). Everything runs on one AMD Radeon AI PRO R9700 with ROCm. No footage leaves the machine.
 
 - What and why: [PLAN.md](PLAN.md)
-- How, milestones and contracts: [IMPLEMENTATION.md](IMPLEMENTATION.md)
+- How, milestones and contracts: [IMPLEMENTATION.md](IMPLEMENTATION.md). **Current status and next steps are in section 5**; working agreements (branches, sharing the AUP server) in section 8.
 - Measured stack: [docs/STACK.md](docs/STACK.md)
 
 ## Run

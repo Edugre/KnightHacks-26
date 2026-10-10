@@ -34,34 +34,41 @@ These are fixed. Design inside them.
 censor/
   core/
     timeline.py        # pydantic models for the mask timeline, op log, fold/undo
+    tracks.py          # track store (detector output cached per video)
     video.py           # probe, frame iterator, frame<->time conversion
   vision/
-    backends.py        # loads each model on the backend chosen in M0
-    detect.py          # open-vocab detector (+ face/text fallbacks)
-    track.py           # tracker, box smoothing, hold-after-loss
-    vlm.py             # yes/no attribute checks on track crops (~1 fps)
+    detect.py          # YOLOE text-prompt detector + tracker; StubDetector replays ground truth
+    track.py           # draw-a-box tracking (OpenCV MIL)
+    vlm.py             # yes/no attribute checks on track crops, via the model server
   agent/
     tools.py           # typed tool definitions + implementations
     agent.py           # LLM loop: request -> tool calls -> ops
     intents.py         # template parser fallback (no LLM)
   render/
-    render.py          # timeline -> ffmpeg filter graph / OpenCV render
-    live.py            # (stretch) delay buffer + standing rules
+    render.py          # timeline -> OpenCV masks -> ffmpeg; fail-closed rules
+    live.py            # (stretch, not started) delay buffer + standing rules
   server/
     app.py             # FastAPI: upload, request, timeline, preview, export
+    model_server.py    # resident Qwen3-VL for the agent and VLM checks (port 8100)
 schema/
   timeline.schema.json # generated from core/timeline.py, the shared contract
   examples/            # hand-written timelines for stubs and tests
-web/                   # React UI: player, chat, draw-a-box, timeline strip, undo
+web/
+  index.html           # minimal test UI today; the React UI (player, chat, draw-a-box, timeline strip, undo) is not started
 bench/
   clips/               # gitignored; manifest.yaml lists sources and consent
   labels/              # per-clip box labels for every 10th frame
   requests.yaml        # the 20 written requests + expected targets
   run_bench.py         # writes bench/report.md + report.json
+  gt.py                # label format; `prelabel` writes detector drafts
+  label_server.py      # labeling tool (+ label.html), runs on a laptop
 scripts/
-  smoke_test.py        # M0 backend checks, writes docs/STACK.md
-  setup.sh             # pinned env + model downloads
-run.sh                 # one command: start LLM server, API, UI
+  setup.sh             # server env (never replaces the ROCm torch)
+  smoke_yoloe.py       # M0 detector check
+  smoke_vlm.py         # M0 VLM + agent check (loads its own 18 GB copy of the model)
+  make_test_clip.py    # synthetic clip + ground-truth sidecar for stub mode
+run.sh                 # one command: model server + API + UI (gpu), stub, test, bench
+run.ps1                # Windows laptops: stub, test, bench
 ```
 
 Every module gets a CLI entry point so people can test it alone (for example `python -m censor.vision.detect clip.mp4 "license plate"` dumps boxes as JSON).
@@ -163,6 +170,12 @@ All four roles, against stubs.
 
 **Exit:** upload, type a request, export a blurred MP4 through the real API path. Stubs are allowed anywhere except the renderer.
 
+**Status (Sat 03:40): exit met on stubs; real tracks wait on a real clip.**
+- [x] C: the renderer applies timelines and exports MP4 (`tests/test_core.py`, `tests/test_e2e_stub.py`).
+- [x] B: the agent turns "blur all plates" into `add_masks` against the stub (template fallback, in the tests). On the server the LLM path ran, but the synthetic clip gave it nothing to mask.
+- [~] D: `web/index.html` uploads, sends requests, previews masked frames, draws a box, undoes and exports. No timeline strip yet, and the React UI isn't started.
+- [ ] A: YOLOE runs on the server (147.5 fps at 640 px, Sat 03:15), but there is no real clip yet. The synthetic clip is drawn shapes, so YOLOE finds nothing in it.
+
 ### M2: Real detection and tracking (target Sat 18:00)
 Owner: A, plus C for flicker handling.
 - Plates, faces, people and screens/text detected and tracked. Track store cached.
@@ -170,6 +183,12 @@ Owner: A, plus C for flicker handling.
 - Three labeled clips in `bench/`. `run_bench.py` reports recall and over-blur.
 
 **Exit:** a bench report exists for 3 clips. Note per-category recall. If plate recall is under 0.8, start the time-boxed plate fine-tune (2 hours max, see PLAN.md concern 5).
+
+**Status (Sat 03:40): tooling done, clips next.**
+- [x] Hold-after-loss, interpolation and padding are in the renderer.
+- [x] `bench/run_bench.py` scores recall, over-blur, request success, both baselines, latency and GPU memory (`./run.sh bench`, `.\run.ps1 bench`). Its report on the synthetic clip only checks the plumbing.
+- [x] Labeling tool: `python -m bench.label_server bench/clips/<id>.mp4`, plus `python3 -m bench.gt prelabel` for detector drafts on the server. Steps are in README, "Adding a real clip".
+- [ ] **Next:** record, label and commit 3 real clips (faces, plates, a screen), then run `./run.sh bench` on the server.
 
 ### M3: Agent works for real (target Sat 21:00), Gate 2
 Owner: B.
@@ -179,6 +198,11 @@ Owner: B.
 
 **Exit:** ≥ 14/20 requests resolve correctly with the template fallback enabled.
 **If it fails:** demo template intents plus draw-a-box only, and present the LLM path as experimental.
+
+**Status (Sat 03:40): in progress.**
+- [x] `find_objects` rejects compound queries ("person in a red shirt"); the agent searches for the plain object and then calls `check_attribute`.
+- [x] The scorer runs. `bench/requests.yaml` has 7 synthetic requests; the 20 real ones come with the real clips.
+- [ ] **Open issue: one request took 75 s on the server** (Sat 03:15, real models, synthetic clip). Likely causes: `YoloeDetector.run` loads a fresh model and makes a full-video pass for every new query, and when the LLM makes no edit the template fallback runs the same searches again. Section 7 sets 3 s per tool call as the line for switching to llama.cpp, so measure where the time goes first.
 
 ### M4: Feature freeze (target Sun 01:00), Gate 3
 All roles.
@@ -252,4 +276,12 @@ Owner: C. Starts only after M4 passes.
 - Each module ships with a CLI and at least one test that runs on the stubs in `schema/examples/`.
 - Model weights, clips and outputs are gitignored. `scripts/setup.sh` downloads weights; `bench/clips/manifest.yaml` records clip sources and consent.
 - Record every number in `bench/report.md` from a script, never by hand.
-- Owners from PLAN.md: A Vision and stack · B Agent and toolbox · C Renderer and video I/O · D App, benchmark and demo. Fill in names there.
+- Owners from PLAN.md: A Vision and stack · B Agent and toolbox · C Renderer and video I/O · D App, benchmark and demo. Fill in names there. So far (Sat 03:40), Eduardo has built the stack, scaffold and agent; Alex the benchmark, labeling tool and Windows launcher.
+- Before opening a PR: `git pull --rebase origin main`, then run the tests (`./run.sh test`, or `.\run.ps1 test` on Windows).
+- Shared files need a heads-up in chat before you edit them: `censor/core/timeline.py`, `censor/server/app.py` (the UI's API), `run.sh`, `scripts/setup.sh`, `requirements.txt`.
+
+**Sharing the AUP server.** The team shares one account, so it's one session, one 32 GB GPU and one home directory.
+- Each person works in their own clone (for example `~/kh-<name>`), never in someone else's checkout.
+- Share the one resident model server on port 8100 (about 18 GB). A second copy won't fit, so don't run `scripts/smoke_vlm.py` while it's up. Run your own app on another port: `PORT=8001 ./run.sh` reuses the model server when it's healthy.
+- Set `git config user.name` and `user.email` inside your clone, or your commits go out under whoever configured the account.
+- Sessions stop after 240 minutes. Agree who relaunches it, and commit and push before it expires.
