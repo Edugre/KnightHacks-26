@@ -4,7 +4,7 @@ PP4AV (Trinh et al., "PP4AV: A Benchmarking Dataset for Privacy-Preserving Auton
 https://github.com/khaclinh/pp4av) has 3,447 driving images from European cities, day and night, with face
 (class 0) and plate (class 1) boxes in YOLO format. License: CC BY-NC-ND 4.0. Using it to evaluate this
 non-commercial project is fine, but the images, the labels and any converted copy stay out of git: they live
-in data/pp4av/ (gitignored). Only this script and the numbers it reports are committed.
+in ~/datasets/pp4av/ (outside the repo; CENSOR_PP4AV_DIR overrides). Only this script and its numbers are committed.
 
 Frames are scored one by one with what the renderer would draw for a single detected frame: each detection
 padded by 0.15 (doubled below the uncertain threshold), then a labeled box is covered when >= 90% of it is
@@ -12,7 +12,7 @@ inside the union of those rects, the same rule as bench/run_bench.py. Tracking i
 video clips cover that.
 
 GPU server:
-  python3 -m bench.pp4av download                     # 4.5 GB from Hugging Face into data/pp4av/ (needs network)
+  python3 -m bench.pp4av download                     # 4.5 GB from Hugging Face into ~/datasets/pp4av/ (needs network)
   python3 -m bench.pp4av run [--limit 300] [--subsets paris zurich] [--imgsz 1280]
 Writes bench/report_pp4av.md and bench/report_pp4av.json.
 """
@@ -37,7 +37,8 @@ from censor.render.render import _padded  # noqa: E402
 from censor.vision import detect as detect_mod  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data" / "pp4av"
+# One copy per machine, outside any clone, so everyone sharing the server account uses the same 4.5 GB.
+DATA = Path(os.environ.get("CENSOR_PP4AV_DIR", Path.home() / "datasets" / "pp4av"))
 REPO = "khaclinh/pp4av"
 CLASSES = {0: "face", 1: "license plate"}
 PADDING = 0.15  # Op default in censor/core/timeline.py
@@ -172,7 +173,7 @@ def to_markdown(rep: dict) -> str:
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("download", help="fetch PP4AV (4.5 GB) into data/pp4av/")
+    sub.add_parser("download", help="fetch PP4AV (4.5 GB) into ~/datasets/pp4av/")
     p = sub.add_parser("run", help="score the detector on PP4AV")
     p.add_argument("--limit", type=int, help="score every Nth image so about this many are used")
     p.add_argument("--subsets", nargs="+", help="only these subset folders, e.g. paris zurich")
