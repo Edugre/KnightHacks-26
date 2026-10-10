@@ -14,11 +14,15 @@ import os
 import threading
 import time
 
-import torch
-from fastapi import FastAPI
-from PIL import Image
-from pydantic import BaseModel
-from transformers import AutoModelForImageTextToText, AutoProcessor
+from censor import netguard
+
+netguard.install_from_env()  # before torch/transformers import, so model loading is covered too
+
+import torch  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from PIL import Image  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+from transformers import AutoModelForImageTextToText, AutoProcessor  # noqa: E402
 
 MID = os.environ.get("CENSOR_VLM_MODEL", "Qwen/Qwen3-VL-8B-Instruct")
 
@@ -53,7 +57,8 @@ class Chat(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"model": MID, "load_s": round(LOAD_S), "gpu_mem_gb": round(torch.cuda.memory_allocated() / 1e9, 1)}
+    return {"model": MID, "load_s": round(LOAD_S), "gpu_mem_gb": round(torch.cuda.memory_allocated() / 1e9, 1),
+            "offline": netguard.active()}
 
 
 @app.post("/vlm/yesno")
