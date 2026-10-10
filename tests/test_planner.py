@@ -91,3 +91,13 @@ def test_except_one_person_spares_only_the_best_match():
 def test_a_time_phrase_after_in_is_not_clothing():
     from censor.agent import intents
     assert intents.parse("blur the woman in the first 3 seconds").attribute_questions == ["Is this a woman?"]
+
+
+def test_one_person_or_a_group_is_read_from_the_words():
+    from censor.agent import intents
+    assert intents.one_person("hide everybody but the lady") is True
+    assert intents.one_person("blur everyone except the guy in the red hoodie") is True
+    assert intents.one_person("pixelate all faces but mine") is True
+    assert intents.one_person("blur everyone but the men") is False
+    assert intents.one_person("blur everyone except people in red") is False
+    assert intents.one_person("blur all plates") is None

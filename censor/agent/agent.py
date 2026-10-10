@@ -88,6 +88,10 @@ class Agent:
             ms = round(1000 * (time.perf_counter() - t0))
             try:
                 plan = planner.parse_plan(reply)
+                one = intents.one_person(text)
+                if one is not None:  # singular or plural is in the words; the LLM got "but the lady" wrong
+                    for t in plan.targets:
+                        t.one = one
                 calls.append({"tool": "_plan", "ms": ms, "plan": asdict(plan)})
                 return plan
             except (ValueError, json.JSONDecodeError) as e:

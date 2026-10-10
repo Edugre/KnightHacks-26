@@ -94,6 +94,26 @@ def parse(text: str) -> Optional[Plan]:
                 times=_bind_time(t, tm, queries, positions))
 
 
+PLURAL = {"men", "guys", "males", "boys", "women", "ladies", "females", "girls", "children", "kids", "persons", "people",
+          "pedestrians"}
+
+
+def one_person(text: str) -> Optional[bool]:
+    """Whether the request means one particular person: "the lady", "the guy in red", "me" -> True; "the women",
+    "people in red" -> False; no person described -> None. Read from the words, not left to the LLM, which marked
+    "everybody but the lady" as a group."""
+    t = text.lower()
+    if re.search(r"\b(me|mine|myself|i'm|i am)\b", t):
+        return True
+    found = [m for m in PERSON.finditer(t) if _person_question(m)]
+    if not found:
+        return None
+    if any(m["noun"] in PLURAL or (m["det"] or "") in ("all", "all the", "those", "these", "both", "every", "any")
+           for m in found):
+        return False
+    return any((m["det"] or "") in ("the", "that", "this", "a", "an") for m in found)
+
+
 def _person_question(m: re.Match) -> Optional[str]:
     """The yes/no question for one person description, or None when it describes nobody in particular."""
     adj = [w for w in (m["adj"] or "").split() if w not in NOT_ADJECTIVES]  # only after a determiner ("the tall guy")
