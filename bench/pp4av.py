@@ -34,6 +34,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bench.run_bench import COVER_MIN, _clip_box, _git, _mean, coverage, over_blur  # noqa: E402
 from censor.render.render import _padded  # noqa: E402
+from censor.vision.specialist import plate_shaped  # noqa: E402
 from censor.vision import detect as detect_mod  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,22 +157,26 @@ def evaluate(samples: list[dict], detector: Detector, padding: Optional[dict[str
 
 
 def score(samples: list[dict], detections: list[dict], padding: Optional[dict[str, float]] = None,
-          min_conf: Optional[dict[str, float]] = None) -> dict:
-    """Recall, false alarms and over-blur for detections kept at `min_conf` (per category; unset keeps all)."""
+          min_conf: Optional[dict[str, float]] = None, keep: Optional[Callable] = None) -> dict:
+    """Recall, false alarms and over-blur for detections kept at `min_conf` (per category; unset keeps all) and,
+    if given, by `keep(category, box, conf, frame_h)`."""
     hits: dict[str, list[bool]] = {}
     by_subset: dict[str, dict[str, list[bool]]] = {}
     by_size: dict[str, dict[str, list[bool]]] = {}
     cover: dict[str, list[float]] = {}  # raw coverage per labeled box: tells a missed object from a box that's too tight
     alarms: dict[str, list[bool]] = {}  # per kept detection: True when it overlaps no label of its category
+    shaped: list[bool] = []  # labeled plates passing the weak-plate shape test, to check the cutoff isn't too strict
     over = []
     for s, d in zip(samples, detections):
         w, h = d["w"], d["h"]
-        dets = [x for x in d["dets"] if x[2] >= (min_conf or {}).get(x[0], 0.0)]
+        dets = [x for x in d["dets"] if x[2] >= (min_conf or {}).get(x[0], 0.0) and (keep is None or keep(*x, h))]
         rects = mask_rects(dets, w, h, padding)
         boxes, labeled = [], {}
         for label in s["labels"]:
             cat, pixels = to_pixels(label, w, h)
             labeled.setdefault(cat, []).append(pixels)
+            if cat == "license plate":
+                shaped.append(plate_shaped(pixels, h))
             box = _clip_box(pixels, w, h)
             if box is None:
                 continue
@@ -194,17 +199,22 @@ def score(samples: list[dict], detections: list[dict], padding: Optional[dict[st
                         for c, vs in sorted(cover.items())},
             "false_alarms": {c: {"detections": len(v), "false": int(sum(v)), "per_image": sum(v) / n,
                                  "precision": 1 - _mean(v) if v else None} for c, v in sorted(alarms.items())},
+            "labeled_plates_plate_shaped": _mean(shaped),
             "over_blur": _mean(over), "ms_per_image": 1000 * (_mean([d["seconds"] for d in detections]) or 0)}
 
 
 def sweep(samples: list[dict], detections: list[dict], padding: Optional[dict[str, float]], plate_confs: list[float]) -> list[dict]:
     """Plate recall vs false alarms at several plate thresholds, from one detection pass."""
-    rows = []
-    for c in plate_confs:
-        r = score(samples, detections, padding, {"license plate": c})
+    def row(name, r):
         fa = r["false_alarms"].get("license plate", {})
-        rows.append({"plate_conf": c, "recall": r["recall"].get("license plate", {}).get("recall"),
-                     "false_per_image": fa.get("per_image"), "precision": fa.get("precision"), "over_blur": r["over_blur"]})
+        return {"plate_conf": name, "recall": r["recall"].get("license plate", {}).get("recall"),
+                "false_per_image": fa.get("per_image"), "precision": fa.get("precision"), "over_blur": r["over_blur"]}
+
+    rows = [row(c, score(samples, detections, padding, {"license plate": c})) for c in plate_confs]
+    # The video rule on single photos: confident plates kept, weak ones only if plate-shaped (no frames to count).
+    weak_shaped = lambda cat, box, conf, h: cat != "license plate" or conf >= 0.5 or plate_shaped(box, h)  # noqa: E731
+    rows.append(row(f"{min(plate_confs)} + weak must be plate-shaped",
+                    score(samples, detections, padding, {"license plate": min(plate_confs)}, weak_shaped)))
     return rows
 
 
@@ -222,6 +232,9 @@ def to_markdown(rep: dict) -> str:
     part = rep.get("partial", {})
     L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} | {f(part.get(c, {}).get('half_covered'))} | "
           f"{f(part.get(c, {}).get('touched'))} |" for c in CLASSES.values()]
+    if rep.get("labeled_plates_plate_shaped") is not None:
+        L += ["", f"Labeled plates that pass the weak-plate shape test (width/height >= 1.5, height <= 25% of the image): "
+                  f"{rep['labeled_plates_plate_shaped']:.1%}."]
     fa = rep.get("false_alarms", {})
     L += ["", "False alarms (detections overlapping no label of their category): " + ", ".join(
         f"{c} {v['per_image']:.2f} per image, precision {f(v['precision'])}" for c, v in fa.items()) + "."]

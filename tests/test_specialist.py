@@ -83,7 +83,7 @@ def test_routed_or_falls_back_without_model_files(monkeypatch, tmp_path):
 def test_confirmation_rule():
     from censor.core.tracks import Keyframe
     kf = lambda f, c: Keyframe(f=f, box=(0, 0, 10, 10), conf=c)  # noqa: E731
-    rule = (0.5, 3)
+    rule = {"min_conf": 0.5, "min_frames": 3}
     assert not sp.confirmed([kf(0, 0.2)], rule)                      # one weak blip
     assert sp.confirmed([kf(0, 0.9)], rule)                          # one strong detection
     assert sp.confirmed([kf(0, 0.2), kf(3, 0.15), kf(6, 0.3)], rule)  # weak but steady
@@ -108,3 +108,15 @@ def test_weak_plate_blips_are_dropped_but_steady_and_strong_plates_stay(clip):
     assert kept == [100, 700] and det.dropped == {"license plate": 1}
     weak = next(t for t in found if t.keyframes[0].box[0] == 700)
     assert all(k.state == "uncertain" for k in weak.keyframes)  # kept, and still padded extra
+
+
+def test_weak_persistent_tracks_must_be_plate_shaped():
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["license plate"]
+    track = lambda box, c=0.2: [Keyframe(f=f, box=box, conf=c) for f in (0, 3, 6)]  # noqa: E731
+    assert sp.confirmed(track((100, 500, 260, 540)), rule, 720)        # weak, steady, 4:1: a distant plate
+    assert not sp.confirmed(track((565, 56, 1150, 1009)), rule, 1080)  # weak, steady, taller than wide (a dress)
+    assert not sp.confirmed(track((1051, 705, 1097, 809)), rule, 1080) # weak, steady, 0.44:1 (a sign post)
+    assert not sp.confirmed(track((0, 0, 900, 400)), rule, 720)        # wide but over a quarter of the frame tall
+    assert sp.confirmed(track((565, 56, 1150, 1009), 0.9), rule, 1080) # confident: trusted whatever the shape
+    assert sp.plate_shaped((0, 0, 150, 100), 720) and not sp.plate_shaped((0, 0, 140, 100), 720)

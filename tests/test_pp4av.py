@@ -74,7 +74,10 @@ def test_false_alarms_and_plate_sweep(fake_root):
     fa = rep["false_alarms"]["license plate"]
     assert fa == {"detections": 2, "false": 1, "per_image": 1.0, "precision": 0.5}
     rows = pp4av.sweep(samples, dets, None, [0.1, 0.5])
-    assert [(r["plate_conf"], r["recall"], r["false_per_image"]) for r in rows] == [(0.1, 1.0, 1.0), (0.5, 1.0, 0.0)]
+    assert [(r["plate_conf"], r["recall"], r["false_per_image"]) for r in rows[:2]] == [(0.1, 1.0, 1.0), (0.5, 1.0, 0.0)]
+    # the stray "plate" is 30x10 (3:1), so the shape rule keeps it: the row reports it honestly
+    assert rows[2]["plate_conf"].endswith("plate-shaped") and rows[2]["false_per_image"] == 1.0
+    assert rep["labeled_plates_plate_shaped"] == 1.0  # the fake label is 60x20
 
 
 def test_matching_tolerates_tighter_or_looser_boxes():

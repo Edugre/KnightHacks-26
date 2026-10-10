@@ -35,8 +35,14 @@ LINK_IOU = 0.3
 # itself stays at EGOBLUR_CONF (0.1) so faint plates aren't missed; this drops isolated weak blips (signs, tail
 # lights), which the renderer would otherwise pad twice and hold for HOLD_FRAMES. Weak frames inside a
 # confirmed track are kept. Faces have no rule: they don't show the problem. Tune with bench/pp4av.py --plate-conf.
-CONFIRM = {"license plate": (float(os.environ.get("CENSOR_PLATE_CONFIRM_CONF", "0.5")),
-                             int(os.environ.get("CENSOR_PLATE_CONFIRM_FRAMES", "3")))}
+# A weak-only plate track that persists must also look like a plate: wider than tall and not huge. Static
+# things (signs, patterns on clothes) can be detected weakly in every frame; plates are about 2:1 to 5:1.
+CONFIRM = {"license plate": {
+    "min_conf": float(os.environ.get("CENSOR_PLATE_CONFIRM_CONF", "0.5")),
+    "min_frames": int(os.environ.get("CENSOR_PLATE_CONFIRM_FRAMES", "3")),
+    "min_aspect": float(os.environ.get("CENSOR_PLATE_MIN_ASPECT", "1.5")),        # width / height
+    "max_height_frac": float(os.environ.get("CENSOR_PLATE_MAX_HEIGHT", "0.25")),  # of the frame height
+}}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
 
 # What people (or the LLM) type, mapped to the specialist category that handles it.
@@ -109,11 +115,24 @@ def link(detections: list[tuple[int, list[tuple[Box, float]]]], uncertain_below:
     return tracks
 
 
-def confirmed(kfs: list[Keyframe], rule: Optional[tuple[float, int]]) -> bool:
-    if rule is None:
+def plate_shaped(box: Box, frame_h: int, min_aspect: float = 1.5, max_height_frac: float = 0.25) -> bool:
+    w, h = box[2] - box[0], box[3] - box[1]
+    return h > 0 and w / h >= min_aspect and h <= max_height_frac * frame_h
+
+
+def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0) -> bool:
+    """Confident tracks always count. Weak-only ones need enough frames and, when the rule asks, the median
+    box of the track has to be plate-shaped (a median, so one odd frame doesn't decide)."""
+    if rule is None or max(k.conf for k in kfs) >= rule["min_conf"]:
         return True
-    min_conf, min_frames = rule
-    return max(k.conf for k in kfs) >= min_conf or len(kfs) >= min_frames
+    if len(kfs) < rule["min_frames"]:
+        return False
+    if "min_aspect" not in rule or not frame_h:
+        return True
+    widths = sorted(k.box[2] - k.box[0] for k in kfs)
+    heights = sorted(k.box[3] - k.box[1] for k in kfs)
+    median = (0.0, 0.0, widths[len(widths) // 2], heights[len(heights) // 2])
+    return plate_shaped(median, frame_h, rule["min_aspect"], rule["max_height_frac"])
 
 
 class EgoBlurDetector:
@@ -123,7 +142,7 @@ class EgoBlurDetector:
 
     def __init__(self, infer: Optional[dict[str, Infer]] = None, every: int = EGOBLUR_EVERY,
                  conf: float = EGOBLUR_CONF, uncertain_below: float = 0.35,
-                 confirm: Optional[dict[str, tuple[float, int]]] = None):
+                 confirm: Optional[dict[str, dict]] = None):
         self._infer, self.every, self.conf, self.uncertain_below = infer, every, conf, uncertain_below
         self.confirm = CONFIRM if confirm is None else confirm
         self.dropped: dict[str, int] = {}  # unconfirmed tracks per category in the last run, for logs and tests
@@ -146,9 +165,11 @@ class EgoBlurDetector:
     def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         wanted = {q: ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
         per_cat: dict[str, list[tuple[int, list[tuple[Box, float]]]]] = {c: [] for c in set(wanted.values())}
+        frame_h = 0
         for f, img in frames(video):
             if f % self.every:
                 continue
+            frame_h = img.shape[0]
             for cat in per_cat:
                 dets = [(b, s) for b, s in self.infer[cat](img) if s >= self.conf]
                 if cat == "face":
@@ -158,7 +179,7 @@ class EgoBlurDetector:
         self.dropped = {}
         for q, cat in wanted.items():
             for kfs in link(per_cat[cat], self.uncertain_below):
-                if not confirmed(kfs, self.confirm.get(cat)):
+                if not confirmed(kfs, self.confirm.get(cat), frame_h):
                     self.dropped[cat] = self.dropped.get(cat, 0) + 1
                     continue
                 t = Track(track_id=store.next_id(), label=q, source="detector", keyframes=kfs)
