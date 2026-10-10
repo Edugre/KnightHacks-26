@@ -58,17 +58,27 @@ def test_plain_requests_skip_the_llm_and_exceptions_use_it(clip, tmp_path, monke
 
     def fake_chat(messages):
         steps.append(messages[-1]["content"])
-        return '{"tool": "add_masks", "args": {"labels": ["person"]}}' if len(steps) == 1 else '{"done": true, "message": "ok"}'
+        return ('{"action": "mask", "effect": "blur", "targets": [{"object": "person", "only": [], '
+                '"except": ["Is this a man wearing red?"], "time": null}]}')
 
     monkeypatch.setattr(agent_mod, "MODEL_URL", "http://model")
     monkeypatch.setattr(agent_mod, "_chat", fake_chat)
     s = Session(clip, tmp_path / "w", detector=StubDetector())
-    s.find_objects("person")
     r = Agent(s).run("blur all plates")
     assert r["path"] == "template" and steps == []  # no LLM call for a plain request
     r = Agent(s).run("blur everyone except the guy in red")
-    assert r["path"] == "llm" and len(steps) == 2
-    assert r["summary"]["by_label"]["person"] == 2  # add_masks by label, no ids spelled out
+    assert r["path"] == "llm" and len(steps) == 1  # one call for the whole plan, not one per tool
+    assert r["summary"]["by_label"]["person"] == 2  # the stub VLM answers "unknown": both stay masked
+
+
+def test_an_unusable_plan_is_retried_once_then_the_template_runs(clip, tmp_path, monkeypatch):
+    from censor.agent import agent as agent_mod
+    replies = iter(["I think you want plates blurred.", '{"action": "dance"}'])
+    monkeypatch.setattr(agent_mod, "MODEL_URL", "http://model")
+    monkeypatch.setattr(agent_mod, "_chat", lambda messages: next(replies))
+    r = Agent(Session(clip, tmp_path / "w", detector=StubDetector())).run("only blur the plates")
+    assert r["path"] == "template" and r["summary"]["by_label"] == {"license plate": 1}
+    assert [c.get("error", "")[:20] for c in r["calls"] if c["tool"] == "_plan"][:2] ==         ["no JSON object in th", "unknown action 'danc"]
 
 
 def test_nothing_is_not_an_exception_word():

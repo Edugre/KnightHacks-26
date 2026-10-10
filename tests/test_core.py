@@ -189,6 +189,13 @@ def test_find_objects_sends_kinds_of_people_to_the_vlm(tmp_path):
         s.find_objects("woman")
 
 
+def test_a_face_belongs_to_the_person_whose_head_it_is():
+    from censor.agent.tools import _face_in_person
+    person = (100, 100, 200, 400)
+    assert _face_in_person((130, 105, 170, 150), person) == 1.0   # at the top of the person box
+    assert _face_in_person((130, 300, 170, 340), person) == 0.0   # inside, but at the knees: someone else's face
+
+
 def test_find_objects_rejects_compound_queries(tmp_path):
     import subprocess, sys
     from censor.agent.tools import Session, ToolError

@@ -150,6 +150,24 @@ class Session:
         return [{"track_id": a.track_id, "answer": a.answer, "conf": a.conf, "p_yes": round(a.p_yes, 3)}
                 for a in vlm_mod.check_attribute(self.video, tracks, question)]
 
+    def person_for(self, face_ids: list[str]) -> dict[str, Optional[str]]:
+        """The person track each face belongs to (or None): the person whose box holds the face, near its top,
+        over most of the frames they share. Lets "the face of the guy in red" be asked about the whole person."""
+        self._ensure_scanned("person")
+        with self.lock:
+            people = [(p.track_id, {k.f: k.box for k in p.keyframes}) for p in self.tracks.by_label("person")]
+            faces = {i: self.tracks.get(i) for i in face_ids}
+        out: dict[str, Optional[str]] = {}
+        for fid, face in faces.items():
+            best, best_score = None, 0.0
+            for pid, pboxes in people:
+                scores = [_face_in_person(k.box, pboxes[k.f]) for k in face.keyframes if k.f in pboxes]
+                score = sum(scores) / len(face.keyframes) if scores else 0.0
+                if score > best_score:
+                    best, best_score = pid, score
+            out[fid] = best if best_score >= 0.5 else None
+        return out
+
     def track_box(self, frame: int, box: list[float], label: str = "user box") -> dict:
         if len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
             raise ToolError("box must be [x1, y1, x2, y2] with x2 > x1 and y2 > y1")
@@ -198,6 +216,17 @@ class Session:
         op = self.log.undo()
         self.save()
         return op.op_id if op else None
+
+
+def _face_in_person(face, person) -> float:
+    """How well a face box fits a person box: the share of the face inside it, if the face center is in the top
+    40% of the person box (a head), else nothing."""
+    ix = max(0.0, min(face[2], person[2]) - max(face[0], person[0]))
+    iy = max(0.0, min(face[3], person[3]) - max(face[1], person[1]))
+    area = (face[2] - face[0]) * (face[3] - face[1])
+    cy = (face[1] + face[3]) / 2
+    top = person[1] + 0.4 * (person[3] - person[1])
+    return (ix * iy / area) if area > 0 and person[1] - 0.1 * (person[3] - person[1]) <= cy <= top else 0.0
 
 
 # JSON schemas the LLM sees (role B: keep in sync with the methods above).
