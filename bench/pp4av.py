@@ -139,21 +139,24 @@ def write_debug(samples: list[dict], detector: Detector, out: Path, n: int) -> N
     print(f"[pp4av] wrote {min(n, len(samples))} debug images to {out}", file=sys.stderr)
 
 
-def mask_rects(dets: Iterable[tuple[str, Box, float]], w: int, h: int) -> list[tuple[int, int, int, int]]:
-    """What the renderer draws for one frame: padding, doubled for uncertain detections (fail closed)."""
-    return [_padded(box, PADDING * (2 if conf < detect_mod.UNCERTAIN_BELOW else 1), w, h) for _, box, conf in dets]
+def mask_rects(dets: Iterable[tuple[str, Box, float]], w: int, h: int,
+               padding: Optional[dict[str, float]] = None) -> list[tuple[int, int, int, int]]:
+    """What the renderer draws for one frame: padding per category, doubled for uncertain detections (fail closed)."""
+    pad = lambda cat: (padding or {}).get(cat, PADDING)  # noqa: E731
+    return [_padded(box, pad(cat) * (2 if conf < detect_mod.UNCERTAIN_BELOW else 1), w, h) for cat, box, conf in dets]
 
 
-def evaluate(samples: list[dict], detector: Detector) -> dict:
+def evaluate(samples: list[dict], detector: Detector, padding: Optional[dict[str, float]] = None) -> dict:
     hits: dict[str, list[bool]] = {}
     by_subset: dict[str, dict[str, list[bool]]] = {}
     by_size: dict[str, dict[str, list[bool]]] = {}
+    cover: dict[str, list[float]] = {}  # raw coverage per labeled box: tells a missed object from a box that's too tight
     over, seconds = [], []
     for s in samples:
         img = cv2.imread(str(s["image"]))
         h, w = img.shape[:2]
         t0 = time.perf_counter()
-        rects = mask_rects(detector(img), w, h)
+        rects = mask_rects(detector(img), w, h, padding)
         seconds.append(time.perf_counter() - t0)
         boxes = []
         for label in s["labels"]:
@@ -161,7 +164,9 @@ def evaluate(samples: list[dict], detector: Detector) -> dict:
             box = _clip_box(pixels, w, h)
             if box is None:
                 continue
-            ok = coverage(box, rects) >= COVER_MIN
+            frac = coverage(box, rects)
+            cover.setdefault(cat, []).append(frac)
+            ok = frac >= COVER_MIN
             bucket = next(f"{lo}-{hi}px" if hi < 10**6 else f">={lo}px" for lo, hi in SIZE_BUCKETS if lo <= box[3] - box[1] < hi)
             for d in (hits, by_subset.setdefault(s["subset"], {}), by_size.setdefault(bucket, {})):
                 d.setdefault(cat, []).append(ok)
@@ -171,6 +176,8 @@ def evaluate(samples: list[dict], detector: Detector) -> dict:
     return {"images": len(samples), "recall": summary(hits),
             "by_subset": {k: summary(v) for k, v in sorted(by_subset.items())},
             "by_size": {k: summary(v) for k, v in by_size.items()},
+            "partial": {c: {"half_covered": _mean([v >= 0.5 for v in vs]), "touched": _mean([v > 0 for v in vs])}
+                        for c, vs in sorted(cover.items())},
             "over_blur": _mean(over), "ms_per_image": 1000 * (_mean(seconds) or 0)}
 
 
@@ -181,11 +188,13 @@ def to_markdown(rep: dict) -> str:
     L = ["# PP4AV face and plate recall", "",
          f"Generated {m['generated']} by `bench/pp4av.py` at commit `{m['commit'] or 'unknown'}`. Do not edit by hand.", "",
          f"- Data: PP4AV (Trinh et al., WACV 2023, CC BY-NC-ND 4.0), {rep['images']} images. Not redistributed here.",
-         f"- Detector: {m['detector']}, min conf {m['min_conf']}; padding {PADDING}, doubled below conf {m['uncertain_below']}.",
+         f"- Detector: {m['detector']}, min conf {m['min_conf']}; padding {PADDING} (faces {m.get('face_padding', PADDING)}), doubled below conf {m['uncertain_below']}.",
          f"- A labeled box is covered when at least {COVER_MIN:.0%} of it is masked. Cells show recall (labeled boxes).", "",
-         "| Category | Recall (boxes) | Target |", "| --- | --- | --- |"]
+         "| Category | Recall (boxes) | Target | At least 50% covered | Any overlap |", "| --- | --- | --- | --- | --- |"]
     targets = {"face": ">= 0.95", "license plate": ">= 0.90"}
-    L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} |" for c in CLASSES.values()]
+    part = rep.get("partial", {})
+    L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} | {f(part.get(c, {}).get('half_covered'))} | "
+          f"{f(part.get(c, {}).get('touched'))} |" for c in CLASSES.values()]
     L += ["", f"Over-blur: {f(rep['over_blur'], '{:.1%}')} of the image on average. Detector time: {rep['ms_per_image']:.1f} ms per image.",
           "", "## By subset", "", "| Subset | Faces | Plates |", "| --- | --- | --- |"]
     L += [f"| {k} | {cell(v, 'face')} | {cell(v, 'license plate')} |" for k, v in rep["by_subset"].items()]
@@ -209,6 +218,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--conf", type=float, default=detect_mod.MIN_CONF, help="minimum detection confidence")
     p.add_argument("--face-prompts", nargs="+", default=["face"], help="YOLOE text prompts that count as faces")
     p.add_argument("--plate-prompts", nargs="+", default=["license plate"], help="YOLOE text prompts that count as plates")
+    p.add_argument("--face-padding", type=float, default=PADDING,
+                   help="padding per side around face detections (labels often box the whole head)")
     p.add_argument("--debug", type=int, default=0, metavar="N", help="also write N overlay images to data/pp4av_debug/")
     p.add_argument("--out-dir", default=str(ROOT / "bench"))
     a = ap.parse_args(argv)
@@ -233,10 +244,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         detector, described = yoloe_detector(prompts, a.imgsz, a.conf), f"YOLOE-11s-seg, prompts {prompts}, imgsz {a.imgsz}"
     if a.debug:
         write_debug(samples, detector, ROOT / "data" / "pp4av_debug", a.debug)
-    rep = evaluate(samples, detector)
+    rep = evaluate(samples, detector, {"face": a.face_padding})
     rep["meta"] = {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "commit": _git("rev-parse", "--short", "HEAD"),
                    "detector": described, "imgsz": a.imgsz,
-                   "min_conf": a.conf, "uncertain_below": detect_mod.UNCERTAIN_BELOW, "subsets": a.subsets, "limit": a.limit}
+                   "min_conf": a.conf, "face_padding": a.face_padding, "uncertain_below": detect_mod.UNCERTAIN_BELOW, "subsets": a.subsets, "limit": a.limit}
     out = Path(a.out_dir)
     (out / "report_pp4av.json").write_text(json.dumps(rep, indent=2) + "\n", encoding="utf-8")
     md = to_markdown(rep)
