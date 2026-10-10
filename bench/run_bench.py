@@ -41,6 +41,7 @@ from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # also runnable as `python bench/run_bench.py`
 from bench.gt import LabelSet  # noqa: E402
+from censor import netguard  # noqa: E402
 from censor.agent import agent as agent_mod  # noqa: E402
 from censor.agent import intents  # noqa: E402
 from censor.agent.tools import Session, ToolError  # noqa: E402
@@ -498,6 +499,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--no-baselines", action="store_true", help="score requests with our pipeline only")
     ap.add_argument("--out-dir", default=str(BENCH))
     args = ap.parse_args(argv)
+    netguard.install_from_env()
 
     clips, reqs = load_manifest(), load_requests()
     unknown = sorted({r.clip for r in reqs} - {c.id for c in clips})

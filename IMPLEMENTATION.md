@@ -236,6 +236,7 @@ Owner: C. Starts only after M4 passes.
 2. The 3-minute demo flow from PLAN.md runs live, with the backup video ready in case it doesn't.
 3. `bench/run_bench.py` regenerates the numbers we show, from committed labels.
 4. No network calls during inference. Show this by running the demo with outbound network blocked, or by showing the egress log.
+   *How (Sat 04:00):* `./run.sh` (gpu and bench) puts Hugging Face and Ultralytics in offline mode and sets `CENSOR_OFFLINE=1`, so `censor/netguard.py` refuses and logs every outbound connection or DNS lookup to `logs/egress.log`. Models come from the caches `scripts/setup.sh` fills. Proof for the demo: the model server's `/health` shows `"offline": true` and `logs/egress.log` stays empty. `python3 scripts/check_offline.py [clip]` checks the caches and a guarded detection pass without loading the 18 GB model. `CENSOR_ALLOW_NETWORK=1` turns it off.
 5. No labeled target is left unmasked for more than one labeled frame in a row in the demo clips.
 
 **Initial targets** (revise after the first M2 run, and report honestly whatever we get):

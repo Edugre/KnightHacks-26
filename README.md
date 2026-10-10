@@ -16,6 +16,8 @@ bash scripts/setup.sh      # once per fresh environment; never replaces the ROCm
 ```
 Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 
+`setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
+
 **Laptop, no GPU (stub detector, no models):**
 ```bash
 pip install -r requirements.txt

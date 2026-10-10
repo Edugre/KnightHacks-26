@@ -26,10 +26,13 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
+from censor import netguard
 from censor.agent.agent import Agent
 from censor.agent.tools import Session, ToolError
 from censor.core.video import read_frame
 from censor.render.render import FrameMasker, render_video
+
+netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
 
 DATA_DIR = Path(os.environ.get("CENSOR_DATA", "data")).resolve()
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"

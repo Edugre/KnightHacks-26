@@ -32,3 +32,18 @@ if [ "$BEFORE" != "$AFTER" ]; then
 fi
 python3 -c "import torch, cv2, clip, lap, ultralytics, transformers; assert torch.cuda.is_available(); print('ok:', torch.cuda.get_device_name(0), '| cv2', cv2.__version__, '| ultralytics', ultralytics.__version__, '| transformers', transformers.__version__)"
 ffmpeg -version | head -1
+
+# Fetch every model now, while the network is allowed: ./run.sh loads them offline (censor/netguard.py).
+# YOLOE and MobileCLIP go to Ultralytics' weights_dir, which it searches from any working directory.
+python3 - <<'EOF'
+import os
+from huggingface_hub import snapshot_download
+from ultralytics.utils import SETTINGS
+from ultralytics.utils.downloads import attempt_download_asset
+
+print("vlm:", snapshot_download(os.environ.get("CENSOR_VLM_MODEL", "Qwen/Qwen3-VL-8B-Instruct")))
+os.makedirs(SETTINGS["weights_dir"], exist_ok=True)
+os.chdir(SETTINGS["weights_dir"])
+for name in ("yoloe-11s-seg.pt", "mobileclip_blt.ts"):
+    print("weights:", os.path.abspath(attempt_download_asset(name)))
+EOF

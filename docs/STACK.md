@@ -45,6 +45,7 @@ Run on the shared session while the model server and app were already up (GPU me
 3. **No llama.cpp for now.** 28 tok/s is enough for short tool calls. Revisit only if agent latency hurts the demo: llama.cpp with a Q4/Q8 GGUF is the fallback.
 4. **Constrain the agent's output.** In the smoke test the model called `add_masks` with an empty `track_ids` instead of calling `find_objects` first. The agent loop has to feed tool results back and validate arguments (for example, reject empty `track_ids`). See IMPLEMENTATION.md section 4.
 5. **Don't let pip touch torch.** Always install with `--user --break-system-packages`, and use `--no-deps` for anything that pins torch (CLIP). Check with `python3 -c "import torch; print(torch.__version__)"`, which must print `+rocm7.13`.
+6. **Download at setup, run offline.** Without flags, Ultralytics looks up two DNS hosts on every import (`is_online()`), sends usage analytics when that succeeds, and downloads missing weights into the working directory; transformers checks the Hugging Face Hub when loading. `scripts/setup.sh` now fetches Qwen3-VL, YOLOE and MobileCLIP (into Ultralytics' `weights_dir`), and `./run.sh` sets `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `YOLO_OFFLINE` and `CENSOR_OFFLINE` (egress guard, `censor/netguard.py`).
 
 ## Known noise (harmless)
 
@@ -58,5 +59,6 @@ Run on the shared session while the model server and app were already up (GPU me
 bash scripts/setup.sh          # idempotent; installs into ~/.local and ~/bin
 python3 scripts/smoke_yoloe.py # detector check
 python3 scripts/smoke_vlm.py   # VLM + agent check (first run downloads ~17 GB)
+python3 scripts/check_offline.py [clip.mp4]   # every model loads with the network off (safe while the model server runs)
 ```
 `smoke_vlm.py` loads its own 18 GB copy of the model, so skip it while the resident model server is running; check `curl -s localhost:8100/health` instead.
