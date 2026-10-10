@@ -61,10 +61,22 @@ class YoloeDetector:
         with self._lock:
             return self._run(video, queries, store)
 
-    def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+    def _model(self):
         model = self._models.get(self.weights)
         if model is None:
             model = self._models[self.weights] = self._YOLOE(self.weights)
+        return model
+
+    def warm_up(self) -> None:
+        """Load YOLOE and its text encoder and run one frame, so the first scan doesn't pay for it."""
+        import numpy as np
+        with self._lock:
+            model = self._model()
+            model.set_classes(["person"], model.get_text_pe(["person"]))
+            model.predict(np.zeros((720, 1280, 3), np.uint8), device=self.device, imgsz=DETECT_IMGSZ, verbose=False)
+
+    def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+        model = self._model()
         model.predictor = None  # new predictor, so tracker state from the last video can't leak in
         model.set_classes(queries, model.get_text_pe(queries))
         by_key: dict[tuple[int, int], list[Keyframe]] = {}

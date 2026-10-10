@@ -33,6 +33,7 @@ EGOBLUR_EVERY = int(os.environ.get("CENSOR_EGOBLUR_EVERY", "3"))
 # 0.98 plates against fp32, none lost; bench/egoblur_speed.py). EgoBlur is most of the upload scan.
 EGOBLUR_FP16 = os.environ.get("CENSOR_EGOBLUR_FP16", "1") == "1"
 DECODE_AHEAD = 8  # frames a CPU thread decodes ahead of the GPU
+WARM_SIZES = ((1080, 1920), (720, 1280))  # frame sizes warm_up runs the models on (height, width)
 FACE_EXPAND = 0.3     # per side; with the default 0.15 mask padding this matches the benchmark's face padding 0.5
 LINK_IOU = 0.3
 # A track has to earn its blur: at least one confident detection, or seen in enough checked frames. Detection
@@ -173,6 +174,18 @@ class EgoBlurDetector:
         with self._lock:
             return self._run(video, queries, store)
 
+    def warm_up(self, sizes=WARM_SIZES) -> None:
+        """Load the models and run each twice per frame size on noise. A freshly loaded TorchScript model is
+        slow on its first calls (with loading, about 6 s per model on the R9700), which the first upload
+        would otherwise pay for. Scans wait for this to finish."""
+        rng = np.random.default_rng(0)
+        with self._lock:
+            for h, w in sizes:
+                img = rng.integers(0, 256, (h, w, 3), dtype=np.uint8)
+                for fn in self.infer.values():
+                    fn(img)
+                    fn(img)
+
     def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         wanted = {q: ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
         per_cat: dict[str, list[tuple[int, list[tuple[Box, float]]]]] = {c: [] for c in set(wanted.values())}
@@ -204,6 +217,11 @@ class RoutedDetector:
 
     def __init__(self, general, specialist):
         self.general, self.specialist = general, specialist
+
+    def warm_up(self) -> None:
+        for d in (self.specialist, self.general):
+            if hasattr(d, "warm_up"):
+                d.warm_up()
 
     def run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         special = [q for q in queries if q.lower().strip() in ALIASES]

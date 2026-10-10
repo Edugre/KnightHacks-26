@@ -27,6 +27,7 @@ import re
 import shutil
 import sys
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -55,6 +56,24 @@ SAMPLE_NAME = re.compile(r"[\w-]+")  # a bare file stem: no paths
 # Cloudflare waits for a response, so the user gets a message rather than a timeout page.
 EXPORT_WAIT = float(os.environ.get("CENSOR_EXPORT_WAIT", "80"))
 app = FastAPI(title="censor agent")
+
+
+def _warm_up() -> None:
+    """Load the detectors and run them once in the background at startup, so the first upload scans at the
+    warm speed (17 s instead of 29 s for a 13 s 1080p clip on the R9700). Off with CENSOR_WARMUP=0."""
+    try:
+        from censor.vision.detect import get_detector
+        det = get_detector()
+        if hasattr(det, "warm_up"):
+            t = time.perf_counter()
+            det.warm_up()
+            print(f"[warm-up] detectors ready in {time.perf_counter() - t:.1f} s", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001  a failed warm-up only means a slower first scan
+        print(f"[warm-up] skipped: {type(e).__name__}: {e}", file=sys.stderr)
+
+
+if os.environ.get("CENSOR_STUB") != "1" and os.environ.get("CENSOR_WARMUP", "1") == "1":
+    threading.Thread(target=_warm_up, daemon=True, name="warm-up").start()
 _sessions: dict[str, Session] = {}
 _turns: dict[str, threading.Lock] = {}  # one per video: requests, boxes, undo and exports run one at a time
 _working: dict[str, str] = {}  # video -> what it's busy with, for GET /api/videos/{id} and the 409 message

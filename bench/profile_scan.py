@@ -85,6 +85,8 @@ def main() -> None:
     ap.add_argument("--cpu-frames", type=int, default=6)
     ap.add_argument("--skip-scan", action="store_true", help="skip the full app scan")
     ap.add_argument("--cpu-scan", action="store_true", help="also run the scan with every model on the CPU")
+    ap.add_argument("--warm-up", action="store_true", help="warm the detectors up (as the app does at startup) "
+                                                           "before the first scan, and time it")
     a = ap.parse_args()
 
     import torch
@@ -139,6 +141,8 @@ def main() -> None:
     # the rest of a face or plate scan is decoding, linking and Python around them.
     from censor.vision.detect import YoloeDetector, get_detector
     gpu_det = get_detector()
+    if a.warm_up:
+        _, r["warm_up_s"] = timed(gpu_det.warm_up)
     runs = [] if a.skip_scan else [("scan_gpu_first", gpu_det), ("scan_gpu", gpu_det)]
     if a.cpu_scan:
         runs.append(("scan_cpu_only", sp.RoutedDetector(YoloeDetector(device="cpu"),

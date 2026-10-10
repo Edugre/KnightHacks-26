@@ -120,3 +120,11 @@ def test_weak_persistent_tracks_must_be_plate_shaped():
     assert not sp.confirmed(track((0, 0, 900, 400)), rule, 720)        # wide but over a quarter of the frame tall
     assert sp.confirmed(track((565, 56, 1150, 1009), 0.9), rule, 1080) # confident: trusted whatever the shape
     assert sp.plate_shaped((0, 0, 120, 100), 720, 1.2) and not sp.plate_shaped((0, 0, 110, 100), 720, 1.2)
+
+
+def test_warm_up_runs_each_model_on_each_size():
+    """The app warms EgoBlur up at startup so the first upload doesn't pay for the first slow calls."""
+    seen = []
+    fake = {c: (lambda img, c=c: seen.append((c, img.shape)) or []) for c in ("face", "license plate")}
+    sp.EgoBlurDetector(infer=fake).warm_up(sizes=((72, 128),))
+    assert sorted(seen) == [("face", (72, 128, 3))] * 2 + [("license plate", (72, 128, 3))] * 2
