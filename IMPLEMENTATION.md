@@ -12,8 +12,9 @@ These are fixed. Design inside them.
 
 | Constraint | What it means for the build |
 | --- | --- |
-| **One Strix Halo (gfx1151, 128 GB unified memory) on AMD Learning Cloud** | Every model runs on that box. There's no second GPU, so detector, VLM and agent LLM share memory and compute. Laptops run the UI and stubs only. |
-| **ROCm on gfx1151 is unproven for our models** | Each model gets a backend chosen in M0: PyTorch ROCm, ONNX Runtime, or llama.cpp (Vulkan or ROCm). Every model keeps a CPU fallback path. |
+| **One Radeon AI PRO R9700 (gfx1201, 32 GB) on AUP Learning Cloud** | Every model runs on that GPU (VSCode Server GPU resource). Detector, VLM and agent LLM share 32 GB; M0 measured 18 GB peak with all of them, see [docs/STACK.md](docs/STACK.md). Laptops run the UI and stubs only. |
+| **Sessions last at most 240 minutes** | The server stops after 4 h and has to be relaunched from the hub. Commit often; keep weights and installs in the NFS home; `scripts/setup.sh` re-checks the environment. The VLM takes ~3.5 min to load from NFS, so it must stay resident in one long-running process. |
+| **The ROCm PyTorch build is preinstalled and must not be replaced** | PyTorch 2.9.1+rocm7.13 works on the GPU (M0 passed). Install with `pip --user --break-system-packages`, `--no-deps` for anything that pins torch. llama.cpp remains the fallback for the LLM. |
 | **Fully local inference** | No cloud API calls in the pipeline: the "nothing leaves the machine" claim has to be literally true. Coding agents during development are fine. |
 | **About 30 hours left (as of Sat 01:40)** | The milestone times below assume submission on **Sun around 09:00**. Shift every time once we confirm the real deadline. |
 | **The agent never touches pixels** | The agent can only edit the mask timeline through typed tools. Only the renderer writes video. |
@@ -27,7 +28,7 @@ These are fixed. Design inside them.
 
 ## 2. Stack and repo layout
 
-**Stack:** Python 3.11, FastAPI, OpenCV and ffmpeg for the backend; Ultralytics (YOLOE plus BoT-SORT/ByteTrack); a llama.cpp server (OpenAI-compatible API, JSON-schema-constrained output) for the agent LLM and possibly the VLM; React + Vite web UI. Final model picks happen in M0.
+**Stack (fixed by M0):** Python 3.12 (system, ROCm PyTorch 2.9.1), FastAPI, OpenCV (headless) and ffmpeg for the backend; Ultralytics YOLOE-11s-seg with MobileCLIP text prompts plus BoT-SORT/ByteTrack; **one Qwen3-VL-8B-Instruct process (transformers, bf16) serving both the agent and the VLM checks**, with validated JSON tool calls; React + Vite web UI. Measurements and reasons are in [docs/STACK.md](docs/STACK.md).
 
 ```
 censor/
