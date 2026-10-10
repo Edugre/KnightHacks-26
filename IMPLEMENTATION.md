@@ -169,6 +169,8 @@ Each milestone has an exit check that someone runs and posts in the team chat. T
    | `street_plates` 1080p, 13 s | 48.1 s (0.27x) | 17.4 s (0.75x) | 17.2 s (0.76x) | - |
    | `street_walk` 720p, 8.8 s | - | - | 7.9 s (1.12x) | 187.8 s (0.05x), same 4 / 11 / 18 tracks |
 
+   **Export was the next bottleneck (fixed 08:05):** the blur ran a Gaussian with a kernel half the box's size on the full-size box (17 ms per padded face), so exporting `street_plates` with its 148 face tracks took 193 s and the browser got a Cloudflare timeout at about 100 s. The blur now smooths the 24x-downscaled box before scaling it back up: 0.2 ms per box, the same export in **2.8 s** (5,912 masked boxes), and no faint streaks of plate digits left as the old blur had. **End to end through the proxy:** pick `street_plates`, "blur all faces and plates" answered 11.4 s after the upload (the upload scan for faces and plates), export done 2.8 s later, 14.7 s in all.
+
    Settings: `CENSOR_EGOBLUR_FP16=0` (back to fp32), `CENSOR_WARMUP=0` (no warm-up). Reproduce: `python3 -m bench.profile_scan <clip> [--warm-up] [--cpu-scan]`. **Next here, if needed:** YOLOE `half=True` (0.008 vs 0.011 s per frame, not yet checked for accuracy) for the person scan, now 37% of the total.
 4. **The LLM path is slow:** "blur everyone except the person in the red hoodie" took over 2 minutes (LLM steps plus a VLM check on each of 18 person tracks). Batch the VLM crops, merge fragmented person tracks, and keep tool results short.
 5. **Label the three Pexels clips** (`bash scripts/fetch_clips.sh`, then `python -m bench.label_server ...`; `python3 -m bench.gt prelabel` gives EgoBlur drafts) and write about 20 requests in `bench/requests.yaml`.
