@@ -78,3 +78,33 @@ def test_routed_or_falls_back_without_model_files(monkeypatch, tmp_path):
     for name in sp.EGOBLUR_FILES.values():
         (tmp_path / name).write_bytes(b"")
     assert isinstance(sp.routed_or(general), sp.RoutedDetector)
+
+
+def test_confirmation_rule():
+    from censor.core.tracks import Keyframe
+    kf = lambda f, c: Keyframe(f=f, box=(0, 0, 10, 10), conf=c)  # noqa: E731
+    rule = (0.5, 3)
+    assert not sp.confirmed([kf(0, 0.2)], rule)                      # one weak blip
+    assert sp.confirmed([kf(0, 0.9)], rule)                          # one strong detection
+    assert sp.confirmed([kf(0, 0.2), kf(3, 0.15), kf(6, 0.3)], rule)  # weak but steady
+    assert sp.confirmed([kf(0, 0.2)], None)                          # no rule (faces)
+
+
+@needs_ffmpeg
+def test_weak_plate_blips_are_dropped_but_steady_and_strong_plates_stay(clip):
+    calls = []
+
+    def plate(img):
+        calls.append(1)
+        dets = [((100, 500, 180, 530), 0.9),     # a real plate, strongly detected every time
+                ((700, 500, 760, 520), 0.15)]    # a distant plate, weak but steady
+        if len(calls) == 1:
+            dets.append(((1000, 100, 1040, 115), 0.2))  # a sign mistaken for a plate, once
+        return dets
+
+    det = sp.EgoBlurDetector(infer={"face": lambda img: [], "license plate": plate}, every=3)
+    found = det.run(str(clip), ["license plate"], TrackStore())
+    kept = sorted(round(t.keyframes[0].box[0]) for t in found)
+    assert kept == [100, 700] and det.dropped == {"license plate": 1}
+    weak = next(t for t in found if t.keyframes[0].box[0] == 700)
+    assert all(k.state == "uncertain" for k in weak.keyframes)  # kept, and still padded extra

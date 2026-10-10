@@ -61,3 +61,22 @@ def test_face_padding_only_widens_faces():
     dets = [("face", (100, 100, 200, 200), 0.9), ("license plate", (300, 300, 400, 340), 0.9)]
     base, wide = pp4av.mask_rects(dets, 1000, 1000), pp4av.mask_rects(dets, 1000, 1000, {"face": 0.5})
     assert wide[0][2] - wide[0][0] > base[0][2] - base[0][0] and wide[1] == base[1]
+
+
+def test_false_alarms_and_plate_sweep(fake_root):
+    samples = pp4av.load_samples(fake_root)
+
+    def detector(img):  # the real plate, strongly; a sign mistaken for a plate, weakly
+        return [("license plate", (120, 70, 180, 90), 0.9), ("license plate", (10, 5, 40, 15), 0.2)]
+
+    dets = pp4av.detect_all(samples, detector)
+    rep = pp4av.score(samples, dets)
+    fa = rep["false_alarms"]["license plate"]
+    assert fa == {"detections": 2, "false": 1, "per_image": 1.0, "precision": 0.5}
+    rows = pp4av.sweep(samples, dets, None, [0.1, 0.5])
+    assert [(r["plate_conf"], r["recall"], r["false_per_image"]) for r in rows] == [(0.1, 1.0, 1.0), (0.5, 1.0, 0.0)]
+
+
+def test_matching_tolerates_tighter_or_looser_boxes():
+    assert pp4av._matches((100, 100, 120, 110), (90, 95, 130, 115))   # tight box inside a looser label
+    assert not pp4av._matches((0, 0, 10, 10), (100, 100, 120, 110))  # nowhere near

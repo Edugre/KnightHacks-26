@@ -130,21 +130,48 @@ def mask_rects(dets: Iterable[tuple[str, Box, float]], w: int, h: int,
     return [_padded(box, pad(cat) * (2 if conf < detect_mod.UNCERTAIN_BELOW else 1), w, h) for cat, box, conf in dets]
 
 
+MATCH_MIN = 0.3  # a detection matches a label when this share of the smaller box is shared (boxes differ in tightness)
+
+
+def _matches(det: Box, label: Box) -> bool:
+    ix = max(0.0, min(det[2], label[2]) - max(det[0], label[0]))
+    iy = max(0.0, min(det[3], label[3]) - max(det[1], label[1]))
+    smaller = min((det[2] - det[0]) * (det[3] - det[1]), (label[2] - label[0]) * (label[3] - label[1]))
+    return smaller > 0 and ix * iy / smaller >= MATCH_MIN
+
+
+def detect_all(samples: list[dict], detector: Detector) -> list[dict]:
+    """Run the detector once per image; scoring at several thresholds then reuses these detections."""
+    out = []
+    for s in samples:
+        img = cv2.imread(str(s["image"]))
+        t0 = time.perf_counter()
+        dets = detector(img)
+        out.append({"w": img.shape[1], "h": img.shape[0], "dets": dets, "seconds": time.perf_counter() - t0})
+    return out
+
+
 def evaluate(samples: list[dict], detector: Detector, padding: Optional[dict[str, float]] = None) -> dict:
+    return score(samples, detect_all(samples, detector), padding)
+
+
+def score(samples: list[dict], detections: list[dict], padding: Optional[dict[str, float]] = None,
+          min_conf: Optional[dict[str, float]] = None) -> dict:
+    """Recall, false alarms and over-blur for detections kept at `min_conf` (per category; unset keeps all)."""
     hits: dict[str, list[bool]] = {}
     by_subset: dict[str, dict[str, list[bool]]] = {}
     by_size: dict[str, dict[str, list[bool]]] = {}
     cover: dict[str, list[float]] = {}  # raw coverage per labeled box: tells a missed object from a box that's too tight
-    over, seconds = [], []
-    for s in samples:
-        img = cv2.imread(str(s["image"]))
-        h, w = img.shape[:2]
-        t0 = time.perf_counter()
-        rects = mask_rects(detector(img), w, h, padding)
-        seconds.append(time.perf_counter() - t0)
-        boxes = []
+    alarms: dict[str, list[bool]] = {}  # per kept detection: True when it overlaps no label of its category
+    over = []
+    for s, d in zip(samples, detections):
+        w, h = d["w"], d["h"]
+        dets = [x for x in d["dets"] if x[2] >= (min_conf or {}).get(x[0], 0.0)]
+        rects = mask_rects(dets, w, h, padding)
+        boxes, labeled = [], {}
         for label in s["labels"]:
             cat, pixels = to_pixels(label, w, h)
+            labeled.setdefault(cat, []).append(pixels)
             box = _clip_box(pixels, w, h)
             if box is None:
                 continue
@@ -152,17 +179,33 @@ def evaluate(samples: list[dict], detector: Detector, padding: Optional[dict[str
             cover.setdefault(cat, []).append(frac)
             ok = frac >= COVER_MIN
             bucket = next(f"{lo}-{hi}px" if hi < 10**6 else f">={lo}px" for lo, hi in SIZE_BUCKETS if lo <= box[3] - box[1] < hi)
-            for d in (hits, by_subset.setdefault(s["subset"], {}), by_size.setdefault(bucket, {})):
-                d.setdefault(cat, []).append(ok)
+            for dd in (hits, by_subset.setdefault(s["subset"], {}), by_size.setdefault(bucket, {})):
+                dd.setdefault(cat, []).append(ok)
             boxes.append(box)
+        for cat, box, _ in dets:
+            alarms.setdefault(cat, []).append(not any(_matches(box, lb) for lb in labeled.get(cat, [])))
         over.append(over_blur(rects, boxes, w, h))
     summary = lambda d: {c: {"recall": _mean(v), "boxes": len(v)} for c, v in sorted(d.items())}  # noqa: E731
+    n = max(1, len(samples))
     return {"images": len(samples), "recall": summary(hits),
             "by_subset": {k: summary(v) for k, v in sorted(by_subset.items())},
             "by_size": {k: summary(v) for k, v in by_size.items()},
             "partial": {c: {"half_covered": _mean([v >= 0.5 for v in vs]), "touched": _mean([v > 0 for v in vs])}
                         for c, vs in sorted(cover.items())},
-            "over_blur": _mean(over), "ms_per_image": 1000 * (_mean(seconds) or 0)}
+            "false_alarms": {c: {"detections": len(v), "false": int(sum(v)), "per_image": sum(v) / n,
+                                 "precision": 1 - _mean(v) if v else None} for c, v in sorted(alarms.items())},
+            "over_blur": _mean(over), "ms_per_image": 1000 * (_mean([d["seconds"] for d in detections]) or 0)}
+
+
+def sweep(samples: list[dict], detections: list[dict], padding: Optional[dict[str, float]], plate_confs: list[float]) -> list[dict]:
+    """Plate recall vs false alarms at several plate thresholds, from one detection pass."""
+    rows = []
+    for c in plate_confs:
+        r = score(samples, detections, padding, {"license plate": c})
+        fa = r["false_alarms"].get("license plate", {})
+        rows.append({"plate_conf": c, "recall": r["recall"].get("license plate", {}).get("recall"),
+                     "false_per_image": fa.get("per_image"), "precision": fa.get("precision"), "over_blur": r["over_blur"]})
+    return rows
 
 
 def to_markdown(rep: dict) -> str:
@@ -179,6 +222,15 @@ def to_markdown(rep: dict) -> str:
     part = rep.get("partial", {})
     L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} | {f(part.get(c, {}).get('half_covered'))} | "
           f"{f(part.get(c, {}).get('touched'))} |" for c in CLASSES.values()]
+    fa = rep.get("false_alarms", {})
+    L += ["", "False alarms (detections overlapping no label of their category): " + ", ".join(
+        f"{c} {v['per_image']:.2f} per image, precision {f(v['precision'])}" for c, v in fa.items()) + "."]
+    if rep.get("sweep"):
+        L += ["", "## Plate threshold sweep (same detections, plates kept at or above the threshold)", "",
+              "| Plate threshold | Plate recall | Plate false alarms per image | Plate precision | Over-blur |",
+              "| --- | --- | --- | --- | --- |"]
+        L += [f"| {r['plate_conf']} | {f(r['recall'])} | {f(r['false_per_image'])} | {f(r['precision'])} | {f(r['over_blur'], '{:.1%}')} |"
+              for r in rep["sweep"]]
     L += ["", f"Over-blur: {f(rep['over_blur'], '{:.1%}')} of the image on average. Detector time: {rep['ms_per_image']:.1f} ms per image.",
           "", "## By subset", "", "| Subset | Faces | Plates |", "| --- | --- | --- |"]
     L += [f"| {k} | {cell(v, 'face')} | {cell(v, 'license plate')} |" for k, v in rep["by_subset"].items()]
@@ -204,6 +256,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--plate-prompts", nargs="+", default=["license plate"], help="YOLOE text prompts that count as plates")
     p.add_argument("--face-padding", type=float, default=PADDING,
                    help="padding per side around face detections (labels often box the whole head)")
+    p.add_argument("--plate-conf", type=float, nargs="+", metavar="T",
+                   help="also report plate recall vs false alarms at these plate thresholds (one detection pass)")
     p.add_argument("--debug", type=int, default=0, metavar="N", help="also write N overlay images to data/pp4av_debug/")
     p.add_argument("--out-dir", default=str(ROOT / "bench"))
     a = ap.parse_args(argv)
@@ -228,7 +282,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         detector, described = yoloe_detector(prompts, a.imgsz, a.conf), f"YOLOE-11s-seg, prompts {prompts}, imgsz {a.imgsz}"
     if a.debug:
         write_debug(samples, detector, ROOT / "data" / "pp4av_debug", a.debug)
-    rep = evaluate(samples, detector, {"face": a.face_padding})
+    padding = {"face": a.face_padding}
+    detections = detect_all(samples, detector)
+    rep = score(samples, detections, padding)
+    if a.plate_conf:
+        rep["sweep"] = sweep(samples, detections, padding, a.plate_conf)
     rep["meta"] = {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "commit": _git("rev-parse", "--short", "HEAD"),
                    "detector": described, "imgsz": a.imgsz,
                    "min_conf": a.conf, "face_padding": a.face_padding, "uncertain_below": detect_mod.UNCERTAIN_BELOW, "subsets": a.subsets, "limit": a.limit}

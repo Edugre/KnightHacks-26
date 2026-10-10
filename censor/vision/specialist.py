@@ -31,6 +31,12 @@ EGOBLUR_CONF = float(os.environ.get("CENSOR_EGOBLUR_CONF", "0.1"))
 EGOBLUR_EVERY = int(os.environ.get("CENSOR_EGOBLUR_EVERY", "3"))
 FACE_EXPAND = 0.3     # per side; with the default 0.15 mask padding this matches the benchmark's face padding 0.5
 LINK_IOU = 0.3
+# A track has to earn its blur: at least one confident detection, or seen in enough checked frames. Detection
+# itself stays at EGOBLUR_CONF (0.1) so faint plates aren't missed; this drops isolated weak blips (signs, tail
+# lights), which the renderer would otherwise pad twice and hold for HOLD_FRAMES. Weak frames inside a
+# confirmed track are kept. Faces have no rule: they don't show the problem. Tune with bench/pp4av.py --plate-conf.
+CONFIRM = {"license plate": (float(os.environ.get("CENSOR_PLATE_CONFIRM_CONF", "0.5")),
+                             int(os.environ.get("CENSOR_PLATE_CONFIRM_FRAMES", "3")))}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
 
 # What people (or the LLM) type, mapped to the specialist category that handles it.
@@ -103,14 +109,24 @@ def link(detections: list[tuple[int, list[tuple[Box, float]]]], uncertain_below:
     return tracks
 
 
+def confirmed(kfs: list[Keyframe], rule: Optional[tuple[float, int]]) -> bool:
+    if rule is None:
+        return True
+    min_conf, min_frames = rule
+    return max(k.conf for k in kfs) >= min_conf or len(kfs) >= min_frames
+
+
 class EgoBlurDetector:
     """Faces and plates with EgoBlur on every EGOBLUR_EVERY-th frame, linked into tracks."""
 
     _cache: dict[str, dict[str, Infer]] = {}  # models stay loaded across runs (420 MB each)
 
     def __init__(self, infer: Optional[dict[str, Infer]] = None, every: int = EGOBLUR_EVERY,
-                 conf: float = EGOBLUR_CONF, uncertain_below: float = 0.35):
+                 conf: float = EGOBLUR_CONF, uncertain_below: float = 0.35,
+                 confirm: Optional[dict[str, tuple[float, int]]] = None):
         self._infer, self.every, self.conf, self.uncertain_below = infer, every, conf, uncertain_below
+        self.confirm = CONFIRM if confirm is None else confirm
+        self.dropped: dict[str, int] = {}  # unconfirmed tracks per category in the last run, for logs and tests
 
     @property
     def infer(self) -> dict[str, Infer]:
@@ -139,11 +155,17 @@ class EgoBlurDetector:
                     dets = [(_expand(b, FACE_EXPAND), s) for b, s in dets]
                 per_cat[cat].append((f, dets))
         found = []
+        self.dropped = {}
         for q, cat in wanted.items():
             for kfs in link(per_cat[cat], self.uncertain_below):
+                if not confirmed(kfs, self.confirm.get(cat)):
+                    self.dropped[cat] = self.dropped.get(cat, 0) + 1
+                    continue
                 t = Track(track_id=store.next_id(), label=q, source="detector", keyframes=kfs)
                 store.add(t)
                 found.append(t)
+        if self.dropped:
+            print(f"[egoblur] {video}: dropped unconfirmed tracks {self.dropped}", file=sys.stderr)
         return found
 
 
