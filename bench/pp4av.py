@@ -96,6 +96,32 @@ def yoloe_detector(prompts: dict[str, list[str]], imgsz: int = detect_mod.DETECT
     return detect
 
 
+EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets" / "egoblur"))
+
+
+def egoblur_detector(conf: float, model_dir: Path = EGOBLUR_DIR, device: str = "cuda", nms_iou: float = 0.3) -> Detector:
+    """Meta's EgoBlur Gen1 face and plate models (Apache 2.0), called the way its demo script does:
+    a BGR uint8 CHW tensor in, (boxes, labels, scores, dims) out, then NMS and a score threshold."""
+    import torch
+    import torchvision
+    models = {}
+    for cat, name in (("face", "ego_blur_face_gen1.jit"), ("license plate", "ego_blur_lp_gen1.jit")):
+        m = torch.jit.load(str(model_dir / name), map_location="cpu").to(device)
+        m.eval()
+        models[cat] = m
+
+    def detect(img: np.ndarray) -> list[tuple[str, Box, float]]:
+        t = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1))).to(device)
+        out = []
+        with torch.no_grad():
+            for cat, m in models.items():
+                boxes, _, scores, _ = m(t)
+                keep = torchvision.ops.nms(boxes, scores, nms_iou)
+                out += [(cat, tuple(b), float(s)) for b, s in zip(boxes[keep].tolist(), scores[keep].tolist()) if s >= conf]
+        return out
+    return detect
+
+
 def write_debug(samples: list[dict], detector: Detector, out: Path, n: int) -> None:
     """Overlay labeled boxes (green) and detections (red, with confidence) on the n most crowded images."""
     out.mkdir(parents=True, exist_ok=True)
@@ -155,7 +181,7 @@ def to_markdown(rep: dict) -> str:
     L = ["# PP4AV face and plate recall", "",
          f"Generated {m['generated']} by `bench/pp4av.py` at commit `{m['commit'] or 'unknown'}`. Do not edit by hand.", "",
          f"- Data: PP4AV (Trinh et al., WACV 2023, CC BY-NC-ND 4.0), {rep['images']} images. Not redistributed here.",
-         f"- Detector: {m['detector']}, imgsz {m['imgsz']}, min conf {m['min_conf']}; padding {PADDING}, doubled below conf {m['uncertain_below']}.",
+         f"- Detector: {m['detector']}, min conf {m['min_conf']}; padding {PADDING}, doubled below conf {m['uncertain_below']}.",
          f"- A labeled box is covered when at least {COVER_MIN:.0%} of it is masked. Cells show recall (labeled boxes).", "",
          "| Category | Recall (boxes) | Target |", "| --- | --- | --- |"]
     targets = {"face": ">= 0.95", "license plate": ">= 0.90"}
@@ -177,6 +203,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p = sub.add_parser("run", help="score the detector on PP4AV")
     p.add_argument("--limit", type=int, help="score every Nth image so about this many are used")
     p.add_argument("--subsets", nargs="+", help="only these subset folders, e.g. paris zurich")
+    p.add_argument("--detector", choices=("yoloe", "egoblur"), default="yoloe",
+                   help="egoblur: Meta's Gen1 face + plate models from ~/datasets/egoblur (CENSOR_EGOBLUR_DIR)")
     p.add_argument("--imgsz", type=int, default=detect_mod.DETECT_IMGSZ)
     p.add_argument("--conf", type=float, default=detect_mod.MIN_CONF, help="minimum detection confidence")
     p.add_argument("--face-prompts", nargs="+", default=["face"], help="YOLOE text prompts that count as faces")
@@ -199,12 +227,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         samples = samples[::max(1, len(samples) // a.limit)]
     print(f"[pp4av] scoring {len(samples)} images", file=sys.stderr)
     prompts = {"face": a.face_prompts, "license plate": a.plate_prompts}
-    detector = yoloe_detector(prompts, a.imgsz, a.conf)
+    if a.detector == "egoblur":
+        detector, described = egoblur_detector(a.conf), f"EgoBlur Gen1 face + plate ({EGOBLUR_DIR})"
+    else:
+        detector, described = yoloe_detector(prompts, a.imgsz, a.conf), f"YOLOE-11s-seg, prompts {prompts}, imgsz {a.imgsz}"
     if a.debug:
         write_debug(samples, detector, ROOT / "data" / "pp4av_debug", a.debug)
     rep = evaluate(samples, detector)
     rep["meta"] = {"generated": datetime.now(timezone.utc).isoformat(timespec="seconds"), "commit": _git("rev-parse", "--short", "HEAD"),
-                   "detector": f"YOLOE-11s-seg, prompts {prompts}", "imgsz": a.imgsz,
+                   "detector": described, "imgsz": a.imgsz,
                    "min_conf": a.conf, "uncertain_below": detect_mod.UNCERTAIN_BELOW, "subsets": a.subsets, "limit": a.limit}
     out = Path(a.out_dir)
     (out / "report_pp4av.json").write_text(json.dumps(rep, indent=2) + "\n", encoding="utf-8")
