@@ -91,6 +91,7 @@ python3 -m censor.vision.detect clip.mp4 "license plate" "face"          # track
 CENSOR_STUB=1 python3 -m censor.agent.agent clip.mp4 "blur all plates"    # agent result JSON
 python3 -m censor.render.render clip.mp4 schema/examples/plate_moving.json out.mp4
 python3 -m censor.core.timeline                                           # regenerate schema/timeline.schema.json
+python3 scripts/overlay_tracks.py clip.mp4 out.jpg --frames 0 60 --tracks before.json after.json   # compare two detector runs by eye
 ```
 
 ## License note
