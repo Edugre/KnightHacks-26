@@ -88,7 +88,10 @@ class Session:
     def find_objects(self, query: str, time_range: Optional[list[float]] = None) -> list[dict]:
         q = query.lower().strip()
         if q not in self.tracks.queries:
-            self.detector.run(self.video, [q], self.tracks)
+            try:
+                self.detector.run(self.video, [q], self.tracks)
+            except Exception as e:  # surface to the agent/UI instead of a 500; nothing is marked as searched
+                raise ToolError(f"detector failed for {q!r}: {type(e).__name__}: {e}") from e
             self.tracks.queries.append(q)
             self.save()
         out = []

@@ -131,7 +131,9 @@ class Agent:
                     self._call("add_masks", {"track_ids": ids, "effect": plan.effect,
                                              **({"time_range": tr} if tr else {})}, rid, calls)
                     masked += len(ids)
-        except ToolError:
+        except ToolError as e:
+            if "detector failed" in str(e):
+                return f"Detection failed, so nothing was changed: {e}"
             return None
         verb = "Unmasked" if plan.action == "remove" else f"Applied {plan.effect} to"
         return f"{verb} {masked} track(s) for: {', '.join(plan.queries)}." if masked else \

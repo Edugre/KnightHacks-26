@@ -123,3 +123,20 @@ def test_intents_remove_undo_unknown():
     assert intents.parse("unblur the faces").action == "remove"
     assert intents.parse("undo").action == "undo"
     assert intents.parse("make it look cinematic") is None
+
+
+def test_detector_failure_is_reported_not_raised(tmp_path):
+    import subprocess, sys
+    from censor.agent.agent import Agent
+    from censor.agent.tools import Session
+    clip = tmp_path / "c.mp4"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "make_test_clip.py"), str(clip), "1"], check=True)
+
+    class Broken:
+        def run(self, *a, **k):
+            raise ModuleNotFoundError("No module named 'lap'")
+
+    s = Session(clip, tmp_path / "w", detector=Broken())
+    r = Agent(s).run("blur all plates")
+    assert "Detection failed" in r["message"] and "lap" in r["message"]
+    assert s.summarize()["n_targets"] == 0 and s.tracks.queries == []

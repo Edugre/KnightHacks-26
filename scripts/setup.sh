@@ -13,7 +13,7 @@ torch_ver() { python3 -c "import torch; print(torch.__version__)"; }
 BEFORE="$(torch_ver)"
 echo "torch before: $BEFORE"
 
-$PIP ultralytics fastapi uvicorn python-multipart httpx pytest pydantic imageio-ffmpeg ftfy regex transformers accelerate pillow
+$PIP ultralytics lap fastapi uvicorn python-multipart httpx pytest pydantic imageio-ffmpeg ftfy regex transformers accelerate pillow
 # Ultralytics pulls GUI OpenCV (needs libGL); swap for headless. Both share cv2/, so force-reinstall headless.
 pip uninstall -y -q --break-system-packages opencv-python 2>/dev/null || true
 $PIP --force-reinstall --no-deps opencv-python-headless
@@ -30,5 +30,5 @@ if [ "$BEFORE" != "$AFTER" ]; then
   echo "ERROR: torch changed ($BEFORE -> $AFTER). ROCm build may be gone." >&2
   exit 1
 fi
-python3 -c "import torch, cv2, clip, ultralytics, transformers; assert torch.cuda.is_available(); print('ok:', torch.cuda.get_device_name(0), '| cv2', cv2.__version__, '| ultralytics', ultralytics.__version__, '| transformers', transformers.__version__)"
+python3 -c "import torch, cv2, clip, lap, ultralytics, transformers; assert torch.cuda.is_available(); print('ok:', torch.cuda.get_device_name(0), '| cv2', cv2.__version__, '| ultralytics', ultralytics.__version__, '| transformers', transformers.__version__)"
 ffmpeg -version | head -1
