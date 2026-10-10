@@ -24,7 +24,8 @@
 <main>
   <section class="panel">
     <h1>Censor Agent</h1>
-    <div class="row"><input type="file" id="file" accept="video/*"><input type="file" id="sidecar" accept=".json" title="stub mode: ground-truth tracks"></div>
+    <div class="row"><select id="sample"><option value="">Load a sample clip…</option></select>
+      <input type="file" id="file" accept="video/*"><input type="file" id="sidecar" accept=".json" title="stub mode: ground-truth tracks"></div>
     <video id="player" controls></video>
     <div class="row"><span id="time">frame 0</span><button id="prev">Preview masked frame</button><small>Drag on the preview to draw a box.</small></div>
     <div id="wrap"><img id="stage" alt=""><canvas id="draw"></canvas></div>
@@ -32,6 +33,7 @@
   <aside class="panel">
     <form id="ask"><input type="text" id="text" placeholder='e.g. "blur all plates and the person in the red shirt"'></form>
     <div class="row"><button id="undo">Undo</button><button id="export" class="primary">Export</button><a id="dl" hidden>Download</a></div>
+    <div id="status" style="margin:6px 0;font-weight:600"></div>
     <div id="summary"></div>
     <div id="log"></div>
   </aside>
@@ -49,6 +51,18 @@ $('file').onchange = async e => {
   const j = await api('api/videos', { method: 'POST', body: fd });
   vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j);
 };
+// ?video=<id> reopens a video uploaded earlier (or through the API), with its masks so far
+const reopen = new URLSearchParams(location.search).get('video');
+if (reopen) api(`api/videos/${reopen}`).then(j => {
+  vid = reopen; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(j.summary); refresh();
+}).catch(log);
+// Sample clips already on the server: no file picker needed (the in-app browser and demos can't always open one)
+api('api/samples').then(list => list.forEach(c => $('sample').add(new Option(`${c.id} (${c.mb} MB)`, c.id)))).catch(log);
+$('sample').onchange = async e => {
+  if (!e.target.value) return;
+  const j = await api(`api/samples/${e.target.value}`, { method: 'POST' });
+  vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(null); refresh();
+};
 $('sidecar').onchange = async e => {
   if (!vid) return log('upload a video first');
   const fd = new FormData(); fd.append('file', e.target.files[0]);
@@ -57,15 +71,27 @@ $('sidecar').onchange = async e => {
 $('player').ontimeupdate = () => $('time').textContent = `frame ${frameNow()}`;
 const refresh = () => { if (vid) $('stage').src = `api/videos/${vid}/preview/${frameNow()}.jpg?t=${Date.now()}`; };
 $('prev').onclick = refresh;
+// One thing at a time, with a visible status: an Export started while a request was still waiting on the
+// detector used to render the video with no masks at all.
+const busy = (msg) => { $('status').textContent = msg || ''; ['text', 'undo', 'export', 'sample'].forEach(id => $(id).disabled = !!msg); };
 $('ask').onsubmit = async e => {
-  e.preventDefault(); if (!vid) return log('upload a video first');
-  const j = await api(`api/videos/${vid}/request`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text: $('text').value }) });
-  log(j); showSummary(j.summary); refresh();
+  e.preventDefault(); if (!vid) return log('pick a sample clip or upload a video first');
+  busy('Working on: ' + $('text').value + ' (the first request on a new video waits for its scan)');
+  try {
+    const j = await api(`api/videos/${vid}/request`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text: $('text').value }) });
+    log(j); showSummary(j.summary); refresh();
+    busy(); $('status').textContent = j.message + ' Click Export to render it.';
+  } catch (err) { busy(); $('status').textContent = 'Request failed, see the log below.'; log(err); }
 };
 $('undo').onclick = async () => { const j = await api(`api/videos/${vid}/undo`, { method: 'POST' }); log(j); showSummary(j.summary); refresh(); };
 $('export').onclick = async () => {
-  log('rendering…'); const j = await api(`api/videos/${vid}/export`, { method: 'POST' });
+  if (!vid) return log('pick a sample clip or upload a video first');
+  busy('Rendering the blurred video…');
+  let j;
+  try { j = await api(`api/videos/${vid}/export`, { method: 'POST' }); } catch (err) { busy(); return log(err); }
+  busy(); $('status').textContent = `Done: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames. The player now shows the blurred video.`;
   log(j); $('dl').href = j.url; $('dl').textContent = 'Download export.mp4'; $('dl').hidden = false;
+  $('player').src = `${j.url}?t=${Date.now()}`;  // play the blurred result, not the original
 };
 // draw-a-box on the preview image
 const cv = $('draw'); let start = null;

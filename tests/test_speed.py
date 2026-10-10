@@ -75,3 +75,18 @@ def test_nothing_is_not_an_exception_word():
     from censor.agent.agent import NEEDS_LLM
     assert not NEEDS_LLM.search("blur the button and nothing else on the other side".replace("other", "far"))
     assert NEEDS_LLM.search("blur everyone except me") and NEEDS_LLM.search("only the plates")
+
+
+def test_a_finished_query_does_not_wait_for_another_scan(clip, tmp_path):
+    import censor.server.app as app_mod
+    det = SlowStub()
+    s = Session(clip, tmp_path / "w", detector=det)
+    s.find_objects("license plate")  # already scanned
+    scan = threading.Thread(target=app_mod.prescan, args=(s, ["person"]))
+    scan.start()
+    time.sleep(0.05)  # "person" is mid-scan
+    t0 = time.perf_counter()
+    r = Agent(s).run("blur all car plates")
+    assert time.perf_counter() - t0 < 0.2  # didn't sit behind the person scan
+    scan.join()
+    assert r["summary"]["by_label"] == {"license plate": 1}
