@@ -54,4 +54,4 @@ def test_report_renders(fake_root):
     rep = pp4av.evaluate(pp4av.load_samples(fake_root), oracle(0.9))
     rep["meta"] = {"generated": "now", "commit": "abc", "detector": "oracle", "imgsz": 1280, "min_conf": 0.15, "uncertain_below": 0.35}
     md = pp4av.to_markdown(rep)
-    assert "| face | 1.00 (1) | >= 0.95 |" in md and "CC BY-NC-ND 4.0" in md
+    assert "| face | 1.00 (1) | >= 0.95 | 1.00 | 1.00 |" in md and "CC BY-NC-ND 4.0" in md

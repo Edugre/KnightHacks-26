@@ -148,6 +148,7 @@ def evaluate(samples: list[dict], detector: Detector) -> dict:
     hits: dict[str, list[bool]] = {}
     by_subset: dict[str, dict[str, list[bool]]] = {}
     by_size: dict[str, dict[str, list[bool]]] = {}
+    cover: dict[str, list[float]] = {}  # raw coverage per labeled box: tells a missed object from a box that's too tight
     over, seconds = [], []
     for s in samples:
         img = cv2.imread(str(s["image"]))
@@ -161,7 +162,9 @@ def evaluate(samples: list[dict], detector: Detector) -> dict:
             box = _clip_box(pixels, w, h)
             if box is None:
                 continue
-            ok = coverage(box, rects) >= COVER_MIN
+            frac = coverage(box, rects)
+            cover.setdefault(cat, []).append(frac)
+            ok = frac >= COVER_MIN
             bucket = next(f"{lo}-{hi}px" if hi < 10**6 else f">={lo}px" for lo, hi in SIZE_BUCKETS if lo <= box[3] - box[1] < hi)
             for d in (hits, by_subset.setdefault(s["subset"], {}), by_size.setdefault(bucket, {})):
                 d.setdefault(cat, []).append(ok)
@@ -171,6 +174,8 @@ def evaluate(samples: list[dict], detector: Detector) -> dict:
     return {"images": len(samples), "recall": summary(hits),
             "by_subset": {k: summary(v) for k, v in sorted(by_subset.items())},
             "by_size": {k: summary(v) for k, v in by_size.items()},
+            "partial": {c: {"half_covered": _mean([v >= 0.5 for v in vs]), "touched": _mean([v > 0 for v in vs])}
+                        for c, vs in sorted(cover.items())},
             "over_blur": _mean(over), "ms_per_image": 1000 * (_mean(seconds) or 0)}
 
 
@@ -183,9 +188,11 @@ def to_markdown(rep: dict) -> str:
          f"- Data: PP4AV (Trinh et al., WACV 2023, CC BY-NC-ND 4.0), {rep['images']} images. Not redistributed here.",
          f"- Detector: {m['detector']}, min conf {m['min_conf']}; padding {PADDING}, doubled below conf {m['uncertain_below']}.",
          f"- A labeled box is covered when at least {COVER_MIN:.0%} of it is masked. Cells show recall (labeled boxes).", "",
-         "| Category | Recall (boxes) | Target |", "| --- | --- | --- |"]
+         "| Category | Recall (boxes) | Target | At least 50% covered | Any overlap |", "| --- | --- | --- | --- | --- |"]
     targets = {"face": ">= 0.95", "license plate": ">= 0.90"}
-    L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} |" for c in CLASSES.values()]
+    part = rep.get("partial", {})
+    L += [f"| {c} | {cell(rep['recall'], c)} | {targets.get(c, '')} | {f(part.get(c, {}).get('half_covered'))} | "
+          f"{f(part.get(c, {}).get('touched'))} |" for c in CLASSES.values()]
     L += ["", f"Over-blur: {f(rep['over_blur'], '{:.1%}')} of the image on average. Detector time: {rep['ms_per_image']:.1f} ms per image.",
           "", "## By subset", "", "| Subset | Faces | Plates |", "| --- | --- | --- |"]
     L += [f"| {k} | {cell(v, 'face')} | {cell(v, 'license plate')} |" for k, v in rep["by_subset"].items()]
