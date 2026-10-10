@@ -83,3 +83,18 @@ def test_plate_pixels_are_masked_in_export(clip, client):
     diff_plate = np.abs(fa[y1:y2, x1:x2].astype(int) - fb[y1:y2, x1:x2].astype(int)).mean()
     diff_sky = np.abs(fa[0:80, 0:400].astype(int) - fb[0:80, 0:400].astype(int)).mean()
     assert diff_plate > 20 and diff_sky < 5
+
+
+def test_sample_clips_load_without_a_file_picker(clip, client, tmp_path, monkeypatch):
+    c, app_mod = client
+    samples = tmp_path / "samples"
+    samples.mkdir()
+    shutil.copyfile(clip, samples / "street.mp4")
+    shutil.copyfile(str(clip) + ".tracks.json", samples / "street.mp4.tracks.json")
+    monkeypatch.setattr(app_mod, "SAMPLES_DIR", samples)
+    assert [s["id"] for s in c.get("/api/samples").json()] == ["street"]
+    vid = c.post("/api/samples/street").json()["video_id"]
+    r = c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates"}).json()
+    assert r["summary"]["by_label"] == {"license plate": 1}  # the sidecar came along, so the stub finds the plate
+    assert c.post("/api/samples/..%2Fsecret").status_code == 404
+    assert c.post("/api/samples/missing").status_code == 404

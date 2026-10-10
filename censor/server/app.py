@@ -1,6 +1,8 @@
 """Main API (role D's UI talks to this). Sessions persist under DATA_DIR/<video_id>/.
 
   POST /api/videos                      multipart file  -> {video_id, info, prescan}  (starts a background scan)
+  GET  /api/samples                     clips in bench/clips -> [{id, mb}]
+  POST /api/samples/{id}                load one of them like an upload (no file picker needed)
   GET  /api/videos/{id}                 -> {info, summary, ops}
   GET  /api/videos/{id}/source          original video
   POST /api/videos/{id}/request         {"text": str}  -> agent result
@@ -17,6 +19,7 @@ Run: uvicorn censor.server.app:app --host 0.0.0.0 --port 8000   (see run.sh)
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import sys
 import threading
@@ -41,6 +44,8 @@ DATA_DIR = Path(os.environ.get("CENSOR_DATA", "data")).resolve()
 PRESCAN = [] if os.environ.get("CENSOR_STUB") == "1" else \
     [q.strip() for q in os.environ.get("CENSOR_PRESCAN", "face,license plate,person").split(",") if q.strip()]
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
+SAMPLES_DIR = Path(__file__).resolve().parents[2] / "bench" / "clips"
+SAMPLE_NAME = re.compile(r"[\w-]+")  # a bare file stem: no paths
 app = FastAPI(title="censor agent")
 _sessions: dict[str, Session] = {}
 
@@ -73,12 +78,40 @@ def index():
 
 @app.post("/api/videos")
 async def upload(file: UploadFile = File(...)):
-    vid = uuid.uuid4().hex[:8]
-    d = DATA_DIR / vid
-    d.mkdir(parents=True)
+    vid, d = _new_video_dir()
     src = d / f"source{Path(file.filename or 'x.mp4').suffix or '.mp4'}"
     with src.open("wb") as f:
         shutil.copyfileobj(file.file, f)
+    return _start(vid)
+
+
+@app.get("/api/samples")
+def samples():
+    """Clips already on the server (bench/clips), so a demo needs no file picker."""
+    return [{"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1)} for p in sorted(SAMPLES_DIR.glob("*.mp4"))]
+
+
+@app.post("/api/samples/{name}")
+def load_sample(name: str):
+    src = SAMPLES_DIR / f"{name}.mp4"
+    if not SAMPLE_NAME.fullmatch(name) or not src.exists():
+        raise HTTPException(404, f"no sample clip {name!r}")
+    vid, d = _new_video_dir()
+    shutil.copyfile(src, d / "source.mp4")
+    sidecar = Path(f"{src}.tracks.json")
+    if sidecar.exists():  # stub mode replays it, so the sample works without a GPU too
+        shutil.copyfile(sidecar, d / "source.mp4.tracks.json")
+    return _start(vid)
+
+
+def _new_video_dir() -> tuple[str, Path]:
+    vid = uuid.uuid4().hex[:8]
+    d = DATA_DIR / vid
+    d.mkdir(parents=True)
+    return vid, d
+
+
+def _start(vid: str) -> dict:
     s = session(vid)
     if PRESCAN:
         threading.Thread(target=prescan, args=(s, PRESCAN), daemon=True).start()

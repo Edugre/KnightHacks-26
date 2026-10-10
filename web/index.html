@@ -24,7 +24,8 @@
 <main>
   <section class="panel">
     <h1>Censor Agent</h1>
-    <div class="row"><input type="file" id="file" accept="video/*"><input type="file" id="sidecar" accept=".json" title="stub mode: ground-truth tracks"></div>
+    <div class="row"><select id="sample"><option value="">Load a sample clip…</option></select>
+      <input type="file" id="file" accept="video/*"><input type="file" id="sidecar" accept=".json" title="stub mode: ground-truth tracks"></div>
     <video id="player" controls></video>
     <div class="row"><span id="time">frame 0</span><button id="prev">Preview masked frame</button><small>Drag on the preview to draw a box.</small></div>
     <div id="wrap"><img id="stage" alt=""><canvas id="draw"></canvas></div>
@@ -54,6 +55,13 @@ const reopen = new URLSearchParams(location.search).get('video');
 if (reopen) api(`api/videos/${reopen}`).then(j => {
   vid = reopen; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(j.summary); refresh();
 }).catch(log);
+// Sample clips already on the server: no file picker needed (the in-app browser and demos can't always open one)
+api('api/samples').then(list => list.forEach(c => $('sample').add(new Option(`${c.id} (${c.mb} MB)`, c.id)))).catch(log);
+$('sample').onchange = async e => {
+  if (!e.target.value) return;
+  const j = await api(`api/samples/${e.target.value}`, { method: 'POST' });
+  vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(null); refresh();
+};
 $('sidecar').onchange = async e => {
   if (!vid) return log('upload a video first');
   const fd = new FormData(); fd.append('file', e.target.files[0]);
