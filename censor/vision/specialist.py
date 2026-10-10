@@ -115,7 +115,10 @@ def link(detections: list[tuple[int, list[tuple[Box, float]]]], uncertain_below:
     return tracks
 
 
-def plate_shaped(box: Box, frame_h: int, min_aspect: float = 1.5, max_height_frac: float = 0.25) -> bool:
+def plate_shaped(box: Box, frame_h: int, min_aspect: Optional[float] = None, max_height_frac: Optional[float] = None) -> bool:
+    rule = CONFIRM["license plate"]  # defaults come from the configured rule, so the app and the benchmark agree
+    min_aspect = rule["min_aspect"] if min_aspect is None else min_aspect
+    max_height_frac = rule["max_height_frac"] if max_height_frac is None else max_height_frac
     w, h = box[2] - box[0], box[3] - box[1]
     return h > 0 and w / h >= min_aspect and h <= max_height_frac * frame_h
 
