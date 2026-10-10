@@ -270,6 +270,9 @@ def bench_clip(video: Path, labels: LabelSet, reqs: list[BenchRequest], render: 
     v = labels.video
     out: dict = {"clip": labels.clip, "file": video.name, "resolution": f"{v.width}x{v.height}",
                  "frames": v.n_frames, "duration": round(v.n_frames / v.fps, 2), "errors": []}
+    if labels.n_drafts:
+        out["errors"].append(f"{labels.n_drafts} of {len(labels.frames)} labeled frames are unconfirmed detector drafts "
+                             "and were not scored (confirm them in bench/label_server.py)")
     with tempfile.TemporaryDirectory(prefix=f"bench_{labels.clip}_", ignore_cleanup_errors=True) as tmp:
         tmp = Path(tmp)
         s = Session(video, tmp / "coverage")
