@@ -2,7 +2,7 @@
 
 *Sat Oct 10, 19:10 ET. Delete this file, or fold what's left into IMPLEMENTATION.md, once the AUP server is back.*
 
-The AUP R9700 host is down, so nobody can run the full app with real models for now. This plan splits the open work into four streams that each run on a laptop and touch different files, so 3-4 people can work at the same time without merge conflicts. Current state and history: IMPLEMENTATION.md, "Where we are".
+The AUP R9700 host is down, so nobody can run the full app with real models for now. This plan splits the open work into four tasks that each run on a laptop and touch different files, so 3-4 people can work at the same time without merge conflicts. **Each worker takes one task below (Worker 1 to 4) and stays in its files.** With three people, Worker 4's task goes to whoever finishes first. Current state and history: IMPLEMENTATION.md, "Where we are".
 
 ## What runs on a laptop and what doesn't
 
@@ -20,19 +20,19 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 | Qwen3-VL-8B (the model server: needs ~18 GB of GPU memory) | No planner LLM: requests the template can't parse ("everyone except ...") answer "clarify". No VLM attribute checks: every answer is "unknown", so attribute requests blur every candidate (fail closed). Test planner logic with fake LLM replies, as `tests/test_planner.py` does. |
 | R9700 timings | Don't quote laptop speeds as the product's speed. |
 
-**Model files:** EgoBlur (Apache 2.0) isn't in git. Alex has `ego_blur_face_gen1.zip` and `ego_blur_lp_gen1.zip` (390 MB each); unzip them into `~/datasets/egoblur/` (`%USERPROFILE%\datasets\egoblur\` on Windows). CUDA PyTorch on Windows: `uv pip install --python .venv\Scripts\python.exe torch torchvision --index-url https://download.pytorch.org/whl/cu126`.
+**Model files:** EgoBlur (Apache 2.0) isn't in git. The zips `ego_blur_face_gen1.zip` and `ego_blur_lp_gen1.zip` (390 MB each) were shared with the team; unzip them into `~/datasets/egoblur/` (`%USERPROFILE%\datasets\egoblur\` on Windows). CUDA PyTorch on Windows: `uv pip install --python .venv\Scripts\python.exe torch torchvision --index-url https://download.pytorch.org/whl/cu126`.
 
 **Clips:** `bench/clips/` is gitignored. Get the three Pexels clips with `bash scripts/fetch_clips.sh` (needs internet; `street_plates` is trimmed to 13 s, see `bench/clips/manifest.yaml`) or copy them from Alex.
 
 ## Ground rules
 
-- One branch per stream: `D/<stream>` (e.g. `D/person-stitch`). Commit as yourself. Run the tests before every push. Open a PR to `main`; keep `main` green.
-- Stay inside your stream's files (table below). If you must change a shared contract (the timeline schema, tool names or arguments in `censor/agent/tools.py`, the `/api` routes), say so in the team chat first.
-- When a stream is done, update its entry in IMPLEMENTATION.md ("Where we are", "Open, in order") with what changed and the numbers, as the entries above it do.
+- One branch per task: `D/<task>` (e.g. `D/person-stitch`). Commit as yourself. Run the tests before every push. Open a PR to `main`; keep `main` green.
+- Stay inside your task's files (table below). If you must change a shared contract (the timeline schema, tool names or arguments in `censor/agent/tools.py`, the `/api` routes), say so in the team chat first.
+- When a task is done, update its entry in IMPLEMENTATION.md ("Where we are", "Open, in order") with what changed and the numbers, as the entries above it do.
 
-## The four streams
+## The four tasks
 
-### Stream 1: stitch fragmented person tracks (vision)
+### Worker 1: stitch fragmented person tracks (vision)
 
 **Problem:** on `street_walk` the person detector gives 18 tracks for about 3 people in focus; 15 are short scraps of blurry background pedestrians, because the tracker loses someone for a few frames and starts a "new" person. Every request asks the VLM about every track (~0.3 s each), and scraps get inconsistent answers. (IMPLEMENTATION.md, open item 1.)
 
@@ -44,9 +44,9 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 **Done when:** `street_walk` drops from 18 person tracks to about 3-6 with no wrong merges, the tests pass, and the numbers are in IMPLEMENTATION.md.
 **Files:** `censor/vision/stitch.py` (new), `censor/vision/detect.py`, `bench/review*.py`, `tests/test_stitch.py`.
-**Best fit:** someone with an NVIDIA GPU, or patient with CPU runs (~70 ms a frame for YOLOE on CPU).
+**Needs:** an NVIDIA GPU helps (the EgoBlur zips and CUDA PyTorch); CPU works but is slow (~70 ms a frame for YOLOE).
 
-### Stream 2: request timing logs and template coverage (agent)
+### Worker 2: request timing logs and template coverage (agent)
 
 **Problem:** one request once took 59 s for no known reason (open item 2), and every request the template can't parse costs an LLM call (~2 s on the server, impossible offline).
 
@@ -57,9 +57,9 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 **Done when:** the app log shows per-step timings, the template handles the new phrasings with tests, and the request list exists.
 **Files:** `censor/agent/intents.py`, `censor/agent/agent.py`, `censor/agent/planner.py`, `censor/server/app.py` (logging only), `tests/test_core.py`, `tests/test_planner.py`.
-**Best fit:** anyone; no GPU needed.
+**Needs:** no GPU.
 
-### Stream 3: labels and the 20 benchmark requests (bench)
+### Worker 3: labels and the 20 benchmark requests (bench)
 
 **Problem:** the request success rate (target: at least 15 of 20) can't be measured: `bench/requests.yaml` has 7 requests, all on the synthetic clip, and the real clips only have plate labels (`bench/labels/street_plates.plate.json`, `street_walk.plate.json`).
 
@@ -70,9 +70,9 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 **Done when:** 20+ requests over real clips with labels; scoring runs when the server is back (the LLM and VLM parts need it).
 **Files:** `bench/labels/*.json`, `bench/requests.yaml`, `bench/clips/manifest.yaml`.
-**Best fit:** anyone; no GPU needed (plate drafts via `bench/review.py` need EgoBlur).
+**Needs:** no GPU (plate drafts via `bench/review.py` need EgoBlur).
 
-### Stream 4: demo UI, demo script, Devpost (web + docs)
+### Worker 4: demo UI, demo script, Devpost (web + docs)
 
 **Problem:** the UI is a test page (`web/index.html`): no timeline, and the agent's work is only visible as raw JSON in the log.
 
@@ -85,7 +85,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 **Done when:** the timeline and agent panel work in stub mode on the synthetic clip, and both docs exist.
 **Files:** `web/index.html`, `docs/DEMO.md` (new), `docs/DEVPOST.md` (new).
-**Best fit:** front-end person; no GPU needed.
+**Needs:** no GPU; front-end work.
 
 ### Extra, for whoever finishes first
 
@@ -95,20 +95,20 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 ## Who touches what
 
-| Files | Stream |
+| Files | Owner |
 | --- | --- |
-| `censor/vision/*` | 1 |
-| `censor/agent/*`, `censor/server/app.py` (logging) | 2 |
-| `bench/labels/*`, `bench/requests.yaml`, `bench/clips/manifest.yaml` | 3 |
-| `bench/review*.py` | 1 (and Extra) |
-| `web/index.html`, `docs/DEMO.md`, `docs/DEVPOST.md` | 4 |
+| `censor/vision/*` | Worker 1 |
+| `censor/agent/*`, `censor/server/app.py` (logging) | Worker 2 |
+| `bench/labels/*`, `bench/requests.yaml`, `bench/clips/manifest.yaml` | Worker 3 |
+| `bench/review*.py` | Worker 1 (and Extra) |
+| `web/index.html`, `docs/DEMO.md`, `docs/DEVPOST.md` | Worker 4 |
 | `IMPLEMENTATION.md` | everyone, own entry only |
 | `censor/core/*`, `censor/render/*`, `schema/*` | nobody without asking |
 
 ## When the server is back
 
 1. Relaunch (VSCode Server GPU, node "AMD Radeon AI Pro R9700"), then `cd ~/kh-alex && git pull && ./run.sh`.
-2. Re-measure stream 1 on the R9700 (person tracks per clip, request time for "blur the woman").
+2. Re-measure Worker 1's stitching on the R9700 (person tracks per clip, request time for "blur the woman").
 3. Run the benchmark with the real models: `./run.sh bench`, and record the request success rate.
-4. Try stream 2's request list against the real planner; add any phrasing it gets wrong as a test.
+4. Try Worker 2's request list against the real planner; add any phrasing it gets wrong as a test.
 5. Delete this file, or move what's left into IMPLEMENTATION.md.
