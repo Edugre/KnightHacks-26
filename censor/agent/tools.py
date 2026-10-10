@@ -32,7 +32,9 @@ class Session:
         self.video = str(video)
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
-        self.lock = threading.RLock()  # the upload pre-scan and requests share this session
+        self.lock = threading.RLock()  # guards tracks, ops and the files; held briefly, never during a scan
+        self._scans: dict[str, threading.Event] = {}  # query -> set when its scan is finished
+        self._scan_lock = threading.Lock()
         self.info: VideoInfo = probe(self.video)
         self.detector = detector or detect_mod.get_detector()
         self.tracks = TrackStore.load(self._p("tracks.json")) if self._p("tracks.json").exists() else TrackStore()
@@ -48,7 +50,38 @@ class Session:
 
     @property
     def timeline(self) -> Timeline:
-        return fold(self.log.ops, self.tracks, self.info)
+        with self.lock:
+            return fold(self.log.ops, self.tracks, self.info)
+
+    def _ensure_scanned(self, q: str) -> None:
+        """Run the detector for q once. A scan of another query never blocks this one; a second caller for
+        the same query (say the upload pre-scan and a request) waits for that scan instead of starting another."""
+        with self._scan_lock:
+            if q in self.tracks.queries:
+                return
+            done = self._scans.get(q)
+            owner = done is None
+            if owner:
+                done = self._scans[q] = threading.Event()
+        if not owner:
+            done.wait()
+            if q not in self.tracks.queries:
+                raise ToolError(f"detector failed for {q!r} (see the server log)")
+            return
+        found = TrackStore()
+        try:
+            self.detector.run(self.video, [q], found)
+        except Exception as e:  # surface to the agent/UI instead of a 500; nothing is marked as searched
+            with self._scan_lock:
+                self._scans.pop(q, None)
+            done.set()
+            raise ToolError(f"detector failed for {q!r}: {type(e).__name__}: {e}") from e
+        with self.lock:  # new ids here: scans run in parallel, each into its own store
+            for t in found.tracks.values():
+                self.tracks.add(t.model_copy(update={"track_id": self.tracks.next_id()}))
+            self.tracks.queries.append(q)
+            self.save()
+        done.set()
 
     def _append(self, request_id: str, **kw) -> str:
         with self.lock:
@@ -95,16 +128,11 @@ class Session:
         if COMPOUND_QUERY.search(q) or len(q.split()) > 3:
             raise ToolError(f"query {query!r} mixes an object with attributes. Call find_objects with just the "
                             "object (e.g. 'person'), then check_attribute on the returned track ids.")
-        with self.lock:  # if the upload pre-scan is running this query, wait for it instead of scanning twice
-            if q not in self.tracks.queries:
-                try:
-                    self.detector.run(self.video, [q], self.tracks)
-                except Exception as e:  # surface to the agent/UI instead of a 500; nothing is marked as searched
-                    raise ToolError(f"detector failed for {q!r}: {type(e).__name__}: {e}") from e
-                self.tracks.queries.append(q)
-                self.save()
+        self._ensure_scanned(q)
+        with self.lock:
+            tracks = list(self.tracks.by_label(q))
         out = []
-        for t in self.tracks.by_label(q):
+        for t in tracks:
             start, end = t.start / self.info.fps, t.end / self.info.fps
             if time_range and (end < time_range[0] or start > time_range[1]):
                 continue

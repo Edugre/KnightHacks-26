@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -120,7 +121,13 @@ class EgoBlurDetector:
             self._infer = self._cache[key]
         return self._infer
 
+    _lock = threading.Lock()  # scans of different queries may run at once; the models are shared
+
     def run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+        with self._lock:
+            return self._run(video, queries, store)
+
+    def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         wanted = {q: ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
         per_cat: dict[str, list[tuple[int, list[tuple[Box, float]]]]] = {c: [] for c in set(wanted.values())}
         for f, img in frames(video):
