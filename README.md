@@ -13,10 +13,16 @@ Say what to hide in a video ("blur every license plate and the person in the red
 git clone https://github.com/Edugre/KnightHacks-26.git && cd KnightHacks-26
 bash scripts/setup.sh      # once per fresh environment; never replaces the ROCm torch
 bash scripts/fetch_clips.sh   # optional: the three Pexels test clips
-./run.sh                   # starts the model server (~3-4 min first load), then the app on :8000
+./run.sh                   # starts the model server (3.5-9 min to load), then the app on :8000
 ```
 Faces and plates use Meta's EgoBlur models (Apache 2.0), which `setup.sh` can't fetch: get `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` from https://www.projectaria.com/tools/egoblur/ (email form) on a laptop, since Meta's CDN refuses the AUP server, and upload them to `~/datasets/egoblur/`. Without them the app warns and falls back to YOLOE, which misses faces.
 Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
+
+**Using the app:**
+1. Pick a clip in **Load a sample clip** (the clips in `bench/clips`; Claude's in-app browser can't open a file picker, so this is the reliable way) or upload your own.
+2. Type a request, e.g. `blur all faces and plates`, and press Enter. The status line says what it's doing; the first request on a new clip waits for the background scan (about 30 s for a short clip), and Export stays disabled until the request finishes.
+3. **Preview masked frame** shows the current frame with the masks; drag on that preview to blur anything by hand (it gets tracked through the clip).
+4. Click **Export**. When it's done, the player switches to the blurred video and a download link appears. `?video=<id>` in the URL reopens a video later.
 
 `setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
 
@@ -35,7 +41,7 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 stub    # http://localhost:80
 powershell -ExecutionPolicy Bypass -File .\run.ps1 test
 ```
 
-In the test UI, upload `synthetic.mp4`, then its `synthetic.mp4.tracks.json` in the second file picker, then type a request.
+In the test UI, pick **synthetic** in **Load a sample clip** (its ground-truth sidecar comes along, so the stub detector finds the shapes), then type a request such as `blur all plates`. Uploading `synthetic.mp4` plus its `synthetic.mp4.tracks.json` through the two file pickers also works.
 
 **Tests:** `./run.sh test` runs the suite in about 15 s with no GPU. It covers the schema, fold/undo, the fail-closed renderer, the request templates, upload → request → export end to end, and the benchmark scoring.
 
@@ -72,7 +78,7 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
 | `censor/agent/` | `tools.py` (the toolbox), `agent.py` (LLM loop + fallback), `intents.py` (templates) | B |
 | `censor/render/` | `render.py` (fail-closed renderer, ffmpeg out) | C |
 | `censor/server/` | `app.py` (main API), `model_server.py` (resident Qwen3-VL) | D / B |
-| `web/index.html` | minimal test UI; replace with the real app | D |
+| `web/index.html` | test UI: sample clips, request + status, preview, draw-a-box, undo, export playback | D |
 | `schema/` | generated JSON schema + hand-written examples | C |
 | `scripts/` | setup, smoke tests, synthetic clip, `fetch_clips.sh`, `check_offline.py` | A |
 | `bench/` | `run_bench.py` (scores + report), `gt.py` (label format, prelabel drafts), `label_server.py` + `label.html` (labeling tool), clips manifest, labels, requests | D |

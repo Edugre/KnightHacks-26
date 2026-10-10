@@ -65,3 +65,5 @@ python3 scripts/smoke_vlm.py   # VLM + agent check (first run downloads ~17 GB)
 python3 scripts/check_offline.py [clip.mp4]   # every model loads with the network off (safe while the model server runs)
 ```
 `smoke_vlm.py` loads its own 18 GB copy of the model, so skip it while the resident model server is running; check `curl -s localhost:8100/health` instead.
+
+Model load time from the NFS home varies with load on the storage: 211 s at M0, 311 s and about 9 minutes on two restarts on Sat morning. Plan demo restarts with that in mind.
