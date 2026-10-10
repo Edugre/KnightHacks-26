@@ -84,7 +84,8 @@ def yesno(req: YesNo):
                                    return_dict=True, return_tensors="pt").to("cuda")
     with _lock, torch.inference_mode():
         t = time.time()
-        logits = model(**inp).logits[0, -1].float()
+        # Only the last position's scores: all positions x a 152k vocabulary asked for 16 GB and crashed the server
+        logits = model(**inp, logits_to_keep=1).logits[0, -1].float()
         ms = int((time.time() - t) * 1000)
     probs = torch.softmax(logits, -1)
     py = float(sum(probs[i] for w, i in _YES_NO.items() if w.lower() == "yes"))
