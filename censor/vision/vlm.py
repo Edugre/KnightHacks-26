@@ -21,9 +21,11 @@ from censor.core.video import read_frame
 MODEL_URL = os.environ.get("CENSOR_MODEL_URL")
 CROPS_PER_TRACK = 3
 CROP_CONTEXT = 0.15   # widen each crop by this much per side, so clothes and hair at the edge of the box show
-CROP_MIN_SIDE = 224   # upscale small crops: a 40 px tall figure is too few pixels for the VLM to judge
-CROP_MAX_SIDE = 640   # and never past this: a 5 px wide sliver scaled by its short side became a giant image
-                      # that stalled the VLM for minutes
+# Every crop is fitted into one fixed canvas, and every call sends CROPS_PER_TRACK of them. Small figures get
+# enlarged (a 40 px person is too few pixels to judge), and the VLM always sees the same input shape: on the
+# R9700, MIOpen searches and compiles kernels for each new shape, which made each call take ~15 s when crop
+# sizes varied.
+CROP_SIZE = (256, 512)  # width, height: people are tall
 
 
 @dataclass
@@ -50,15 +52,23 @@ def track_crops(video: str, track: Track, n: int = CROPS_PER_TRACK) -> list[np.n
         x1, y1 = int(max(0, x1 - dx)), int(max(0, y1 - dy))
         x2, y2 = int(min(frame.shape[1], x2 + dx)), int(min(frame.shape[0], y2 + dy))
         crop = frame[y1:y2, x1:x2]
-        if not crop.size:
-            continue
-        h, w = crop.shape[:2]
-        s = min(max(1.0, CROP_MIN_SIDE / min(h, w)), CROP_MAX_SIDE / max(h, w))
-        if s != 1.0:
-            crop = cv2.resize(crop, (max(1, round(w * s)), max(1, round(h * s))),
-                              interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
-        crops.append(crop)
+        if crop.size:
+            crops.append(_fit(crop))
+    while crops and len(crops) < n:  # short tracks: repeat a view, so the input shape stays the same
+        crops.append(crops[-1])
     return crops
+
+
+def _fit(crop: np.ndarray) -> np.ndarray:
+    """Scale the crop to fit CROP_SIZE, keeping its shape, and pad the rest with gray."""
+    w, h = CROP_SIZE
+    s = min(w / crop.shape[1], h / crop.shape[0])
+    small = cv2.resize(crop, (max(1, round(crop.shape[1] * s)), max(1, round(crop.shape[0] * s))),
+                       interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
+    out = np.full((h, w, 3), 114, np.uint8)
+    y, x = (h - small.shape[0]) // 2, (w - small.shape[1]) // 2
+    out[y:y + small.shape[0], x:x + small.shape[1]] = small
+    return out
 
 
 def _ask_server(crops: list[np.ndarray], question: str) -> tuple[str, float, float]:

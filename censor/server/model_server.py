@@ -17,6 +17,10 @@ import time
 from censor import netguard
 
 netguard.install_from_env()  # before torch/transformers import, so model loading is covered too
+# MIOpen's kernel database isn't readable on the AUP image, so by default every new convolution shape (the VLM's
+# vision encoder sees one per image size) triggers a kernel search and compile of several seconds. FAST uses what's
+# tuned already and falls back to a default kernel right away.
+os.environ.setdefault("MIOPEN_FIND_MODE", "FAST")
 
 import torch  # noqa: E402
 from fastapi import FastAPI  # noqa: E402

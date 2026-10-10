@@ -190,13 +190,14 @@ def test_frames_skip_and_decode_ahead(clip):
     it.close()  # stopping early must not leave the decoder blocked
 
 
-def test_vlm_crops_stay_a_sensible_size(clip):
-    """A thin box scaled up by its short side once became a giant image that stalled the VLM for minutes."""
+def test_vlm_crops_always_have_the_same_shape(clip):
+    """A new input shape costs the VLM a kernel search on ROCm (~15 s), and a thin box scaled by its short side
+    once became a giant image: every crop is fitted into one canvas, three per call."""
     from censor.core.tracks import Keyframe, Track
     from censor.vision import vlm
     thin = Track(track_id="t", label="person", keyframes=[Keyframe(f=0, box=(100, 0, 103, 700), conf=0.5)])
     small = Track(track_id="s", label="person", keyframes=[Keyframe(f=0, box=(100, 100, 120, 160), conf=0.5)])
     for t in (thin, small):
-        for c in vlm.track_crops(str(clip), t):
-            assert max(c.shape[:2]) <= vlm.CROP_MAX_SIDE
-    assert min(vlm.track_crops(str(clip), small)[0].shape[:2]) >= 100  # small crops are still enlarged
+        crops = vlm.track_crops(str(clip), t)
+        assert len(crops) == vlm.CROPS_PER_TRACK
+        assert all(c.shape == (vlm.CROP_SIZE[1], vlm.CROP_SIZE[0], 3) for c in crops)
