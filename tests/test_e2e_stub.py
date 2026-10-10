@@ -176,3 +176,15 @@ def test_export_gives_up_with_a_message(clip, client, monkeypatch):
     release.set()
     t.join()
     assert r.status_code == 409 and "blur everyone except me" in r.json()["detail"]
+
+
+def test_frames_skip_and_decode_ahead(clip):
+    """Every n-th frame, and decoding on a thread, give exactly the frames a plain read gives."""
+    from censor.core.video import frames
+    plain = [(f, int(img.sum())) for f, img in frames(str(clip))]
+    every3 = [x for x in plain if x[0] % 3 == 0]
+    assert [(f, int(img.sum())) for f, img in frames(str(clip), every=3)] == every3
+    assert [(f, int(img.sum())) for f, img in frames(str(clip), every=3, prefetch=4)] == every3
+    it = frames(str(clip), prefetch=2)
+    next(it)
+    it.close()  # stopping early must not leave the decoder blocked

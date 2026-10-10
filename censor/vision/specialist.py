@@ -29,6 +29,10 @@ EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets"
 EGOBLUR_FILES = {"face": "ego_blur_face_gen1.jit", "license plate": "ego_blur_lp_gen1.jit"}
 EGOBLUR_CONF = float(os.environ.get("CENSOR_EGOBLUR_CONF", "0.1"))
 EGOBLUR_EVERY = int(os.environ.get("CENSOR_EGOBLUR_EVERY", "3"))
+# fp16 on the GPU: 0.147 -> 0.049 s per 1080p frame on the R9700 with the same boxes (mean IoU 0.999 faces,
+# 0.98 plates against fp32, none lost; bench/egoblur_speed.py). EgoBlur is most of the upload scan.
+EGOBLUR_FP16 = os.environ.get("CENSOR_EGOBLUR_FP16", "1") == "1"
+DECODE_AHEAD = 8  # frames a CPU thread decodes ahead of the GPU
 FACE_EXPAND = 0.3     # per side; with the default 0.15 mask padding this matches the benchmark's face padding 0.5
 LINK_IOU = 0.3
 # A track has to earn its blur: at least one confident detection, or seen in enough checked frames. Detection
@@ -55,12 +59,15 @@ Box = tuple[float, float, float, float]
 Infer = Callable[[np.ndarray], list[tuple[Box, float]]]  # BGR frame -> [(xyxy, score)]
 
 
-def load_egoblur(model_dir: Optional[Path] = None, device: str = "cuda", nms_iou: float = 0.3) -> dict[str, Infer]:
+def load_egoblur(model_dir: Optional[Path] = None, device: str = "cuda", nms_iou: float = 0.3,
+                 fp16: Optional[bool] = None) -> dict[str, Infer]:
     """Meta's Gen1 TorchScript models, called the way its demo script does: BGR uint8 CHW in,
-    (boxes, labels, scores, dims) out, then NMS."""
+    (boxes, labels, scores, dims) out, then NMS. On the GPU they run under fp16 autocast unless
+    CENSOR_EGOBLUR_FP16=0."""
     import torch
     import torchvision
     model_dir = model_dir or EGOBLUR_DIR
+    amp = (EGOBLUR_FP16 if fp16 is None else fp16) and str(device).startswith("cuda")
     infer: dict[str, Infer] = {}
     for cat, name in EGOBLUR_FILES.items():
         model = torch.jit.load(str(model_dir / name), map_location="cpu").to(device)
@@ -68,8 +75,9 @@ def load_egoblur(model_dir: Optional[Path] = None, device: str = "cuda", nms_iou
 
         def run(img: np.ndarray, model=model) -> list[tuple[Box, float]]:
             t = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1))).to(device)
-            with torch.no_grad():
+            with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16, enabled=amp):
                 boxes, _, scores, _ = model(t)
+            boxes, scores = boxes.float(), scores.float()
             keep = torchvision.ops.nms(boxes, scores, nms_iou)
             return [(tuple(b), float(s)) for b, s in zip(boxes[keep].tolist(), scores[keep].tolist())]
         infer[cat] = run
@@ -169,9 +177,7 @@ class EgoBlurDetector:
         wanted = {q: ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
         per_cat: dict[str, list[tuple[int, list[tuple[Box, float]]]]] = {c: [] for c in set(wanted.values())}
         frame_h = 0
-        for f, img in frames(video):
-            if f % self.every:
-                continue
+        for f, img in frames(video, every=self.every, prefetch=DECODE_AHEAD):
             frame_h = img.shape[0]
             for cat in per_cat:
                 dets = [(b, s) for b, s in self.infer[cat](img) if s >= self.conf]
