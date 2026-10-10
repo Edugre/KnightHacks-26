@@ -85,6 +85,17 @@ def test_plate_pixels_are_masked_in_export(clip, client):
     assert diff_plate > 20 and diff_sky < 5
 
 
+def test_time_phrase_limits_only_its_own_object(clip, tmp_path):
+    from censor.agent.agent import Agent
+    from censor.agent.tools import Session
+    from censor.vision.detect import StubDetector
+    s = Session(clip, tmp_path / "w", detector=StubDetector())
+    Agent(s).run("blur all plates and the person in the red shirt around halfway")
+    by_label = {s.tracks.get(o.targets[0]).label: o.time_range for o in s.log.ops}
+    assert by_label["license plate"] is None  # the whole clip, not just halfway
+    assert by_label["person"] is not None
+
+
 def test_sample_clips_load_without_a_file_picker(clip, client, tmp_path, monkeypatch):
     c, app_mod = client
     samples = tmp_path / "samples"

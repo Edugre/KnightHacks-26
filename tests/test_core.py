@@ -119,6 +119,18 @@ def test_intents(text, queries, effect, attr, time):
     assert p.attribute_question == attr and p.time_phrase == time
 
 
+@pytest.mark.parametrize("text,times", [
+    ("blur all plates and the person in the red hoodie around halfway", {"license plate": None, "person": "halfway"}),
+    ("blur all faces and plates in the first 10 seconds", {"face": "first 10 seconds", "license plate": "first 10 seconds"}),
+    ("in the first 10 seconds blur all plates and the faces", {"face": "first 10 seconds", "license plate": "first 10 seconds"}),
+    ("blur all plates and the person in red, around halfway", {"license plate": "halfway", "person": "halfway"}),
+    ("blur the plates around halfway and all faces", {"license plate": "halfway", "face": None}),
+    ("blur all plates", {"license plate": None}),
+])
+def test_time_phrases_bind_to_their_own_objects(text, times):
+    assert intents.parse(text).times == times
+
+
 def test_intents_remove_undo_unknown():
     assert intents.parse("unblur the faces").action == "remove"
     assert intents.parse("undo").action == "undo"

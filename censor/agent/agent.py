@@ -132,9 +132,10 @@ class Agent:
             if plan.action == "undo":
                 op = self._call("undo", {}, rid, calls)
                 return f"Undid {op}." if op else "Nothing to undo."
-            tr = self._call("resolve_time", {"phrase": plan.time_phrase}, rid, calls) if plan.time_phrase else None
+            ranges = {p: self._call("resolve_time", {"phrase": p}, rid, calls) for p in set(plan.times.values()) if p}
             masked = 0
             for q in plan.queries:
+                tr = ranges.get(plan.times.get(q))  # each object gets only the time phrase that applies to it
                 found = self._call("find_objects", {"query": q, **({"time_range": tr} if tr else {})}, rid, calls)
                 ids = [o["track_id"] for o in found]
                 if not ids:
