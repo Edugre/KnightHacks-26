@@ -1,0 +1,644 @@
+{
+  "meta": {
+    "generated": "2026-10-10T07:26:14+00:00",
+    "commit": "682dcb0",
+    "dirty": false,
+    "n_clips": 1,
+    "skipped": [],
+    "variants": [
+      "ours",
+      "keyword",
+      "fail_open"
+    ],
+    "detectors": [
+      "StubDetector"
+    ],
+    "agent": "template only (CENSOR_MODEL_URL unset)",
+    "vlm": "stub, every answer is 'unknown' (fail closed)",
+    "thresholds": {
+      "cover_min": 0.9,
+      "req_masked": 0.9,
+      "req_visible": 0.1
+    }
+  },
+  "summary": {
+    "boxes": {
+      "face": 18,
+      "license plate": 18,
+      "person": 36,
+      "screen": 9
+    },
+    "recall": {
+      "ours": {
+        "face": 1.0,
+        "license plate": 1.0,
+        "person": 1.0,
+        "screen": 1.0
+      },
+      "fail_open": {
+        "face": 1.0,
+        "license plate": 1.0,
+        "person": 1.0,
+        "screen": 1.0
+      }
+    },
+    "recall_screen_text": 1.0,
+    "longest_miss": 0,
+    "over_blur": {
+      "ours": 0.05221788194444445,
+      "fail_open": 0.05221788194444445
+    },
+    "fail_closed": {
+      "uncertain_keyframes": 0,
+      "doubled": 0,
+      "rate": null
+    },
+    "requests": {
+      "n": 7,
+      "success": {
+        "ours": 6,
+        "keyword": 5,
+        "fail_open": 6
+      }
+    },
+    "latency": {
+      "detect_ms_per_frame": 0.1,
+      "render_ms_per_frame": 13.972222222222221,
+      "offline_speed": 2.3687327279905253,
+      "agent_s_mean": 0.0028571428571428567,
+      "agent_s_max": 0.006
+    },
+    "gpu": {
+      "bench_process_gb": null,
+      "model_server_gb": null,
+      "total_gb": null
+    }
+  },
+  "targets": [
+    {
+      "metric": "Recall: faces",
+      "target": ">= 0.95",
+      "value": 1.0,
+      "shown": "1.00",
+      "pass": true
+    },
+    {
+      "metric": "Recall: plates",
+      "target": ">= 0.90",
+      "value": 1.0,
+      "shown": "1.00",
+      "pass": true
+    },
+    {
+      "metric": "Recall: screens/text",
+      "target": ">= 0.85",
+      "value": 1.0,
+      "shown": "1.00",
+      "pass": true
+    },
+    {
+      "metric": "Over-blur (mean masked non-target area)",
+      "target": "<= 10% of frame",
+      "value": 0.05221788194444445,
+      "shown": "5.2%",
+      "pass": true
+    },
+    {
+      "metric": "Request success",
+      "target": ">= 15 / 20 (75%)",
+      "value": 0.8571428571428571,
+      "shown": "6 / 7 (only 7 requests so far)",
+      "pass": true
+    },
+    {
+      "metric": "Fail-closed rate on uncertain keyframes",
+      "target": "100%",
+      "value": null,
+      "shown": "n/a",
+      "pass": null
+    },
+    {
+      "metric": "Offline speed (target is for 1080p)",
+      "target": ">= 0.5x real time",
+      "value": 2.3687327279905253,
+      "shown": "2.4x",
+      "pass": true
+    },
+    {
+      "metric": "Peak GPU memory, all models loaded",
+      "target": "<= 28 GB",
+      "value": null,
+      "shown": "n/a",
+      "pass": null
+    },
+    {
+      "metric": "Longest unmasked run of a labeled target",
+      "target": "<= 1 labeled frame",
+      "value": 0,
+      "shown": "0",
+      "pass": true
+    }
+  ],
+  "clips": [
+    {
+      "clip": "synthetic",
+      "file": "synthetic.mp4",
+      "resolution": "1280x720",
+      "frames": 180,
+      "duration": 6.0,
+      "errors": [],
+      "detector": "StubDetector",
+      "coverage": {
+        "ours": {
+          "recall": {
+            "face": 1.0,
+            "license plate": 1.0,
+            "person": 1.0,
+            "screen": 1.0
+          },
+          "boxes": {
+            "face": 18,
+            "license plate": 18,
+            "person": 36,
+            "screen": 9
+          },
+          "hits": {
+            "face": 18,
+            "license plate": 18,
+            "person": 36,
+            "screen": 9
+          },
+          "objects": {
+            "license_plate_1": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_1": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_1": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_2": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "screen_1": {
+              "category": "screen",
+              "covered": 1.0,
+              "longest_miss": 0
+            }
+          },
+          "over_blur": 0.05221788194444445
+        },
+        "fail_open": {
+          "recall": {
+            "face": 1.0,
+            "license plate": 1.0,
+            "person": 1.0,
+            "screen": 1.0
+          },
+          "boxes": {
+            "face": 18,
+            "license plate": 18,
+            "person": 36,
+            "screen": 9
+          },
+          "hits": {
+            "face": 18,
+            "license plate": 18,
+            "person": 36,
+            "screen": 9
+          },
+          "objects": {
+            "license_plate_1": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_1": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_1": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_2": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "screen_1": {
+              "category": "screen",
+              "covered": 1.0,
+              "longest_miss": 0
+            }
+          },
+          "over_blur": 0.05221788194444445
+        }
+      },
+      "fail_closed": {
+        "ours": {
+          "uncertain_keyframes": 0,
+          "doubled": 0,
+          "rate": null
+        },
+        "fail_open": {
+          "uncertain_keyframes": 0,
+          "doubled": 0,
+          "rate": null
+        }
+      },
+      "latency": {
+        "detect_s": 0.018,
+        "detect_ms_per_frame": 0.0984477758821514,
+        "render_s": 2.515,
+        "render_ms_per_frame": 13.97410055829419,
+        "offline_speed": 2.3686778358671963
+      },
+      "requests": [
+        {
+          "text": "blur all plates",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 2,
+            "message": "Applied blur to 1 track(s) for: license plate."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.003,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 2,
+            "message": "Applied blur to 1 track(s) for: license plate."
+          }
+        },
+        {
+          "text": "pixelate every face and screen",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "screen_1": 1.0,
+              "license_plate_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 0.006,
+            "tool_calls": 4,
+            "message": "Applied pixelate to 2 track(s) for: face, screen."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "screen_1": 1.0,
+              "license_plate_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.005,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "screen_1": 1.0,
+              "license_plate_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 0.005,
+            "tool_calls": 4,
+            "message": "Applied pixelate to 2 track(s) for: face, screen."
+          }
+        },
+        {
+          "text": "blur the person in the red shirt",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_2"
+            ],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 3,
+            "message": "Applied blur to 2 track(s) for: person."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_2"
+            ],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.003,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "person_1"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.0,
+            "tool_calls": 2,
+            "message": "I looked for person but found nothing to change."
+          }
+        },
+        {
+          "text": "black box the screen in the last 2 seconds",
+          "before": [],
+          "window": [
+            4.0,
+            6.0
+          ],
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "screen_1": 1.0,
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 3,
+            "message": "Applied box to 1 track(s) for: screen."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "screen_1": 1.0,
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.003,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "screen_1": 1.0,
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 3,
+            "message": "Applied box to 1 track(s) for: screen."
+          }
+        },
+        {
+          "text": "blur both people",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "license_plate_1": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 2,
+            "message": "Applied blur to 2 track(s) for: person."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "license_plate_1": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.003,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "license_plate_1": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 2,
+            "message": "Applied blur to 2 track(s) for: person."
+          }
+        },
+        {
+          "text": "unblur the faces",
+          "before": [
+            "blur all plates and faces"
+          ],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "face_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 2,
+            "message": "Unmasked 1 track(s) for: face."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "face_1"
+            ],
+            "covered": {
+              "license_plate_1": 1.0,
+              "face_1": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.003,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "face_1": 0.0
+            },
+            "path": "template",
+            "seconds": 0.003,
+            "tool_calls": 2,
+            "message": "Unmasked 1 track(s) for: face."
+          }
+        },
+        {
+          "text": "make it look cinematic",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "clarify",
+            "seconds": 0.0,
+            "tool_calls": 0,
+            "message": "I couldn't tell what to hide. Try e.g. \"blur all license plates\" or draw a box."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.0,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 0.0,
+              "face_1": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "screen_1": 0.0
+            },
+            "path": "clarify",
+            "seconds": 0.0,
+            "tool_calls": 0,
+            "message": "I couldn't tell what to hide. Try e.g. \"blur all license plates\" or draw a box."
+          }
+        }
+      ]
+    }
+  ]
+}

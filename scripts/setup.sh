@@ -13,7 +13,7 @@ torch_ver() { python3 -c "import torch; print(torch.__version__)"; }
 BEFORE="$(torch_ver)"
 echo "torch before: $BEFORE"
 
-$PIP ultralytics lap fastapi uvicorn python-multipart httpx pytest pydantic imageio-ffmpeg ftfy regex transformers accelerate pillow
+$PIP ultralytics lap pyyaml fastapi uvicorn python-multipart httpx pytest pydantic imageio-ffmpeg ftfy regex transformers accelerate pillow
 # Ultralytics pulls GUI OpenCV (needs libGL); swap for headless. Both share cv2/, so force-reinstall headless.
 pip uninstall -y -q --break-system-packages opencv-python 2>/dev/null || true
 $PIP --force-reinstall --no-deps opencv-python-headless

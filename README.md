@@ -33,7 +33,18 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 test
 
 In the test UI, upload `synthetic.mp4`, then its `synthetic.mp4.tracks.json` in the second file picker, then type a request.
 
-**Tests:** `./run.sh test` runs 18 tests in about 10 s with no GPU. They cover the schema, fold/undo, the fail-closed renderer, the request templates, and upload → request → export end to end.
+**Tests:** `./run.sh test` runs the suite in about 15 s with no GPU. It covers the schema, fold/undo, the fail-closed renderer, the request templates, upload → request → export end to end, and the benchmark scoring.
+
+## Benchmark
+
+Every number we report comes from `bench/run_bench.py`, which writes `bench/report.md` and `bench/report.json` (targets from IMPLEMENTATION.md section 6).
+```bash
+./run.sh bench                # GPU server: YOLOE, plus the agent and VLM through the model server if it's running
+```
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run.ps1 bench    # Windows laptop: stub detector on the synthetic clip
+```
+Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), labels live in `bench/labels/<clip>.json` (every 10th frame) and test requests in `bench/requests.yaml`. Options: `python -m bench.run_bench --help`. The stub detector replays ground truth, so on the synthetic clip the report checks the plumbing, not detection quality.
 
 ## Layout
 
@@ -47,6 +58,7 @@ In the test UI, upload `synthetic.mp4`, then its `synthetic.mp4.tracks.json` in 
 | `web/index.html` | minimal test UI; replace with the real app | D |
 | `schema/` | generated JSON schema + hand-written examples | C |
 | `scripts/` | setup, smoke tests, synthetic clip | A |
+| `bench/` | `run_bench.py` (scores + report), `gt.py` (label format, sidecar converter), clips manifest, labels, requests | D |
 | `tests/` | pytest suite | all |
 
 ## Useful CLIs

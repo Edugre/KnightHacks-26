@@ -4,6 +4,7 @@
 #   .\run.ps1 stub          stub detector, no models; API + test UI on http://localhost:8000
 #   .\run.ps1 stub 8010     same, on another port (use this if 8000 is taken)
 #   .\run.ps1 test          run the pytest suite
+#   .\run.ps1 bench         benchmark with the stub detector; writes bench\report.md and bench\report.json
 #
 # One-time setup:
 #   uv venv --python 3.12 .venv
@@ -38,5 +39,12 @@ switch ($Mode) {
         Write-Host "stub mode: open http://localhost:$Port, then upload bench\clips\synthetic.mp4 and its .tracks.json"
         & $py -m uvicorn censor.server.app:app --host 127.0.0.1 --port $Port
     }
-    default { Write-Error "usage: .\run.ps1 [stub|test] [port]" }
+    "bench" {
+        # Laptops have no detector models, so the stub replays the synthetic clip's ground truth.
+        $env:CENSOR_STUB = "1"
+        Remove-Item Env:CENSOR_MODEL_URL -ErrorAction SilentlyContinue
+        & $py -m bench.run_bench
+        exit $LASTEXITCODE
+    }
+    default { Write-Error "usage: .\run.ps1 [stub|test|bench] [port]" }
 }

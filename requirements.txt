@@ -7,6 +7,7 @@ pydantic>=2
 numpy
 opencv-python-headless
 httpx
+pyyaml  # bench/ manifest and requests
 imageio-ffmpeg  # ships an ffmpeg binary; run.ps1 falls back to it when ffmpeg isn't on PATH
 pytest
 # GPU server only (installed by scripts/setup.sh): ultralytics, CLIP (--no-deps), transformers, accelerate, pillow
