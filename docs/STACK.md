@@ -25,7 +25,8 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 | VLM attribute check | Qwen3-VL-8B-Instruct, bf16 | transformers on PyTorch ROCm | **311 ms** per yes/no question on one image. Answer correct |
 | Agent LLM | Same Qwen3-VL-8B model (shared) | transformers | **28 tok/s** greedy. Produced valid JSON for a tool call |
 | Memory, VLM + agent | | | 17.5 GB loaded, **17.9 GB peak**. About 14 GB headroom on the card |
-| Face + plate detector (added Sat 05:25) | EgoBlur Gen1 face and plate (`~/datasets/egoblur`, Apache 2.0) | TorchScript on PyTorch ROCm | About 0.2 s per image for both models; PP4AV recall 0.74 faces / 0.65 plates (conf 0.1, face padding 0.5) vs YOLOE's 0.00 / 0.07 |
+| Face + plate detector (added Sat 05:25) | EgoBlur Gen1 face and plate (`~/datasets/egoblur`, Apache 2.0) | TorchScript on PyTorch ROCm, fp16 autocast | **0.049 s per model per 1080p frame** in fp16 (0.147 s in fp32, 1.5 s on the 64-core CPU); PP4AV recall 0.74 faces / 0.65 plates (conf 0.1, face padding 0.5) vs YOLOE's 0.00 / 0.07, the same in fp16 |
+| Upload scan (Sat 07:50) | EgoBlur face + plate every 3rd frame, YOLOE person every frame | | **17.2 s for a 13 s 1080p clip (0.76x real time)**, 48.1 s before; 720p clip 1.12x real time on the GPU vs 0.05x on the CPU alone (24x). `bench/profile_scan.py` |
 
 ## Re-check (Sat Oct 10, ~03:15 ET, commit ccfc82f)
 
@@ -49,6 +50,7 @@ Run on the shared session while the model server and app were already up (GPU me
 6. **Download at setup, run offline.** Without flags, Ultralytics looks up two DNS hosts on every import (`is_online()`), sends usage analytics when that succeeds, and downloads missing weights into the working directory; transformers checks the Hugging Face Hub when loading. `scripts/setup.sh` now fetches Qwen3-VL (Hugging Face cache) and YOLOE + MobileCLIP (into `<repo>/weights`: Ultralytics' `weights_dir` is the relative path `weights`, resolved from the working directory, and run.sh runs from the repo root), and `./run.sh` sets `HF_HUB_OFFLINE`, `TRANSFORMERS_OFFLINE`, `YOLO_OFFLINE` and `CENSOR_OFFLINE` (egress guard, `censor/netguard.py`).
 7. **Faces and plates go to EgoBlur, everything else to YOLOE** (`censor/vision/specialist.py`). YOLOE is an open-vocabulary object detector and misses faces entirely; EgoBlur is built for exactly these two categories. EgoBlur runs every 3rd frame and a simple IoU tracker links detections.
 8. **Keep models loaded and scan at upload.** YOLOE stays loaded between searches, and each upload starts a background scan for faces, plates and people, so requests read cached tracks.
+9. **EgoBlur runs in fp16 and the detectors warm up at startup** (`CENSOR_EGOBLUR_FP16`, `CENSOR_WARMUP`). The scan is GPU-bound (decoding is 0.2 s of it), so the per-call cost is what counts: fp16 cut it 3x with the same boxes. EgoBlur can't batch, two streams don't overlap, and smaller inputs lose plates, so those are out (`bench/egoblur_speed.py`). A freshly loaded model is slow for its first calls, so the app runs each model on noise frames in the background when it starts (18.5 s); the first upload then scans at the warm speed.
 
 ## Known noise (harmless)
 

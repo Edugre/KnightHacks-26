@@ -3,18 +3,17 @@
   python3 -m bench.profile_scan bench/clips/street_plates.mp4 [--out logs/profile.json] [--cpu-scan]
 
 Measures: decoding alone, EgoBlur face and plate per frame (and whether the models take a batch), YOLOE per
-frame (fp32 and half), the same models on the CPU, and the upload scan the app runs (face, plate, person),
-with GPU busy % sampled from sysfs while it runs. --cpu-scan also runs that scan with every model on the CPU,
-for the GPU vs CPU-only comparison (minutes on a 1080p clip; street_walk is shorter).
+frame (fp32 and half), the same models on the CPU, and the upload scan the app runs (face, plate, person).
+--cpu-scan also runs that scan with every model on the CPU, for the GPU vs CPU-only comparison (minutes on a
+1080p clip; street_walk is shorter). No GPU busy %: the AUP node's sysfs shows all four of its GPUs, shared
+with other sessions, so it can't say which one is ours.
 """
 from __future__ import annotations
 
 import argparse
-import glob
 import json
 import statistics
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -23,39 +22,6 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from censor.core.tracks import TrackStore  # noqa: E402
 from censor.core.video import frames, probe  # noqa: E402
-
-
-class GpuBusy:
-    """Samples amdgpu's gpu_busy_percent every 50 ms in a thread (None when sysfs doesn't expose it)."""
-
-    def __init__(self):
-        self.paths = glob.glob("/sys/class/drm/card*/device/gpu_busy_percent")
-        self.samples: list[int] = []
-        self._stop = threading.Event()
-
-    def __enter__(self):
-        def loop():
-            while not self._stop.is_set():
-                vals = []
-                for p in self.paths:
-                    try:
-                        vals.append(int(Path(p).read_text()))
-                    except (OSError, ValueError):
-                        pass
-                if vals:
-                    self.samples.append(max(vals))
-                time.sleep(0.05)
-        self._t = threading.Thread(target=loop, daemon=True)
-        self._t.start()
-        return self
-
-    def __exit__(self, *exc):
-        self._stop.set()
-        self._t.join()
-
-    @property
-    def mean(self):
-        return round(statistics.mean(self.samples), 1) if self.samples else None
 
 
 def timed(fn, *a, **kw):
@@ -93,7 +59,8 @@ def main() -> None:
     from censor.vision import specialist as sp
     info = probe(a.video)
     r: dict = {"video": a.video, "frames": info.n_frames, "size": f"{info.width}x{info.height}", "fps": info.fps,
-               "torch": torch.__version__, "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None}
+               "torch": torch.__version__, "device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+               "cpu_threads": torch.get_num_threads()}
     sync = torch.cuda.synchronize if torch.cuda.is_available() else (lambda: None)
 
     # 1. decoding alone (OpenCV, CPU)
@@ -160,18 +127,16 @@ def main() -> None:
                     return out
                 return call
             eg._infer = {c: wrap(f) for c, f in eg.infer.items()}
-        with GpuBusy() as busy:
-            for q in ("face", "license plate", "person"):
-                store = TrackStore()
-                spent["s"] = 0.0
-                _, secs = timed(det.run, a.video, [q], store)
-                scan[q] = round(secs, 1)
-                scan[f"{q} tracks"] = len(store.tracks)
-                if q != "person" and spent["s"]:
-                    scan[f"{q} in EgoBlur calls"] = round(spent["s"], 1)
+        for q in ("face", "license plate", "person"):
+            store = TrackStore()
+            spent["s"] = 0.0
+            _, secs = timed(det.run, a.video, [q], store)
+            scan[q] = round(secs, 1)
+            scan[f"{q} tracks"] = len(store.tracks)
+            if q != "person" and spent["s"]:
+                scan[f"{q} in EgoBlur calls"] = round(spent["s"], 1)
         scan["total"] = round(sum(scan[q] for q in ("face", "license plate", "person")), 1)
         scan["x_realtime"] = round((info.n_frames / info.fps) / scan["total"], 2)
-        scan["gpu_busy_mean_pct"] = busy.mean
         r[key] = scan
 
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
