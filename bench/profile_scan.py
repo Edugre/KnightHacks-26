@@ -134,19 +134,37 @@ def main() -> None:
                                                      verbose=False), sample[:n], sync), 4)
 
     # 5. the scan the app runs on upload (one detector call per query, as Session does), GPU then CPU-only
+    # The first GPU scan in a process includes loading the models (as the first upload after the app starts);
+    # the second is what every later upload costs. "in EgoBlur calls" is the time inside the model calls, so
+    # the rest of a face or plate scan is decoding, linking and Python around them.
     from censor.vision.detect import YoloeDetector, get_detector
-    runs = [] if a.skip_scan else [("scan_gpu", get_detector())]
+    gpu_det = get_detector()
+    runs = [] if a.skip_scan else [("scan_gpu_first", gpu_det), ("scan_gpu", gpu_det)]
     if a.cpu_scan:
         runs.append(("scan_cpu_only", sp.RoutedDetector(YoloeDetector(device="cpu"),
                                                         sp.EgoBlurDetector(infer=sp.load_egoblur(device="cpu")))))
     for key, det in runs:
         scan = {}
+        spent = {"s": 0.0}
+        eg = getattr(det, "specialist", None)
+        if key != "scan_gpu_first" and isinstance(eg, sp.EgoBlurDetector):  # models are loaded by now
+            def wrap(fn):
+                def call(img):
+                    t = time.perf_counter()
+                    out = fn(img)
+                    spent["s"] += time.perf_counter() - t
+                    return out
+                return call
+            eg._infer = {c: wrap(f) for c, f in eg.infer.items()}
         with GpuBusy() as busy:
             for q in ("face", "license plate", "person"):
                 store = TrackStore()
+                spent["s"] = 0.0
                 _, secs = timed(det.run, a.video, [q], store)
                 scan[q] = round(secs, 1)
                 scan[f"{q} tracks"] = len(store.tracks)
+                if q != "person" and spent["s"]:
+                    scan[f"{q} in EgoBlur calls"] = round(spent["s"], 1)
         scan["total"] = round(sum(scan[q] for q in ("face", "license plate", "person")), 1)
         scan["x_realtime"] = round((info.n_frames / info.fps) / scan["total"], 2)
         scan["gpu_busy_mean_pct"] = busy.mean
