@@ -66,3 +66,28 @@ def test_the_template_plan_runs_through_the_same_executor():
     plan = planner.from_template(intents.parse("blur all plates and the woman around halfway"))
     assert [(t.object, t.only, t.time) for t in plan.targets] == [
         ("license plate", [], None), ("person", ["Is this a woman?"], "halfway")]
+
+
+def test_except_one_person_spares_only_the_best_match():
+    """"Everyone but the lady": blurry passers-by the VLM thought might be women must stay blurred."""
+    calls = []
+
+    def call(name, args):
+        calls.append(name)
+        if name == "find_objects":
+            return [{"track_id": t} for t in ("t1", "t2", "t3")]
+        if name == "check_attribute":
+            p = {"t1": 0.99, "t2": 0.7, "t3": 0.1}
+            return [{"track_id": i, "answer": "yes" if p[i] > 0.65 else "no", "p_yes": p[i]} for i in args["track_ids"]]
+        return "op"
+    masked = {}
+    for one in (True, False):
+        plan = planner.Plan(targets=[planner.Target("person", exclude=["Is this a woman?"], one=one)])
+        planner.execute(plan, FakeSession(), lambda n, a: masked.setdefault(one, a["track_ids"]) if n == "add_masks" else call(n, a))
+    assert masked[True] == ["t2", "t3"]   # one lady: only the surest match stays visible
+    assert masked[False] == ["t3"]        # "but the women": every match stays visible
+
+
+def test_a_time_phrase_after_in_is_not_clothing():
+    from censor.agent import intents
+    assert intents.parse("blur the woman in the first 3 seconds").attribute_questions == ["Is this a woman?"]

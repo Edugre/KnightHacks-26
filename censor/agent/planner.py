@@ -13,6 +13,8 @@ Plan:
    "message": "..."}   (the question back to the user, for "clarify")
 "only": a track is kept if any question is answered yes or unknown. "except": a track is dropped if any is
 answered yes; unknown keeps it masked. Either way an unsure answer means more blur, never less.
+"one": the request means one particular person ("everyone but the lady"), so "except" leaves only the single
+most likely match visible. Without it, every blurry passer-by the VLM thought might be a woman stayed unblurred.
 """
 from __future__ import annotations
 
@@ -33,7 +35,7 @@ OBJECT_ALIASES = {"plate": "license plate", "plates": "license plate", "license 
 
 SYSTEM = """You turn a request about censoring a video into a JSON plan. Reply with ONE JSON object and nothing else:
 {"action": "mask"|"remove"|"undo"|"clarify", "effect": "blur"|"pixelate"|"box",
- "targets": [{"object": "<noun>", "only": ["<yes/no question>"], "except": ["<yes/no question>"], "time": "<phrase or null>"}],
+ "targets": [{"object": "<noun>", "only": ["<yes/no question>"], "except": ["<yes/no question>"], "one": true|false, "time": "<phrase or null>"}],
  "message": "<question for the user, only when action is clarify>"}
 Rules:
 - "object" is what a detector finds, as a plain noun: face, license plate, person, screen, text, car, logo, dog, ...
@@ -44,12 +46,15 @@ Rules:
 - "action": "mask" to hide (default), "remove" to unblur or stop hiding, "undo" to take back the last edit,
   "clarify" when you cannot tell what to hide (then ask in "message").
 - "effect": "blur" unless the request says pixelate, black box, cover or black out ("box").
+- "one": true when the request means one particular person or thing ("the guy in red", "the lady", "me"), false for
+  groups ("the women", "people in red", "kids").
 - "time": the time words from the request ("around halfway", "first 10 seconds", "last 5 seconds", "0:30") or null.
 Examples:
 "blur all plates" -> {"action":"mask","effect":"blur","targets":[{"object":"license plate","only":[],"except":[],"time":null}]}
-"blur everyone except the guy in the red hoodie" -> {"action":"mask","effect":"blur","targets":[{"object":"person","only":[],"except":["Is this a man wearing a red hoodie?"],"time":null}]}
+"blur everyone except the guy in the red hoodie" -> {"action":"mask","effect":"blur","targets":[{"object":"person","only":[],"except":["Is this a man wearing a red hoodie?"],"one":true,"time":null}]}
+"blur everyone but the kids" -> {"action":"mask","effect":"blur","targets":[{"object":"person","only":[],"except":["Is this a child?"],"one":false,"time":null}]}
 "only blur the woman's face" -> {"action":"mask","effect":"blur","targets":[{"object":"face","only":["Is this the face of a woman?"],"except":[],"time":null}]}
-"pixelate all faces but mine, I'm the one in the black t-shirt" -> {"action":"mask","effect":"pixelate","targets":[{"object":"face","only":[],"except":["Is this a person wearing a black t-shirt?"],"time":null}]}
+"pixelate all faces but mine, I'm the one in the black t-shirt" -> {"action":"mask","effect":"pixelate","targets":[{"object":"face","only":[],"except":["Is this a person wearing a black t-shirt?"],"one":true,"time":null}]}
 "hide the screens and the kid in the last 5 seconds" -> {"action":"mask","effect":"blur","targets":[{"object":"screen","only":[],"except":[],"time":"last 5 seconds"},{"object":"person","only":["Is this a child?"],"except":[],"time":"last 5 seconds"}]}
 "unblur the plates" -> {"action":"remove","effect":"blur","targets":[{"object":"license plate","only":[],"except":[],"time":null}]}
 "make it look cinematic" -> {"action":"clarify","effect":"blur","targets":[],"message":"What should I hide? For example faces, license plates or a person."}"""
@@ -61,6 +66,7 @@ class Target:
     only: list[str] = field(default_factory=list)
     exclude: list[str] = field(default_factory=list)
     time: Optional[str | list[float]] = None
+    one: bool = False  # one particular person or thing: "except" spares only the best match
 
 
 @dataclass
@@ -102,7 +108,7 @@ def parse_plan(text: str) -> Plan:
             only = only or [f"Is this a {intents.SUBJECTS[noun]}?"]
             noun = "person"
         targets.append(Target(object=OBJECT_ALIASES.get(noun, noun), only=only, exclude=_questions(t.get("except")),
-                              time=t.get("time") or None))
+                              time=t.get("time") or None, one=bool(t.get("one"))))
     if action in ("mask", "remove") and not targets:
         raise ValueError("no targets in the plan")
     return Plan(action=action, effect=effect, targets=targets, message=str(obj.get("message") or ""))
@@ -156,20 +162,23 @@ def _filter(s: Session, call, t: Target, ids: list[str]) -> tuple[list[str], str
     owner = s.person_for(ids) if t.object == "face" else {}
     ask = sorted({owner.get(i) or i for i in ids})
 
-    def answers(questions: list[str]) -> dict[str, list[str]]:
-        out: dict[str, list[str]] = {a: [] for a in ask}
+    def answers(questions: list[str]) -> dict[str, list[tuple[str, float]]]:
+        out: dict[str, list[tuple[str, float]]] = {a: [] for a in ask}
         for q in questions:
             for a in call("check_attribute", {"track_ids": ask, "question": _for(q, owner)}):
-                out[a["track_id"]].append(a["answer"])
+                out[a["track_id"]].append((a["answer"], float(a.get("p_yes", 0.5))))
         return out
 
     keep = set(ids)
     if t.only:
         got = answers(t.only)
-        keep = {i for i in keep if any(x in ("yes", "unknown") for x in got[owner.get(i) or i])}
+        keep = {i for i in keep if any(x in ("yes", "unknown") for x, _ in got[owner.get(i) or i])}
     if t.exclude:
         got = answers(t.exclude)
-        keep = {i for i in keep if "yes" not in got[owner.get(i) or i]}  # unknown stays masked: fail closed
+        spared = {a for a, res in got.items() if any(x == "yes" for x, _ in res)}  # unknown stays masked: fail closed
+        if t.one and spared:  # "but the lady": only the most likely one, not every passer-by who might be
+            spared = {max(spared, key=lambda a: max(p for _, p in got[a]))}
+        keep = {i for i in keep if (owner.get(i) or i) not in spared}
     left = [i for i in ids if i in keep]
     return left, f"{len(left)} of {len(ids)} {t.object} track(s) matched."
 

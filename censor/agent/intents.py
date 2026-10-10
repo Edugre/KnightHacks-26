@@ -33,7 +33,9 @@ PERSON = re.compile(
     r"\b(?:(?P<det>the|a|an|that|this|those|these|any|every|all(?: the)?|both)\s+"
     r"(?P<adj>(?:(?!(?:the|a|an|and|or|all|every|any|of|with|in|on|at)\b)[a-z][a-z-]*\s+){0,3}?))?"
     r"(?P<noun>" + "|".join(sorted(list(SUBJECTS) + list(NEUTRAL), key=len, reverse=True)) + r")\b"
-    r"(?:\s+(?:who is\s+|who's\s+|that is\s+)?(?P<prep>in|wearing|with|holding|carrying)\s+(?:a\s+|an\s+|the\s+)?"
+    # "the woman in the first 3 seconds": "in" followed by a time phrase is when, not what she wears
+    r"(?:\s+(?:who is\s+|who's\s+|that is\s+)?(?P<prep>in(?!\s+(?:the\s+)?(?:first|last|beginning|middle|end|start)\b)"
+    r"|wearing|with|holding|carrying)\s+(?:a\s+|an\s+|the\s+)?"
     r"(?P<attr>.+?)(?=\s+(?:around|at|in the (?:first|last|beginning|middle|end)|during|from|and|or)\b|[,.]|$))?")
 TIME = re.compile(r"\b(halfway|half way|middle|\d+:\d{2}|first \d+ ?\w+|last \d+ ?\w+|beginning|start|end)\b")
 REMOVE = re.compile(r"^\s*(unblur|un-blur|remove|stop blurring|don'?t blur|show|reveal)\b")
