@@ -22,6 +22,8 @@ MODEL_URL = os.environ.get("CENSOR_MODEL_URL")
 CROPS_PER_TRACK = 3
 CROP_CONTEXT = 0.15   # widen each crop by this much per side, so clothes and hair at the edge of the box show
 CROP_MIN_SIDE = 224   # upscale small crops: a 40 px tall figure is too few pixels for the VLM to judge
+CROP_MAX_SIDE = 640   # and never past this: a 5 px wide sliver scaled by its short side became a giant image
+                      # that stalled the VLM for minutes
 
 
 @dataclass
@@ -50,10 +52,11 @@ def track_crops(video: str, track: Track, n: int = CROPS_PER_TRACK) -> list[np.n
         crop = frame[y1:y2, x1:x2]
         if not crop.size:
             continue
-        short = min(crop.shape[:2])
-        if short < CROP_MIN_SIDE:
-            s = CROP_MIN_SIDE / short
-            crop = cv2.resize(crop, (round(crop.shape[1] * s), round(crop.shape[0] * s)), interpolation=cv2.INTER_CUBIC)
+        h, w = crop.shape[:2]
+        s = min(max(1.0, CROP_MIN_SIDE / min(h, w)), CROP_MAX_SIDE / max(h, w))
+        if s != 1.0:
+            crop = cv2.resize(crop, (max(1, round(w * s)), max(1, round(h * s))),
+                              interpolation=cv2.INTER_CUBIC if s > 1 else cv2.INTER_AREA)
         crops.append(crop)
     return crops
 
