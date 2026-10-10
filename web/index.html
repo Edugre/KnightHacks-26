@@ -74,6 +74,7 @@ $('prev').onclick = refresh;
 // One thing at a time, with a visible status: an Export started while a request was still waiting on the
 // detector used to render the video with no masks at all.
 const busy = (msg) => { $('status').textContent = msg || ''; ['text', 'undo', 'export', 'sample'].forEach(id => $(id).disabled = !!msg); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 $('ask').onsubmit = async e => {
   e.preventDefault(); if (!vid) return log('pick a sample clip or upload a video first');
   busy('Working on: ' + $('text').value + ' (the first request on a new video waits for its scan)');
@@ -81,17 +82,33 @@ $('ask').onsubmit = async e => {
     const j = await api(`api/videos/${vid}/request`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text: $('text').value }) });
     log(j); showSummary(j.summary); refresh();
     busy(); $('status').textContent = j.message + ' Click Export to render it.';
-  } catch (err) { busy(); $('status').textContent = 'Request failed, see the log below.'; log(err); }
+  } catch (err) {
+    log(err);
+    if (err && err.detail !== undefined) { busy(); $('status').textContent = 'Request failed, see the log below.'; return; }
+    // Not an answer from the app: AUP's proxy gives up after about 100 s (the LLM path can take longer) while
+    // the server keeps working. Wait for it to finish, so Export doesn't run before the masks exist.
+    $('status').textContent = 'The connection dropped, but the server is still working on it. Waiting…';
+    try {
+      let j; do { await sleep(3000); j = await api(`api/videos/${vid}`); } while (j.busy);
+      showSummary(j.summary); refresh();
+      busy(); $('status').textContent = `The server finished: ${j.summary.n_targets} targets now. Check the preview, then click Export.`;
+    } catch (e2) { busy(); $('status').textContent = 'Request failed, see the log below.'; log(e2); }
+  }
 };
 $('undo').onclick = async () => { const j = await api(`api/videos/${vid}/undo`, { method: 'POST' }); log(j); showSummary(j.summary); refresh(); };
 $('export').onclick = async () => {
   if (!vid) return log('pick a sample clip or upload a video first');
-  busy('Rendering the blurred video…');
+  // An export with no masks is just the original video: say so instead of producing one that looks censored
+  const cur = await api(`api/videos/${vid}`).catch(() => null);
+  if (cur && !cur.busy && cur.summary.n_targets === 0) { $('status').textContent = 'No masks yet: send a request first.'; return; }
+  busy('Rendering the blurred video… (waits for a request that is still running)');
   let j;
-  try { j = await api(`api/videos/${vid}/export`, { method: 'POST' }); } catch (err) { busy(); return log(err); }
+  try { j = await api(`api/videos/${vid}/export`, { method: 'POST' }); }
+  catch (err) { busy(); $('status').textContent = (err && err.detail) || 'Export failed, see the log below.'; return log(err); }
   busy(); $('status').textContent = `Done: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames. The player now shows the blurred video.`;
+  // j.url names this render (?v=...), so neither the player nor the download link can get an older, cached file
   log(j); $('dl').href = j.url; $('dl').textContent = 'Download export.mp4'; $('dl').hidden = false;
-  $('player').src = `${j.url}?t=${Date.now()}`;  // play the blurred result, not the original
+  $('player').src = j.url;  // play the blurred result, not the original
 };
 // draw-a-box on the preview image
 const cv = $('draw'); let start = null;

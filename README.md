@@ -22,7 +22,7 @@ Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 1. Pick a clip in **Load a sample clip** (the clips in `bench/clips`; Claude's in-app browser can't open a file picker, so this is the reliable way) or upload your own.
 2. Type a request, e.g. `blur all faces and plates`, and press Enter. The status line says what it's doing; the first request on a new clip waits for the background scan (about 30 s for a short clip), and Export stays disabled until the request finishes.
 3. **Preview masked frame** shows the current frame with the masks; drag on that preview to blur anything by hand (it gets tracked through the clip).
-4. Click **Export**. When it's done, the player switches to the blurred video and a download link appears. `?video=<id>` in the URL reopens a video later.
+4. Click **Export**. When it's done, the player switches to the blurred video and a download link appears. Export waits for a request that is still running and says so if there are no masks yet. `?video=<id>` in the URL reopens a video later.
 
 `setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
 

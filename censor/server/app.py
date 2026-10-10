@@ -3,7 +3,7 @@
   POST /api/videos                      multipart file  -> {video_id, info, prescan}  (starts a background scan)
   GET  /api/samples                     clips in bench/clips -> [{id, mb}]
   POST /api/samples/{id}                load one of them like an upload (no file picker needed)
-  GET  /api/videos/{id}                 -> {info, summary, ops}
+  GET  /api/videos/{id}                 -> {info, summary, ops, busy}  (busy: the request still running, if any)
   GET  /api/videos/{id}/source          original video
   POST /api/videos/{id}/request         {"text": str}  -> agent result
   POST /api/videos/{id}/box             {"frame": int, "box": [x1,y1,x2,y2], "effect": "blur"} -> track + op
@@ -11,8 +11,12 @@
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
   GET  /api/videos/{id}/preview/{f}.jpg masked frame f
-  POST /api/videos/{id}/export          render -> {url, stats}
-  GET  /api/videos/{id}/export.mp4      rendered video
+  POST /api/videos/{id}/export          render -> {url, stats}  (waits for a running request; 409 if it takes too long)
+  GET  /api/videos/{id}/export.mp4      rendered video (the url from export carries ?v=<render time>)
+
+Requests, boxes, undo and exports on one video take turns, so an export always includes every finished edit.
+Nothing is cached: AUP's Cloudflare keeps .mp4 and .jpg responses for 4 hours when the origin says nothing, which
+served an old, unmasked export after a new one had been rendered.
 
 Run: uvicorn censor.server.app:app --host 0.0.0.0 --port 8000   (see run.sh)
 """
@@ -24,6 +28,7 @@ import shutil
 import sys
 import threading
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import cv2
@@ -46,8 +51,34 @@ PRESCAN = [] if os.environ.get("CENSOR_STUB") == "1" else \
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "bench" / "clips"
 SAMPLE_NAME = re.compile(r"[\w-]+")  # a bare file stem: no paths
+# How long an export waits for a running request before giving up with a 409. Under the 100 s that AUP's
+# Cloudflare waits for a response, so the user gets a message rather than a timeout page.
+EXPORT_WAIT = float(os.environ.get("CENSOR_EXPORT_WAIT", "80"))
 app = FastAPI(title="censor agent")
 _sessions: dict[str, Session] = {}
+_turns: dict[str, threading.Lock] = {}  # one per video: requests, boxes, undo and exports run one at a time
+_working: dict[str, str] = {}  # video -> what it's busy with, for GET /api/videos/{id} and the 409 message
+
+
+@app.middleware("http")
+async def no_store(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@contextmanager
+def turn(vid: str, what: str, timeout: float = -1):
+    lock = _turns.setdefault(vid, threading.Lock())
+    if not lock.acquire(timeout=timeout):
+        raise HTTPException(409, f"Still working on \"{_working.get(vid, 'another edit')}\". "
+                                 "Export again when it finishes.")
+    _working[vid] = what
+    try:
+        yield
+    finally:
+        _working.pop(vid, None)
+        lock.release()
 
 
 def session(vid: str) -> Session:
@@ -139,7 +170,8 @@ async def upload_sidecar(vid: str, file: UploadFile = File(...)):
 @app.get("/api/videos/{vid}")
 def get_video(vid: str):
     s = session(vid)
-    return {"info": s.video_info(), "summary": s.summarize(), "ops": [o.model_dump() for o in s.log.ops]}
+    return {"info": s.video_info(), "summary": s.summarize(), "ops": [o.model_dump() for o in s.log.ops],
+            "busy": _working.get(vid)}
 
 
 @app.get("/api/videos/{vid}/source")
@@ -149,15 +181,18 @@ def source(vid: str):
 
 @app.post("/api/videos/{vid}/request")
 def request(vid: str, body: RequestIn):
-    return Agent(session(vid)).run(body.text)
+    s = session(vid)
+    with turn(vid, body.text):
+        return Agent(s).run(body.text)
 
 
 @app.post("/api/videos/{vid}/box")
 def box(vid: str, body: BoxIn):
     s = session(vid)
     try:
-        t = s.track_box(body.frame, body.box)
-        op = s.add_masks([t["track_id"]], effect=body.effect, request_id="ui_box")
+        with turn(vid, "a drawn box"):
+            t = s.track_box(body.frame, body.box)
+            op = s.add_masks([t["track_id"]], effect=body.effect, request_id="ui_box")
     except ToolError as e:
         raise HTTPException(400, str(e))
     return {"track": t, "op_id": op, "summary": s.summarize()}
@@ -166,7 +201,8 @@ def box(vid: str, body: BoxIn):
 @app.post("/api/videos/{vid}/undo")
 def undo(vid: str):
     s = session(vid)
-    return {"undone": s.undo(), "summary": s.summarize()}
+    with turn(vid, "undo"):
+        return {"undone": s.undo(), "summary": s.summarize()}
 
 
 @app.get("/api/videos/{vid}/timeline")
@@ -191,9 +227,12 @@ def preview(vid: str, f: int):
 def export(vid: str):
     s = session(vid)
     out = s.workdir / "export.mp4"
-    stats = render_video(s.video, s.timeline, str(out))
-    return {"url": f"api/videos/{vid}/export.mp4", "stats": {"frames": stats.frames, "masked_boxes": stats.masked_boxes,
-                                                               "failed_frames": len(stats.failed_frames)}}
+    with turn(vid, "an export", timeout=EXPORT_WAIT):
+        stats = render_video(s.video, s.timeline, str(out))
+    # A new URL per render, so no cache between here and the browser can hand back an older file
+    return {"url": f"api/videos/{vid}/export.mp4?v={out.stat().st_mtime_ns}",
+            "stats": {"frames": stats.frames, "masked_boxes": stats.masked_boxes,
+                      "failed_frames": len(stats.failed_frames)}}
 
 
 @app.get("/api/videos/{vid}/export.mp4")

@@ -109,3 +109,70 @@ def test_sample_clips_load_without_a_file_picker(clip, client, tmp_path, monkeyp
     assert r["summary"]["by_label"] == {"license plate": 1}  # the sidecar came along, so the stub finds the plate
     assert c.post("/api/samples/..%2Fsecret").status_code == 404
     assert c.post("/api/samples/missing").status_code == 404
+
+
+def _upload(c, clip):
+    with open(clip, "rb") as f:
+        vid = c.post("/api/videos", files={"file": ("synthetic.mp4", f, "video/mp4")}).json()["video_id"]
+    with open(str(clip) + ".tracks.json", "rb") as f:
+        c.post(f"/api/videos/{vid}/tracks-sidecar", files={"file": ("t.json", f)})
+    return vid
+
+
+def test_exports_are_never_cached(clip, client):
+    """AUP's Cloudflare cached export.mp4 for 4 hours and served an old, unmasked render after a new one."""
+    c, _ = client
+    vid = _upload(c, clip)
+    c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates"})
+    first = c.post(f"/api/videos/{vid}/export").json()["url"]
+    r = c.get("/" + first)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    assert c.get(f"/api/videos/{vid}/preview/0.jpg").headers["cache-control"] == "no-store"
+    c.post(f"/api/videos/{vid}/request", json={"text": "blur the screen"})
+    assert c.post(f"/api/videos/{vid}/export").json()["url"] != first  # a new render gets a new URL
+
+
+def test_export_waits_for_a_running_request(clip, client):
+    """An Export clicked mid-request (another tab, or after the proxy dropped the request) must include its masks."""
+    import threading
+    import time
+    from censor.agent.agent import Agent
+    c, app_mod = client
+    vid = _upload(c, clip)
+    started = threading.Event()
+
+    def slow_request():
+        with app_mod.turn(vid, "blur all plates"):
+            started.set()
+            time.sleep(0.5)
+            Agent(app_mod.session(vid)).run("blur all plates")
+
+    t = threading.Thread(target=slow_request)
+    t.start()
+    started.wait()
+    assert c.get(f"/api/videos/{vid}").json()["busy"] == "blur all plates"
+    e = c.post(f"/api/videos/{vid}/export").json()  # blocks until the request is done
+    t.join()
+    assert e["stats"]["masked_boxes"] > 0
+    assert c.get(f"/api/videos/{vid}").json()["busy"] is None
+
+
+def test_export_gives_up_with_a_message(clip, client, monkeypatch):
+    import threading
+    c, app_mod = client
+    vid = _upload(c, clip)
+    monkeypatch.setattr(app_mod, "EXPORT_WAIT", 0.1)
+    held, release = threading.Event(), threading.Event()
+
+    def hold():
+        with app_mod.turn(vid, "blur everyone except me"):
+            held.set()
+            release.wait(5)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    held.wait()
+    r = c.post(f"/api/videos/{vid}/export")
+    release.set()
+    t.join()
+    assert r.status_code == 409 and "blur everyone except me" in r.json()["detail"]
