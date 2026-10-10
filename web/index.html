@@ -49,6 +49,11 @@ $('file').onchange = async e => {
   const j = await api('api/videos', { method: 'POST', body: fd });
   vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j);
 };
+// ?video=<id> reopens a video uploaded earlier (or through the API), with its masks so far
+const reopen = new URLSearchParams(location.search).get('video');
+if (reopen) api(`api/videos/${reopen}`).then(j => {
+  vid = reopen; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(j.summary); refresh();
+}).catch(log);
 $('sidecar').onchange = async e => {
   if (!vid) return log('upload a video first');
   const fd = new FormData(); fd.append('file', e.target.files[0]);
