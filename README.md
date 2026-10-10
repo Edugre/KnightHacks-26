@@ -12,8 +12,10 @@ Say what to hide in a video ("blur every license plate and the person in the red
 ```bash
 git clone https://github.com/Edugre/KnightHacks-26.git && cd KnightHacks-26
 bash scripts/setup.sh      # once per fresh environment; never replaces the ROCm torch
+bash scripts/fetch_clips.sh   # optional: the three Pexels test clips
 ./run.sh                   # starts the model server (~3-4 min first load), then the app on :8000
 ```
+Faces and plates use Meta's EgoBlur models (Apache 2.0), which `setup.sh` can't fetch: get `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` from https://www.projectaria.com/tools/egoblur/ (email form) on a laptop, since Meta's CDN refuses the AUP server, and upload them to `~/datasets/egoblur/`. Without them the app warns and falls back to YOLOE, which misses faces.
 Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 
 `setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
@@ -65,13 +67,14 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
 | Path | What | Owner |
 | --- | --- | --- |
 | `censor/core/` | `timeline.py` (the contract: ops, fold, undo), `tracks.py`, `video.py` | C (schema), all |
-| `censor/vision/` | `detect.py` (YOLOE + stub), `track.py` (draw-a-box), `vlm.py` (attribute checks) | A |
+| `censor/vision/` | `detect.py` (YOLOE + stub), `specialist.py` (faces + plates -> EgoBlur router), `track.py` (draw-a-box), `vlm.py` (attribute checks) | A |
+| `censor/netguard.py` | egress guard: refuses and logs outbound connections when `CENSOR_OFFLINE=1` | all |
 | `censor/agent/` | `tools.py` (the toolbox), `agent.py` (LLM loop + fallback), `intents.py` (templates) | B |
 | `censor/render/` | `render.py` (fail-closed renderer, ffmpeg out) | C |
 | `censor/server/` | `app.py` (main API), `model_server.py` (resident Qwen3-VL) | D / B |
 | `web/index.html` | minimal test UI; replace with the real app | D |
 | `schema/` | generated JSON schema + hand-written examples | C |
-| `scripts/` | setup, smoke tests, synthetic clip | A |
+| `scripts/` | setup, smoke tests, synthetic clip, `fetch_clips.sh`, `check_offline.py` | A |
 | `bench/` | `run_bench.py` (scores + report), `gt.py` (label format, prelabel drafts), `label_server.py` + `label.html` (labeling tool), clips manifest, labels, requests | D |
 | `tests/` | pytest suite | all |
 
