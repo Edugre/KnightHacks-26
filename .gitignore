@@ -12,3 +12,4 @@ bus.jpg
 bench/clips/*
 !bench/clips/manifest.yaml
 .env
+.venv/

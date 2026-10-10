@@ -22,9 +22,18 @@ pip install -r requirements.txt
 python3 scripts/make_test_clip.py bench/clips/synthetic.mp4    # clip + ground-truth tracks sidecar
 ./run.sh stub                                                   # http://localhost:8000
 ```
+
+**Windows laptop (PowerShell):** `run.sh` needs bash, so use `run.ps1`. It uses `.venv` if present, makes the synthetic clip if missing, and falls back to the `imageio-ffmpeg` binary when ffmpeg isn't installed.
+```powershell
+uv venv --python 3.12 .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+powershell -ExecutionPolicy Bypass -File .\run.ps1 stub    # http://localhost:8000; add a port number to change it
+powershell -ExecutionPolicy Bypass -File .\run.ps1 test
+```
+
 In the test UI, upload `synthetic.mp4`, then its `synthetic.mp4.tracks.json` in the second file picker, then type a request.
 
-**Tests:** `./run.sh test` runs 17 tests in about 10 s with no GPU. They cover the schema, fold/undo, the fail-closed renderer, the request templates, and upload → request → export end to end.
+**Tests:** `./run.sh test` runs 18 tests in about 10 s with no GPU. They cover the schema, fold/undo, the fail-closed renderer, the request templates, and upload → request → export end to end.
 
 ## Layout
 
