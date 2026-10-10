@@ -153,6 +153,8 @@ About ten typed tools. Arguments are JSON-schema constrained so a small model ca
 
 Each milestone has an exit check that someone runs and posts in the team chat. Times assume a Sun ~09:00 deadline.
 
+**Full demo flow on the R9700 (Sat 06:00, current `main`, app through the AUP proxy, model server `"offline": true`):** on `street_walk`, "blur all plates and the person in the red hoodie around halfway" blurred only the man in the red hoodie, only inside the halfway window (Qwen3-VL attribute check on the template path); drawing a box on a face tracked it through the whole clip (still on her face 6 s later); export worked. **Miss:** the small front plate of the car at the start (about 35 px wide) was not blurred, a condition-5 failure; try YOLOE "license plate" at conf 0.05 alongside EgoBlur (fail closed: union of both) or EgoBlur on an upscaled frame, and measure on PP4AV. Open `?video=<id>` in the test UI to reopen an uploaded video.
+
 **Where we are (Sat 05:35): start here.** Faces and plates now go to EgoBlur and everything else to YOLOE (0.74 / 0.65 face / plate recall on PP4AV, up from 0.00 / 0.07), inference runs offline with an egress log, and plain requests answer in 0.03 s. Next, in order:
 1. **Use the GPU better:** decode each video once and feed every detector from that pass, batch frames on the GPU, and decode on a CPU thread while the GPU works. Today detection runs one frame at a time and re-reads the video per query.
 2. **The LLM path is slow:** "blur everyone except the person in the red hoodie" took over 2 minutes (LLM steps plus a VLM check on each of 18 person tracks). Batch the VLM crops, merge fragmented person tracks, and keep tool results short.
