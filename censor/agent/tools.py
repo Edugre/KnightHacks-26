@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +32,7 @@ class Session:
         self.video = str(video)
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
+        self.lock = threading.RLock()  # the upload pre-scan and requests share this session
         self.info: VideoInfo = probe(self.video)
         self.detector = detector or detect_mod.get_detector()
         self.tracks = TrackStore.load(self._p("tracks.json")) if self._p("tracks.json").exists() else TrackStore()
@@ -40,16 +42,18 @@ class Session:
         return self.workdir / name
 
     def save(self) -> None:
-        self.tracks.save(self._p("tracks.json"))
-        self._p("ops.json").write_text(self.log.model_dump_json(indent=2))
+        with self.lock:
+            self.tracks.save(self._p("tracks.json"))
+            self._p("ops.json").write_text(self.log.model_dump_json(indent=2))
 
     @property
     def timeline(self) -> Timeline:
         return fold(self.log.ops, self.tracks, self.info)
 
     def _append(self, request_id: str, **kw) -> str:
-        op = self.log.append(Op(op_id=self.log.next_id(), request_id=request_id, **kw))
-        self.save()
+        with self.lock:
+            op = self.log.append(Op(op_id=self.log.next_id(), request_id=request_id, **kw))
+            self.save()
         return op.op_id
 
     def _check_ids(self, track_ids: list[str]) -> None:
@@ -91,13 +95,14 @@ class Session:
         if COMPOUND_QUERY.search(q) or len(q.split()) > 3:
             raise ToolError(f"query {query!r} mixes an object with attributes. Call find_objects with just the "
                             "object (e.g. 'person'), then check_attribute on the returned track ids.")
-        if q not in self.tracks.queries:
-            try:
-                self.detector.run(self.video, [q], self.tracks)
-            except Exception as e:  # surface to the agent/UI instead of a 500; nothing is marked as searched
-                raise ToolError(f"detector failed for {q!r}: {type(e).__name__}: {e}") from e
-            self.tracks.queries.append(q)
-            self.save()
+        with self.lock:  # if the upload pre-scan is running this query, wait for it instead of scanning twice
+            if q not in self.tracks.queries:
+                try:
+                    self.detector.run(self.video, [q], self.tracks)
+                except Exception as e:  # surface to the agent/UI instead of a 500; nothing is marked as searched
+                    raise ToolError(f"detector failed for {q!r}: {type(e).__name__}: {e}") from e
+                self.tracks.queries.append(q)
+                self.save()
         out = []
         for t in self.tracks.by_label(q):
             start, end = t.start / self.info.fps, t.end / self.info.fps
@@ -120,8 +125,12 @@ class Session:
         self.save()
         return {"track_id": t.track_id, "start": round(t.start / self.info.fps, 2), "end": round(t.end / self.info.fps, 2)}
 
-    def add_masks(self, track_ids: list[str], effect: str = "blur", padding: float = 0.15,
-                  time_range: Optional[list[float]] = None, request_id: str = "manual") -> str:
+    def add_masks(self, track_ids: Optional[list[str]] = None, effect: str = "blur", padding: float = 0.15,
+                  time_range: Optional[list[float]] = None, labels: Optional[list[str]] = None,
+                  request_id: str = "manual") -> str:
+        # labels: mask every track found for these queries, so the LLM doesn't spell out dozens of ids
+        track_ids = list(track_ids or []) + [t.track_id for q in labels or [] for t in self.tracks.by_label(q)
+                                             if t.track_id not in (track_ids or [])]
         self._check_ids(track_ids)
         if effect not in EFFECTS:
             raise ToolError(f"effect must be one of {EFFECTS}")
@@ -173,10 +182,10 @@ TOOL_SCHEMAS = [
         "frame": {"type": "integer"}, "box": {"type": "array", "items": {"type": "number"}, "minItems": 4, "maxItems": 4}},
         "required": ["frame", "box"]}},
     {"name": "add_masks", "parameters": {"type": "object", "properties": {
-        "track_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "track_ids": {"type": "array", "items": {"type": "string"}},
+        "labels": {"type": "array", "items": {"type": "string"}, "description": "mask every track found for these queries"},
         "effect": {"enum": list(EFFECTS)}, "padding": {"type": "number"},
-        "time_range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}},
-        "required": ["track_ids"]}},
+        "time_range": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}}},
     {"name": "remove_masks", "parameters": {"type": "object", "properties": {
         "track_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}}, "required": ["track_ids"]}},
     {"name": "set_effect", "parameters": {"type": "object", "properties": {

@@ -1,6 +1,6 @@
 """Main API (role D's UI talks to this). Sessions persist under DATA_DIR/<video_id>/.
 
-  POST /api/videos                      multipart file  -> {video_id, info}
+  POST /api/videos                      multipart file  -> {video_id, info, prescan}  (starts a background scan)
   GET  /api/videos/{id}                 -> {info, summary, ops}
   GET  /api/videos/{id}/source          original video
   POST /api/videos/{id}/request         {"text": str}  -> agent result
@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -35,6 +37,9 @@ from censor.render.render import FrameMasker, render_video
 netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
 
 DATA_DIR = Path(os.environ.get("CENSOR_DATA", "data")).resolve()
+# Off in stub mode: the stub replays a sidecar that's uploaded after the video, so a scan now would cache nothing.
+PRESCAN = [] if os.environ.get("CENSOR_STUB") == "1" else \
+    [q.strip() for q in os.environ.get("CENSOR_PRESCAN", "face,license plate,person").split(",") if q.strip()]
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 app = FastAPI(title="censor agent")
 _sessions: dict[str, Session] = {}
@@ -75,7 +80,19 @@ async def upload(file: UploadFile = File(...)):
     with src.open("wb") as f:
         shutil.copyfileobj(file.file, f)
     s = session(vid)
-    return {"video_id": vid, "info": s.video_info()}
+    if PRESCAN:
+        threading.Thread(target=prescan, args=(s, PRESCAN), daemon=True).start()
+    return {"video_id": vid, "info": s.video_info(), "prescan": PRESCAN}
+
+
+def prescan(s: Session, queries: list[str]) -> None:
+    """Scan for the usual targets right after upload, so the first request reads cached tracks instead of
+    waiting for full-video passes. A request for one of these while it runs waits on the session lock."""
+    for q in queries:
+        try:
+            s.find_objects(q)
+        except ToolError as e:
+            print(f"[prescan] {q}: {e}", file=sys.stderr)
 
 
 @app.post("/api/videos/{vid}/tracks-sidecar")

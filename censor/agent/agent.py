@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 import uuid
 
@@ -21,6 +22,8 @@ from censor.agent import intents
 from censor.agent.tools import TOOL_SCHEMAS, Session, ToolError, call_tool
 
 MAX_STEPS = 6
+# Wording the template parser would misread ("everyone except the guy in red"), so it goes to the LLM.
+NEEDS_LLM = re.compile(r"\b(except|but|not|unless|only|without|instead|other than|besides|apart from|other)\b", re.I)
 MODEL_URL = os.environ.get("CENSOR_MODEL_URL")
 
 SYSTEM = """You edit a video's censorship mask timeline by calling tools. You never edit pixels yourself.
@@ -34,6 +37,8 @@ Rules:
 - find_objects takes a plain object noun only ("person", "face", "license plate", "screen", "text", "car").
   Never put clothing, colors or actions in the query; check those with check_attribute.
 - Default effect is "blur".
+- To mask everything a query found, call add_masks with "labels" (e.g. {"labels": ["person"]}) instead of listing ids.
+  List track_ids only for a subset, such as the tracks check_attribute kept.
 Example for "blur the man in the red shirt":
   {"tool": "find_objects", "args": {"query": "person"}}
   {"tool": "check_attribute", "args": {"track_ids": ["trk_1", "trk_2"], "question": "Is this person wearing a red shirt?"}}
@@ -65,6 +70,12 @@ class Agent:
         rid = f"r_{uuid.uuid4().hex[:6]}"
         calls: list[dict] = []
         n_ops_before = len(self.s.log.ops)
+        if MODEL_URL and intents.parse(text) is not None and not NEEDS_LLM.search(text):
+            # Cheapest path first: the template handles plain requests in milliseconds, while each LLM step
+            # takes seconds. The LLM is for wording the template can't parse or exceptions it would get wrong.
+            msg = self._run_template(text, rid, calls)
+            if msg is not None:
+                return self._result(rid, "template", calls, msg)
         if MODEL_URL:
             try:
                 msg = self._run_llm(text, rid, calls)
@@ -81,19 +92,23 @@ class Agent:
         return {"request_id": rid, "path": path, "calls": calls, "message": message, "summary": self.s.summarize()}
 
     def _call(self, name: str, args: dict, rid: str, calls: list[dict]):
+        t0 = time.perf_counter()
+        ms = lambda: round(1000 * (time.perf_counter() - t0))  # noqa: E731
         try:
             res = call_tool(self.s, name, args, rid)
-            calls.append({"tool": name, "args": args, "result": res})
+            calls.append({"tool": name, "args": args, "result": res, "ms": ms()})
             return res
         except ToolError as e:
-            calls.append({"tool": name, "args": args, "error": str(e)})
+            calls.append({"tool": name, "args": args, "error": str(e), "ms": ms()})
             raise
 
     def _run_llm(self, text: str, rid: str, calls: list[dict]) -> str:
         messages = [{"role": "system", "content": SYSTEM},
                     {"role": "user", "content": f"Video: {json.dumps(self.s.video_info())}\nRequest: {text}"}]
         for _ in range(MAX_STEPS):
+            t0 = time.perf_counter()
             reply = _chat(messages)
+            calls.append({"tool": "_llm_step", "ms": round(1000 * (time.perf_counter() - t0))})
             messages.append({"role": "assistant", "content": reply})
             try:
                 obj = _parse_json(reply)
