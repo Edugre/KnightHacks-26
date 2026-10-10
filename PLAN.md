@@ -4,6 +4,8 @@ Oct 10, 2026 · @Eduardo Goncalvez
 
 > **Update (Sat 03:40):** we build on the AUP Learning Cloud's Radeon AI PRO R9700 (gfx1201, 32 GB), not the Strix Halo this plan describes, which avoids concerns 1 and 2 below ([docs/STACK.md](docs/STACK.md)). Detection changed too: faces and plates go to Meta's EgoBlur models and everything else to YOLOE, because YOLOE found 0% of faces on the PP4AV benchmark. Current status and next steps are in [IMPLEMENTATION.md](IMPLEMENTATION.md) section 5.
 
+> **Update (Sat 09:55):** the agent no longer calls tools step by step: the local LLM writes one JSON plan per request (objects, "only" / "except" questions for the VLM, time), and plain code runs it with the typed tools (2-7 s instead of over 2 minutes). Current state, numbers and open items: IMPLEMENTATION.md, "Where we are".
+
 ## The idea
 
 A local censoring agent: say what to hide ("blur every license plate", "the person in the red shirt around the halfway mark") or draw a box on a frame, and the agent turns it into a timeline of masks that a deterministic renderer applies to the video. The same engine runs offline on files and, as a stretch, live behind a delay buffer. It all runs on one Strix Halo, so footage never leaves the machine.

@@ -79,13 +79,13 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
 | `censor/core/` | `timeline.py` (the contract: ops, fold, undo), `tracks.py`, `video.py` | C (schema), all |
 | `censor/vision/` | `detect.py` (YOLOE + stub), `specialist.py` (faces + plates -> EgoBlur router), `track.py` (draw-a-box), `vlm.py` (attribute checks) | A |
 | `censor/netguard.py` | egress guard: refuses and logs outbound connections when `CENSOR_OFFLINE=1` | all |
-| `censor/agent/` | `tools.py` (the toolbox), `agent.py` (LLM loop + fallback), `intents.py` (templates) | B |
+| `censor/agent/` | `tools.py` (the toolbox), `agent.py` (routing), `planner.py` (one LLM call -> JSON plan -> toolbox), `intents.py` (template parser, no LLM) | B |
 | `censor/render/` | `render.py` (fail-closed renderer, ffmpeg out) | C |
 | `censor/server/` | `app.py` (main API), `model_server.py` (resident Qwen3-VL) | D / B |
 | `web/index.html` | test UI: sample clips, request + status, preview, draw-a-box, undo, export playback | D |
 | `schema/` | generated JSON schema + hand-written examples | C |
 | `scripts/` | setup, smoke tests, synthetic clip, `fetch_clips.sh`, `check_offline.py` | A |
-| `bench/` | `run_bench.py` (scores + report), `gt.py` (label format, prelabel drafts), `label_server.py` + `label.html` (labeling tool), clips manifest, labels, requests | D |
+| `bench/` | `run_bench.py` (scores + report), `review.py` (detections, masks and per-plate scores on a clip), `profile_scan.py` + `egoblur_speed.py` (GPU timing), `pp4av.py` (face/plate recall), `gt.py`, `label_server.py` + `label.html` (labeling tool), clips manifest, labels, requests | D |
 | `tests/` | pytest suite | all |
 
 ## Useful CLIs
