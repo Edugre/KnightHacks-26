@@ -140,3 +140,16 @@ def test_detector_failure_is_reported_not_raised(tmp_path):
     r = Agent(s).run("blur all plates")
     assert "Detection failed" in r["message"] and "lap" in r["message"]
     assert s.summarize()["n_targets"] == 0 and s.tracks.queries == []
+
+
+def test_find_objects_rejects_compound_queries(tmp_path):
+    import subprocess, sys
+    from censor.agent.tools import Session, ToolError
+    from censor.vision.detect import StubDetector
+    clip = tmp_path / "c.mp4"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "make_test_clip.py"), str(clip), "1"], check=True)
+    s = Session(clip, tmp_path / "w", detector=StubDetector())
+    with pytest.raises(ToolError, match="check_attribute"):
+        s.find_objects("person wearing a dark jacket")
+    assert s.tracks.queries == []
+    assert len(s.find_objects("license plate")) == 1

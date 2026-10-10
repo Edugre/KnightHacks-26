@@ -31,7 +31,14 @@ Rules:
 - Always call find_objects (or track_box) first to get track ids. Never invent ids.
 - For attributes (colors, clothing, actions) call check_attribute on the candidate tracks; keep answers "yes" AND "unknown" (fail closed).
 - Turn time phrases into seconds with resolve_time and pass them as time_range.
+- find_objects takes a plain object noun only ("person", "face", "license plate", "screen", "text", "car").
+  Never put clothing, colors or actions in the query; check those with check_attribute.
 - Default effect is "blur".
+Example for "blur the man in the red shirt":
+  {"tool": "find_objects", "args": {"query": "person"}}
+  {"tool": "check_attribute", "args": {"track_ids": ["trk_1", "trk_2"], "question": "Is this person wearing a red shirt?"}}
+  {"tool": "add_masks", "args": {"track_ids": ["trk_2"]}}      <- ids whose answer was yes or unknown
+  {"done": true, "message": "Blurred 1 person in a red shirt."}
 Tools (JSON schema):
 """ + json.dumps(TOOL_SCHEMAS)
 

@@ -19,6 +19,7 @@ from censor.vision import vlm as vlm_mod
 
 EFFECTS = ("blur", "pixelate", "box")
 RULE_CATEGORIES = ("license plate", "face", "person", "screen", "text")
+COMPOUND_QUERY = re.compile(r"\b(wearing|with|in|holding|who|that|which|near|on|at|carrying|has|having)\b")
 
 
 class ToolError(ValueError):
@@ -87,6 +88,9 @@ class Session:
 
     def find_objects(self, query: str, time_range: Optional[list[float]] = None) -> list[dict]:
         q = query.lower().strip()
+        if COMPOUND_QUERY.search(q) or len(q.split()) > 3:
+            raise ToolError(f"query {query!r} mixes an object with attributes. Call find_objects with just the "
+                            "object (e.g. 'person'), then check_attribute on the returned track ids.")
         if q not in self.tracks.queries:
             try:
                 self.detector.run(self.video, [q], self.tracks)
