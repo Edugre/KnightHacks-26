@@ -8,7 +8,7 @@ Live through the AUP proxy, with `street_walk` as the main clip and `street_plat
 
 1. Relaunch the server on the San Jose hub (README, "If the Dublin hub is down") if it's older than about 3 hours (sessions end at 4 h), then `cd ~/KnightHacks-26 && git pull && ./run.sh`. Wait for `/health` to say `"offline": true` (the model server loaded in 8 s on the Strix Halo).
 2. Open the app, pick `street_walk` and `street_plates` once each, so the detectors are warm and the clips are scanned, then reload the page with no `?video=` so you start from the start screen.
-3. Open a second tab with a terminal showing `logs/egress.log` (it should be empty) and `curl -s localhost:8100/health`.
+3. Open a second tab with a terminal showing `logs/egress.log` and `curl -s localhost:8100/health`. Before starting the app, move old entries aside (`mv logs/egress.log logs/egress.old.log`) so the log shows only this run; started with `./run.sh` it stays empty. If it shows DNS lookups of `one.one.one.one` / `dns.google`, the app was started without `./run.sh`'s offline flags (Ultralytics' internet check, refused by the guard): restart it with `./run.sh`.
 4. Have the backup video open in a third tab (see "If live fails").
 5. Browser zoom so the conversation column and both rails fit, with the Preview open (Boxes and Masks on).
 
@@ -25,7 +25,7 @@ Live through the AUP proxy, with `street_walk` as the main clip and `street_plat
 | 1:40 | Click **Draw box**, drag around something the detectors don't know (a sign, a shop window). | "And for anything else, draw a box: it's tracked through the clip." |
 | 1:55 | Click **Undo** once, show the version marked undone on the right. | "Every change is a version, and undo is one click." |
 | 2:05 | Click **Export**. The Preview switches to **Exact export**; play a few seconds. | "The renderer is plain code applying that timeline. This is the file you'd share." |
-| 2:20 | Switch to the terminal tab: empty `logs/egress.log`, `/health` with `"offline": true`. | "Every outbound connection is refused and logged during inference. The log is empty." |
+| 2:20 | Switch to the terminal tab: empty `logs/egress.log`, `/health` with `"offline": true`. | "Every outbound connection is refused and logged during inference. The log is empty." (If a judge asks whether the guard ever caught anything: yes, an Ultralytics internet check when the app was once started without the offline flags; refused.) |
 | 2:35 | Back to the app, or a slide with the numbers. | "On our labeled clips, on this Strix Halo, 100% and 93.7% of plate frames are masked, with 2.5% over-blur. Detection, the 8B vision-language model and the planner all share this one Strix Halo, at 19.3 GB peak." (Plate numbers: Strix Halo, `bench.review`, `street_plates` 1080p and `street_walk` 720p; the R9700 had 100% / 94.6%. Memory: Strix Halo, `./run.sh bench`.) |
 | 2:50 | Close. | "Redaction you ask for in plain language, check frame by frame, and run without a cloud." |
 

@@ -46,7 +46,7 @@ Everything runs on one AMD GPU with ROCm. We built and measured it on **one AMD 
 
 ## Private by construction
 
-Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytics in offline mode, and a small egress guard refuses and logs every outbound connection or DNS lookup to `logs/egress.log`. After the demo the log is empty, and the model server's `/health` reports `"offline": true`. On the Strix Halo's first runs the log file was never even created.
+Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytics in offline mode, and a small egress guard refuses and logs every outbound connection or DNS lookup to `logs/egress.log`. Started with `./run.sh`, the log stays empty through the demo, and the model server's `/health` reports `"offline": true`. The guard did catch something real: when the app was started by hand without the offline flags, Ultralytics tried its startup internet check (DNS lookups of `one.one.one.one` and `dns.google`), and both were refused and logged.
 
 ## Results
 
