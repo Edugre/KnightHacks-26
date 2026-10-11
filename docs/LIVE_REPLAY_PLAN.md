@@ -511,6 +511,20 @@ lookalike visible; not an access control"). **Calibration before any demo use:**
 `street_walk` and record the max cosine against every other track; `SPARE_COS` must exceed it by 0.1 (STACK.md).
 Status: merged off by default (no model file); not demoed until the calibration passes.
 
+## 9. State at handoff (Sun ~07:45 EDT, owner asleep; nothing merged, no PR, per the owner's instruction)
+
+- Branch **`feat/live-replay-phoyo008`** on origin (authored as phoyo008); `feat/live-replay` is the same work with
+  the old author, left untouched. 362 tests pass (`pytest -q`; the real-model YuNet test runs with `CENSOR_YUNET`).
+- Built and verified: clip replay (gate in §3.5), camera push mode, selectable categories (§7), "except me" (§8,
+  off until `CENSOR_SFACE` points at the SFace model; download not yet authorized), home-screen link.
+- Running now: laptop stub server with YuNet on `http://localhost:8001/api/live/live`; GPU server from the worktree
+  `~/live-wt` on `127.0.0.1:8001`, reachable at `https://sjc.aupcloud.io/user/roscon05/proxy/8001/api/live/live`
+  (session runtime permitting). The team's shared checkout `~/KnightHacks-26` was left on `main`.
+- Camera path verified on the GPU with real EgoBlur by server-side pushes (STACK.md row); not yet from a browser
+  through the proxy, so upload fps / camera→screen are unmeasured; §3.1 C5 step 1 (page fps probe) likewise.
+- Open for the owner: watch `~/KnightHacks-26/logs/live_street_walk.mp4` and `live_street_plates.mp4`; decide the PR;
+  authorize the SFace download if "except me" should be demoed (then run the §8 calibration first).
+
 ## 5. Adversarial review
 
 - **R1 correctness (folded):** maskable needs a ready detection on both sides of f; lead-in sized to the real gap
