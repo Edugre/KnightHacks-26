@@ -1,268 +1,278 @@
 <!doctype html>
-<!-- Censor editor, layout 4a "conversation-first" (design_handoff_conversation_editor/README.md). Plain HTML and JS,
+<!-- Censor editor: the dual-monitor workspace (design_handoff_censor_workspace/README.md). Plain HTML and JS,
      no build step: censor/server/app.py serves this file as is. Talks only to the /api routes in that file. -->
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Censor</title>
+<link rel="icon" href="data:image/png;base64,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">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#12141a; --well:#0b0d12; --panel:#171a21; --field:#20242d; --bubble:#2a2f3a;
-    --ink:#eef1f6; --ink-2:#d9dee8; --muted:#9aa2b1; --faint:#737b8a;
-    --line:rgba(238,241,246,.22); --line-2:rgba(238,241,246,.11); --line-3:rgba(238,241,246,.07);
-    --accent:#4d6bff; --accent-down:#3d56d6; --on-accent:#fff; --accent-text:#9fb0ff; --accent-edge:#b5c2ff;
-    --accent-tint:rgba(77,107,255,.10); --seg:#4a505d; --seg-edge:#a9b0bd; --frame-line:#eef1f6;
-    --frame-label:#9aa2b1; --blur-fill:rgba(18,20,26,.35); --scrim:rgba(11,13,18,.86);
-    --stripe-a:#252933; --stripe-b:#1d2029; --danger:#ff8f8f;
-    --mono:ui-monospace, Menlo, monospace;
+    --acc:#4d6bff; --acc-down:#3d56d6; --acc-hi:#9fb0ff; --acc-tint:rgba(77,107,255,.16);
+    --gridbg:#474545; --panel:#201f1f; --well:#141313; --field:#2d2b2b;
+    --text:#f8f4f4; --mute:#bab6b6; --divider:rgba(248,244,244,.26); --hair:rgba(248,244,244,.11); --seg:#9b9797;
+    --ink:#f3f2f2; --ink-dark:#201e1d; --err:#ff8f8f;
+    --font:"Archivo", system-ui, sans-serif; --mono:ui-monospace, Menlo, monospace;
     color-scheme: dark;
   }
   * { box-sizing:border-box; border-radius:0; }
   html, body { height:100%; margin:0; }
-  body { background:var(--bg); color:var(--ink); font:400 15px Archivo, system-ui, sans-serif; overflow:hidden; }
-  button, input, textarea, select { font:inherit; color:inherit; }
-  button { cursor:pointer; background:none; border:1px solid var(--line); padding:7px 12px; font-size:13px; }
-  button:hover:not(:disabled) { background:var(--accent-tint); }
-  button:disabled, .disabled { opacity:.45; cursor:default; }
-  button:focus-visible, textarea:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-  button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:800; }
-  button.primary:hover:not(:disabled) { background:#5e7aff; }
-  button.primary:active:not(:disabled) { background:var(--accent-down); }
-  a { color:var(--accent-text); } a:hover { color:var(--accent); }
-  .mono { font-family:var(--mono); }
-  .label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  body { background:var(--gridbg); color:var(--text); font:400 13px/1.4 var(--font); font-variant-numeric:tabular-nums; overflow:hidden; }
+  button, input, textarea { font:inherit; color:inherit; }
+  button { cursor:pointer; background:none; border:1px solid var(--divider); padding:4px 10px; }
+  button:hover:not(:disabled) { background:color-mix(in srgb, var(--text) 7%, transparent); }
+  button:disabled { opacity:.4; cursor:default; }
+  :focus { outline:none; }
+  :focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
+  a { color:var(--acc-hi); } a:hover { color:#b5c2ff; }
   [hidden] { display:none !important; }
+  svg { display:block; flex:none; }
+  .primary { display:flex; align-items:center; justify-content:flex-start; gap:8px; width:100%; background:var(--acc); border:0; color:#fff;
+    padding:11px 14px; font:800 14px/1.2 var(--font); text-decoration:none; }
+  .primary:hover:not(:disabled) { background:var(--acc-down); color:#fff; }
+  .primary:disabled { opacity:.4; }
+  .h { display:flex; align-items:baseline; gap:10px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:800; flex:none; }
+  .h .n { color:var(--acc-hi); }
+  .h .meta { margin-left:auto; font-weight:400; letter-spacing:0; text-transform:none; color:var(--mute); }
+  .mute { color:var(--mute); }
 
-  /* ---- shell ---- */
-  #app { height:100%; display:grid; grid-template-rows:52px minmax(0,1fr); }
-  header { display:flex; align-items:center; gap:20px; padding:0 20px; border-bottom:2px solid var(--line); min-width:0; }
-  .wordmark { font-weight:800; font-size:17px; }
-  .vrule { width:2px; height:20px; background:var(--line); flex:none; }
-  #fileName { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-  #fileMeta { font-size:12px; color:var(--muted); white-space:nowrap; }
-  .head-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
-  #exportBtn { height:36px; padding:0 14px; min-width:120px; text-align:left; font-size:14px; }
-  #dl { font-size:13px; white-space:nowrap; }
-  .rail-toggle { display:none; }
-  #body { display:grid; grid-template-columns:240px minmax(0,1fr) 260px; min-height:0; position:relative; }
-  aside { background:var(--panel); padding:20px 16px; overflow:auto; min-height:0; }
-  #targetsRail { border-right:2px solid var(--line); display:flex; flex-direction:column; gap:4px; }
-  #versionsRail { border-left:2px solid var(--line); }
-  @media (max-width:1199px) {
-    #body { grid-template-columns:240px minmax(0,1fr); }
-    #versionsRail { position:absolute; right:0; top:0; bottom:0; width:260px; z-index:20; display:none; }
-    #versionsRail.open { display:block; }
-    #versionsToggle { display:inline-block; }
-  }
-  @media (max-width:860px) {
-    #body { grid-template-columns:minmax(0,1fr); }
-    #targetsRail { position:absolute; left:0; top:0; bottom:0; width:240px; z-index:20; display:none; }
-    #targetsRail.open { display:flex; }
-    #targetsToggle { display:inline-block; }
-    header { gap:12px; padding:0 16px; } #fileMeta { display:none; }
-  }
+  /* ---- the grid: 2px gaps on the rule color read as rules between panels ---- */
+  #app { height:100%; display:grid; gap:2px; grid-template-rows:52px minmax(0,1fr) 184px; grid-template-columns:300px minmax(0,1fr) 360px; }
+  header { grid-column:1 / -1; display:flex; align-items:center; gap:18px; padding:0 18px 0 12px; background:var(--panel); min-width:0; }
+  header img { width:34px; height:34px; }
+  .vrule { width:2px; height:20px; background:var(--divider); flex:none; }
+  #fileName { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  #fileMeta { font-size:12px; color:var(--mute); white-space:nowrap; }
+  .head-right { margin-left:auto; display:flex; align-items:center; gap:16px; font-size:12px; }
+  .head-right button { font-size:11px; font-weight:600; padding:2px 8px; }
 
-  /* ---- targets rail ---- */
-  .target { display:flex; align-items:center; gap:10px; padding:8px; cursor:pointer; border:0; width:100%; text-align:left; font-size:13px; }
-  .target:hover { background:var(--accent-tint); }
-  .chip { font:600 11px var(--mono); padding:2px 5px; background:var(--seg); color:#fff; flex:none; }
-  .target.sel { background:var(--accent-tint); } .target.sel .chip { background:var(--accent); }
-  .target .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .target .fx { font-size:11px; color:var(--faint); }
-  .rail-empty { font-size:13px; color:var(--faint); line-height:1.5; padding:0 8px; }
+  #left { grid-row:2; grid-column:1; display:flex; flex-direction:column; gap:2px; min-height:0; }
+  .panel { background:var(--panel); padding:14px 16px; }
+  #reqPanel { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:10px; }
+  #text { width:100%; resize:none; background:var(--field); border:1px solid var(--divider); padding:12px;
+    font:800 19px/1.18 var(--font); letter-spacing:-.01em; min-height:84px; max-height:220px; caret-color:var(--acc); }
+  #text:focus-visible { outline:none; border-color:var(--acc-hi); }
+  #text.running { border-color:var(--acc); }
+  #text::placeholder { color:var(--mute); font-weight:600; }
+  #genProg { position:relative; display:flex; align-items:center; padding:11px 14px; background:var(--field); border:1px solid var(--acc);
+    font:800 14px/1.2 var(--font); overflow:hidden; }
+  #genProg span { position:relative; }
+  .indet { position:absolute; top:0; bottom:0; width:35%; background:var(--acc-tint); animation:indet 1.6s ease-in-out infinite; }
+  @keyframes indet { 0% { left:-35%; } 100% { left:100%; } }
+  .try { display:flex; flex-direction:column; }
+  .try .th { display:flex; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--mute); padding-bottom:5px; border-bottom:2px solid var(--divider); }
+  .try .th span { margin-left:auto; letter-spacing:0; text-transform:none; }
+  .try button { border:0; border-bottom:1px solid var(--hair); padding:5px 0; font-size:12.5px; line-height:1.35; text-align:left; }
+  .try button:hover:not(:disabled) { color:var(--acc-hi); background:none; }
+  #expPanel { display:flex; flex-direction:column; gap:8px; flex:none; }
+  .exTitle { display:flex; align-items:center; gap:8px; font:800 18px/1.2 var(--font); }
+  .exTitle .sq { width:10px; height:10px; background:var(--acc); }
+  .exSub { font-size:11.5px; line-height:1.45; color:var(--mute); }
 
-  /* ---- versions rail ---- */
-  .version { display:grid; grid-template-columns:32px 1fr; gap:4px 10px; padding:12px 0; border-top:1px solid var(--line-2); cursor:pointer; }
-  .version .vid { font:600 11px var(--mono); color:var(--muted); }
-  .version.cur .vid { color:var(--accent-text); } .version.undone .vid { color:var(--faint); }
-  .version.undone .vtext { text-decoration:line-through; color:var(--faint); }
-  .vtext { font-size:13px; line-height:1.4; color:var(--ink-2); overflow-wrap:anywhere; }
-  .vmeta { font-size:11px; color:var(--faint); }
+  /* ---- monitors ---- */
+  #mid { grid-row:2; grid-column:2; background:var(--panel); display:flex; flex-direction:column; min-width:0; min-height:0; }
+  #well { flex:1; min-height:0; display:flex; justify-content:center; align-items:center; gap:28px; background:var(--well); padding:12px 16px 6px; overflow:hidden; position:relative; }
+  .mon { display:flex; flex-direction:column; gap:6px; min-width:0; }
+  #well.stacked { flex-direction:column; gap:14px; }
+  .monHead { display:flex; align-items:center; gap:8px; font-size:11px; height:19px; white-space:nowrap; min-width:0; overflow:hidden; }
+  .monHead .mute { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .monHead b { font-weight:800; letter-spacing:.1em; }
+  #drawBtn { margin-left:auto; display:flex; align-items:center; gap:4px; padding:2px 7px; font-size:11px; font-weight:600; }
+  #drawBtn.on { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .screen { position:relative; overflow:hidden; background:#000; }
+  .screen canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #srcScreen { outline:1px solid var(--divider); }
+  #progScreen { outline:2px solid var(--acc); outline-offset:2px; }
+  #srcScreen.drawing canvas { cursor:crosshair; }
+  #progBadge { position:absolute; left:6px; bottom:6px; background:rgba(21,20,20,.88); color:var(--ink); font-size:10px; padding:2px 6px; }
+  #drawHint { position:absolute; width:max-content; max-width:200px; background:rgba(21,20,20,.92); border:1px solid var(--acc); color:var(--ink);
+    font-size:10.5px; line-height:1.35; padding:4px 6px; pointer-events:none; }
+  #drawHint span { color:var(--mute); }
+  #transport { display:flex; align-items:center; justify-content:center; gap:16px; padding:10px 16px; border-top:2px solid var(--divider); flex:none; }
+  #playBtn { width:38px; height:30px; display:grid; place-items:center; background:var(--text); color:var(--panel); border:0; padding:0; }
+  #playBtn:hover:not(:disabled) { background:#fff; }
+  #tc { font:800 22px/1 var(--font); letter-spacing:-.01em; }
+  #tcDur { font-size:12px; color:var(--mute); }
 
-  /* ---- conversation ---- */
-  #center { position:relative; min-height:0; display:flex; flex-direction:column; align-items:center; }
-  #thread { width:100%; flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; }
-  #threadInner { width:100%; max-width:820px; padding:28px 24px 8px; display:flex; flex-direction:column; gap:18px; }
-  @media (max-width:860px) { #threadInner { padding:20px 16px 8px; } }
-  .user { align-self:flex-end; max-width:70%; padding:10px 12px; background:var(--bubble); overflow-wrap:anywhere; }
-  .agent { display:flex; flex-direction:column; gap:12px; }
-  .agent .text { line-height:1.5; color:var(--ink-2); }
-  .agent.error .text { color:var(--danger); }
-  .agent.note .text { color:var(--muted); font-size:13px; }
-  .steps { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--muted); line-height:1.45; }
-  .steps li { padding-left:16px; position:relative; }
-  .steps li::before { content:""; position:absolute; left:2px; top:.6em; width:6px; height:2px; background:var(--seg-edge); }
-  .steps li.err { color:var(--danger); }
-  .steps b { color:var(--ink-2); font-weight:600; }
-  .tally { font:11px var(--mono); padding:1px 5px; border:1px solid var(--line); margin-left:4px; white-space:nowrap; }
-  .tally.yes { color:#9fe0b0; } .tally.no { color:var(--muted); } .tally.unsure { color:#ffd27a; }
-  details.raw summary { cursor:pointer; font-size:12px; color:var(--faint); }
-  details.raw pre { font:12px/1.5 var(--mono); color:var(--ink-2); background:var(--well); border:1px solid var(--line-2); padding:10px; margin:6px 0 0; overflow:auto; max-height:260px; white-space:pre-wrap; }
-  .pending { font:12px/1.6 var(--mono); color:var(--ink-2); }
-  .pending .sub { color:var(--faint); }
-  .dots::after { content:""; animation:dots 1.2s steps(4) infinite; }
-  @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} }
-
-  /* result card */
-  .card { border:2px solid var(--line); background:var(--well); }
-  .frame { position:relative; aspect-ratio:16/9; overflow:hidden; background:repeating-linear-gradient(135deg,var(--stripe-a) 0 10px,var(--stripe-b) 10px 20px); }
-  .frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
-  .frame canvas { position:absolute; inset:0; width:100%; height:100%; }
-  .frame.drawing canvas { cursor:crosshair; }
-  .frame .tc { position:absolute; left:12px; top:10px; font:11px var(--mono); color:var(--frame-label); background:var(--scrim); padding:2px 6px; }
-  .frame .drawhint { position:absolute; right:12px; top:10px; font:11px var(--mono); background:var(--accent); color:#fff; padding:2px 6px; }
-  .frame.loading img { opacity:.6; }
-  .card.stale .frame::after { content:"older version"; position:absolute; right:12px; bottom:10px; font:11px var(--mono); color:var(--faint); background:var(--scrim); padding:2px 6px; }
-  .strip { position:relative; padding:10px 12px; display:flex; flex-direction:column; gap:3px; background:var(--panel); cursor:pointer; }
-  .card.stale .strip { cursor:default; }
-  .bar { position:relative; height:5px; background:var(--line-3); }
-  .bar .seg { position:absolute; top:0; bottom:0; background:var(--seg-edge); }
-  .bar.sel .seg { background:var(--accent-edge); }
-  .bar .unc { position:absolute; top:-2px; bottom:-2px; background:var(--accent); }
-  .strip .head { position:absolute; top:6px; bottom:6px; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
-  .card .legend { padding:0 12px 8px; background:var(--panel); font-size:11px; color:var(--faint); }
-  .card .legend:empty { display:none; }
-  .actions { display:flex; gap:8px; flex-wrap:wrap; }
-
-  /* empty state */
-  .welcome { display:flex; flex-direction:column; gap:16px; padding-top:6vh; }
-  .welcome h1 { font-size:28px; font-weight:800; margin:0; letter-spacing:-.01em; }
-  .welcome p { margin:0; color:var(--muted); line-height:1.5; max-width:60ch; }
+  /* picker (no clip yet, or Open clip) */
+  #picker { position:absolute; inset:0; background:var(--well); display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto; z-index:5; }
+  .pick { max-width:560px; display:flex; flex-direction:column; gap:14px; }
+  .pick h1 { margin:0; font:800 26px/1.15 var(--font); letter-spacing:-.01em; }
+  .pick p { margin:0; color:var(--mute); line-height:1.5; }
   .samples { display:flex; gap:8px; flex-wrap:wrap; }
-  .samples button { font-size:14px; padding:10px 14px; text-align:left; }
-  .samples .mb { color:var(--faint); font-size:12px; margin-left:6px; }
-  .uploads { display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:13px; color:var(--muted); }
-  .filebtn { position:relative; overflow:hidden; display:inline-block; border:1px solid var(--line); padding:7px 12px; cursor:pointer; color:var(--ink); }
-  .filebtn:hover { background:var(--accent-tint); }
+  .samples button { font-size:14px; font-weight:600; padding:9px 14px; }
+  .samples small { color:var(--mute); font-weight:400; font-size:12px; margin-left:6px; }
+  .uploads { display:flex; gap:12px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--mute); }
+  .filebtn { position:relative; overflow:hidden; display:inline-block; border:1px solid var(--divider); padding:6px 12px; cursor:pointer; color:var(--text); font-size:13px; }
+  .filebtn:hover { background:color-mix(in srgb, var(--text) 7%, transparent); }
   .filebtn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 
-  /* composer */
-  #composerWrap { width:100%; max-width:820px; padding:16px 24px 24px; position:relative; }
-  @media (max-width:860px) { #composerWrap { padding:12px 16px 16px; } }
-  #composer { display:flex; align-items:center; gap:12px; padding:14px 16px; border:2px solid var(--line); background:var(--field); }
-  #composer:focus-within { border-color:var(--accent); }
-  #text { flex:1; min-width:0; resize:none; border:0; outline:0; background:transparent; font-size:15px; line-height:1.4; height:21px; max-height:120px; padding:0; }
-  #text::placeholder { color:var(--faint); }
-  .cbtn { font-size:12px; padding:4px 8px; color:var(--muted); flex:none; }
-  .cbtn.on { background:var(--accent); border-color:var(--accent); color:#fff; }
-  #status { font-size:12px; color:var(--faint); margin-top:8px; min-height:16px; }
-  #status.err { color:var(--danger); }
-  #hints { position:absolute; left:24px; right:24px; bottom:100%; background:var(--panel); border:2px solid var(--line); padding:16px; display:flex; flex-direction:column; gap:10px; z-index:10; }
-  #hints .ex { display:flex; flex-wrap:wrap; gap:8px; }
-  #hints .ex button { font-size:13px; text-align:left; }
-  #hints .ex button small { color:var(--faint); margin-left:6px; }
-  #hints p { margin:0; font-size:12px; color:var(--faint); line-height:1.5; }
+  /* ---- agent ---- */
+  #agent { grid-row:2; grid-column:3; display:flex; flex-direction:column; gap:9px; min-height:0; overflow:hidden; }
+  #undoBtn { display:flex; align-items:center; gap:4px; border:0; padding:0; font-weight:600; letter-spacing:0; text-transform:none; color:var(--acc-hi); font-size:11px; }
+  #undoBtn:hover:not(:disabled) { background:none; color:#b5c2ff; }
+  #steps { display:flex; flex-direction:column; gap:6px; padding:10px 12px; background:var(--field); font-size:12px; line-height:1.4; flex:none; max-height:42%; overflow:auto; }
+  #steps .sh { font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--acc-hi); font-weight:800; }
+  .step { display:grid; grid-template-columns:14px 1fr; gap:6px; overflow-wrap:anywhere; }
+  .step .mk { color:var(--acc-hi); }
+  .step.now { font-weight:600; } .step.dim { color:var(--mute); } .step.err, .step.err .mk { color:var(--err); }
+  .step b { font-weight:600; }
+  .stepBar { margin-left:20px; height:3px; background:var(--hair); position:relative; overflow:hidden; }
+  .stepBar i { position:absolute; top:0; bottom:0; width:35%; background:var(--acc); animation:indet 1.6s ease-in-out infinite; }
+  .tally { display:flex; gap:6px; font-size:11px; align-items:center; }
+  .tally span { padding:0 6px; border:1px solid var(--divider); color:var(--mute); }
+  .tally span.yes { border-color:var(--acc); color:var(--acc-hi); }
+  .tally button { margin-left:auto; border:0; padding:0; color:var(--mute); font-size:11px; }
+  .tally button:hover { background:none; color:var(--text); }
+  #steps pre { font:11px/1.45 var(--mono); background:var(--well); border:1px solid var(--hair); padding:8px; margin:0; max-height:200px; overflow:auto; white-space:pre-wrap; }
+  #notice { font-size:12px; color:var(--mute); line-height:1.4; flex:none; }
+  #notice:empty { display:none; }
+  #notice.err { color:var(--err); }
+  .tlist { display:flex; flex-direction:column; min-height:0; flex:1; }
+  .trow { display:grid; grid-template-columns:28px minmax(0,1fr) 58px 58px; gap:6px; font-size:11.5px; padding:4px 0; border-bottom:1px solid var(--hair); }
+  .trow.head { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--mute); padding:0 0 4px; border-bottom:2px solid var(--divider); flex:none; }
+  .tbody { overflow:auto; min-height:0; }
+  .trow:not(.head) { cursor:pointer; }
+  .trow:not(.head):hover { background:color-mix(in srgb, var(--text) 4%, transparent); }
+  .trow .id { font-weight:800; }
+  .trow .nm { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trow .t { color:var(--mute); }
+  .trow.sel { background:var(--acc-tint); box-shadow:inset 3px 0 0 var(--acc); font-weight:600; padding:4px 8px; margin:0 -8px; border-bottom-color:transparent; }
+  .trow.sel .id { color:var(--acc-hi); } .trow.sel .t { color:var(--text); }
+  .trow.spared { border-bottom-style:dashed; color:var(--mute); }
+  .trow.group { cursor:default; }
+  .tempty { font-size:12px; color:var(--mute); padding:8px 0; }
+  #lowconf { display:flex; gap:6px; padding:7px 0 0; font-size:11.5px; color:var(--mute); align-items:flex-start; flex:none; }
+  #lowconf i { width:2px; height:12px; margin-top:2px; background:var(--acc); flex:none; }
+  #lowconf button { margin-left:auto; border:0; padding:0; color:var(--acc-hi); font-weight:600; font-size:11.5px; }
+  #lowconf button:hover { background:none; color:#b5c2ff; }
+  #selPanel { display:flex; flex-direction:column; gap:8px; padding-top:10px; border-top:2px solid var(--divider); flex:none; }
+  .selHead { display:flex; align-items:baseline; gap:8px; min-width:0; }
+  .selHead .sid { font:800 16px/1.2 var(--font); color:var(--acc-hi); }
+  .selHead .snm { font:800 14px/1.2 var(--font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .selHead .stm { margin-left:auto; font-size:11.5px; color:var(--mute); white-space:nowrap; }
+  .selRow { display:flex; align-items:center; gap:8px; font-size:12px; flex-wrap:wrap; }
+  .seg { display:flex; border:1px solid var(--divider); }
+  .seg button { border:0; padding:4px 11px; font-size:12px; }
+  .seg button + button { border-left:1px solid var(--divider); }
+  .seg button.on { background:var(--acc); color:#fff; font-weight:600; }
+  .seg button.on:hover:not(:disabled) { background:var(--acc-down); }
+  #removeBtn { margin-left:auto; font-weight:600; font-size:12px; }
+  .selHint { font-size:11px; color:var(--mute); }
 
-  /* preview stage: the video with stackable layers (boxes, masks) drawn on a canvas over it, and the timeline */
-  #stage { width:100%; background:var(--panel); border-bottom:2px solid var(--line); display:flex; flex-direction:column; flex:none; max-height:72%; }
-  .stage-head { display:flex; align-items:center; gap:10px; padding:10px 20px; border-bottom:1px solid var(--line-2); flex-wrap:wrap; }
-  .seg-ctl { display:flex; } .seg-ctl button { font-size:12px; padding:4px 10px; }
-  .seg-ctl button + button { border-left:0; }
-  .seg-ctl button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
-  .kinds { display:flex; gap:6px; flex-wrap:wrap; }
-  .kinds button { font-size:11px; padding:3px 8px; display:flex; align-items:center; gap:6px; }
-  .kinds button i { width:8px; height:8px; display:inline-block; }
-  .kinds button:not(.on) { opacity:.45; }
-  .stage-body { overflow:auto; padding:12px 20px 14px; display:flex; flex-direction:column; gap:10px; }
-  #playerWrap { position:relative; background:#000; width:100%; height:min(32vh, 460px); }
-  #player { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block; }
-  #layers { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-  .layer-note { font-size:11px; color:var(--faint); }
-  #hit { position:absolute; inset:0; }  /* clicks pick a box, or play/pause like the video itself */
-  .pctl { display:flex; align-items:center; gap:8px; font:12px var(--mono); color:var(--muted); }
-  .pctl button { font:12px var(--mono); padding:3px 8px; min-width:34px; }
-  .pctl input[type=range] { flex:1; min-width:80px; accent-color:var(--accent); }
-  #hit.over { cursor:pointer; }
-  .edit { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; }
-  .edit .what { color:var(--ink-2); } .edit .what small { color:var(--faint); font-size:11px; margin-left:4px; }
-  .edit button { font-size:12px; padding:4px 10px; }
-  .edit .danger { color:var(--danger); border-color:rgba(255,143,143,.45); }
-  .edit .hint { color:var(--faint); font-size:11px; }
-  #targets .edit { padding:4px 8px 10px; background:var(--accent-tint); }
-  #selBar:empty { display:none; }
-  #tlWrap { max-height:120px; overflow:auto; }
-  .tl { display:grid; grid-template-columns:200px minmax(0,1fr); gap:0 12px; font-size:13px; }
-  @media (max-width:860px) { .tl { grid-template-columns:120px minmax(0,1fr); } }
-  .tl .axis { position:relative; height:18px; font:10px var(--mono); color:var(--faint); }
-  .tl .axis span { position:absolute; transform:translateX(-50%); top:2px; }
-  .tl .rowlabel { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; min-width:0; }
-  .tl .rowlabel .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .tl .rowlabel .fx { color:var(--faint); font-size:11px; margin-left:auto; }
-  .tl .lane { position:relative; height:30px; border-top:1px solid var(--line-2); cursor:pointer; }
-  .tl .lane .seg { position:absolute; top:9px; height:12px; background:var(--seg-edge); }
-  .tl .lane.sel .seg { background:var(--accent-edge); }
-  .tl .lane .unc { position:absolute; top:7px; height:16px; background:var(--accent); }
-  .tl .lanes { position:relative; }
-  .tl .ph { position:absolute; top:0; bottom:0; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
-  .tl .lane:hover { background:var(--line-3); }
+  /* ---- timeline ---- */
+  #timeline { grid-row:3; grid-column:1 / -1; background:var(--panel); display:flex; flex-direction:column; padding:8px 18px; gap:4px; min-height:0; }
+  .tlHead { display:flex; align-items:center; gap:4px 12px; font-size:12px; flex:none; flex-wrap:wrap; }
+  .legend { display:flex; align-items:center; gap:5px; color:var(--mute); }
+  .legend.first { margin-left:auto; }
+  .tlScroll { flex:1; min-height:0; overflow-y:auto; overflow-x:hidden; }
+  #tlGrid { position:relative; display:grid; grid-template-columns:240px minmax(0,1fr); }
+  .rl { height:20px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--hair); font-size:12px; white-space:nowrap; overflow:hidden; cursor:pointer; min-width:0; }
+  .rl .id { width:24px; font-weight:800; flex:none; }
+  .rl .nm { overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .rl .fx { margin-left:auto; padding-right:10px; font-size:11px; color:var(--mute); font-weight:400; }
+  .rl.sel { color:var(--acc-hi); font-weight:800; } .rl.spared { color:var(--mute); } .rl.group { cursor:default; }
+  .ruler { position:sticky; top:0; z-index:2; height:22px; background:var(--panel); border-bottom:2px solid var(--divider); cursor:pointer; }
+  .ruler.corner { cursor:default; }
+  .ruler span { position:absolute; top:0; bottom:0; padding:4px 0 0 4px; border-left:1px solid var(--divider); font-size:10.5px; color:var(--mute); pointer-events:none; }
+  .lane { position:relative; height:20px; border-bottom:1px solid var(--hair); cursor:pointer; }
+  .lane.sel { background:rgba(77,107,255,.08); }
+  .lane .s { position:absolute; top:4px; bottom:4px; background:var(--seg); }
+  .lane .x { position:absolute; top:9px; height:2px; background:var(--divider); }
+  .lane .u { position:absolute; top:2px; bottom:2px; min-width:2px; margin-left:-1px; background:var(--acc-hi); }
+  #ph { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--acc); pointer-events:none; z-index:3; }
+  #ph span { position:absolute; top:0; left:1px; transform:translateX(-50%); background:var(--acc); color:#fff; font-size:10px; font-weight:800; padding:0 4px; white-space:nowrap; }
+
+  /* hidden decoders: the monitors draw their frames on canvases */
+  .decoder { position:fixed; left:0; top:0; width:2px; height:2px; opacity:0; pointer-events:none; }
+
+  /* narrow screens: stack the panels and let the page scroll */
+  @media (max-width:1100px) {
+    body { overflow:auto; }
+    #app { height:auto; grid-template-columns:minmax(0,1fr); grid-template-rows:52px auto 70vh auto 260px; }
+    #left { grid-row:2; grid-column:1; } #reqPanel { flex:none; }
+    #mid { grid-row:3; grid-column:1; }
+    #agent { grid-row:4; grid-column:1; overflow:visible; } .tbody { max-height:240px; }
+    #timeline { grid-row:5; }
+    #tlGrid { grid-template-columns:140px minmax(0,1fr); }
+    #fileMeta, #hdrNote { display:none; }
+  }
 </style>
 </head>
 <body>
 <div id="app">
   <header>
-    <button class="rail-toggle cbtn" id="targetsToggle" aria-controls="targetsRail">Targets</button>
-    <div class="wordmark">CENSOR</div><div class="vrule"></div>
-    <div id="fileName">No video</div><div id="fileMeta"></div>
+    <img src="data:image/png;base64,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" alt="Censor">
+    <span class="vrule"></span>
+    <span id="fileName">No clip</span><span id="fileMeta"></span>
     <div class="head-right">
-      <button class="cbtn" id="timelineBtn" disabled>Preview</button>
-      <button class="rail-toggle cbtn" id="versionsToggle" aria-controls="versionsRail">Versions</button>
-      <a id="dl" hidden download="export.mp4">Download</a>
-      <button class="primary" id="exportBtn" disabled>Export</button>
+      <span id="hdrNote" class="mute"></span>
+      <button id="openBtn" hidden title="Pick another clip, upload one, or attach a .tracks.json">Open clip</button>
     </div>
   </header>
-  <div id="body">
-    <aside id="targetsRail"><div class="label" style="margin-bottom:8px">Targets</div><div id="targets"></div></aside>
-    <section id="center">
-      <div id="stage" hidden>
-        <div class="stage-head">
-          <div class="label">Preview</div>
-          <div class="seg-ctl" id="layerCtl" title="Layers drawn over the video; they stack">
-            <button data-layer="boxes" class="on" title="Every detected object, masked or not, with the vision model's answer when it was asked">Boxes</button>
-            <button data-layer="masks" class="on" title="Where the export will blur, from the renderer's own rectangles">Masks</button>
-          </div>
-          <div class="kinds" id="kinds"></div>
-          <div class="seg-ctl" id="srcCtl" style="margin-left:auto">
-            <button data-src="source" class="on" title="The original video with the layers drawn live">Live layers</button>
-            <button data-src="export" disabled title="The rendered export: the exact pixels that will be shared">Exact export</button>
-          </div>
-          <span id="stageTime" class="mono" style="font-size:12px;color:var(--muted)"></span>
-          <button class="cbtn" id="stageClose">Hide</button>
-        </div>
-        <div class="stage-body">
-          <div id="playerWrap"><video id="player" preload="auto" playsinline></video><canvas id="layers"></canvas><div id="hit" title=""></div></div>
-          <div class="pctl">
-            <button id="playBtn" title="Play / pause (Space)">▶</button>
-            <button id="stepBack" title="Previous frame (←)">‹</button><button id="stepFwd" title="Next frame (→)">›</button>
-            <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Seek">
-            <span id="pctlTime">0:00 / 0:00</span>
-          </div>
-          <div id="selBar"></div>
-          <div class="layer-note" id="layerNote"></div>
-          <div id="tlWrap"><div class="tl" id="tl"></div></div>
-        </div>
+
+  <aside id="left">
+    <div class="panel" id="reqPanel">
+      <div class="h"><span class="n">01</span>Request</div>
+      <textarea id="text" rows="3" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea>
+      <button class="primary" id="genBtn" disabled>Generate masks<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></button>
+      <div id="genProg" hidden><div class="indet"></div><span id="genLabel">Working</span></div>
+      <div class="try">
+        <div class="th">Try<span>or Draw box on Source</span></div>
+        <div id="examples" style="display:flex;flex-direction:column"></div>
       </div>
-      <div id="thread"><div id="threadInner"></div></div>
-      <div id="composerWrap">
-        <div id="hints" hidden>
-          <div class="label">What can I ask?</div>
-          <div class="ex" id="examples"></div>
-          <p>Plain requests are understood instantly. Exceptions ("everyone except…") and unusual wording go to the
-            on-device language model. Questions about people ("the woman") are answered by the vision model; if it
-            can't tell, the person stays blurred. Drag on a frame with <b>Draw box</b> to track anything by hand.</p>
+    </div>
+    <div class="panel" id="expPanel"></div>
+  </aside>
+
+  <main id="mid">
+    <div id="well">
+      <div class="mon">
+        <div class="monHead"><b>SOURCE</b><span class="mute">targets</span>
+          <button id="drawBtn" disabled title="Drag a box on Source to hide anything by hand; it's tracked through the clip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>Draw box</button>
         </div>
-        <form id="composer" autocomplete="off">
-          <textarea id="text" rows="1" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea>
-          <button type="button" class="cbtn" id="hintBtn" title="Example requests" aria-expanded="false">?</button>
-          <button type="button" class="cbtn" id="drawBtn" disabled title="Drag a box on the latest frame to track it">Draw box</button>
-        </form>
-        <div id="status" role="status"></div>
+        <div class="screen" id="srcScreen"><canvas id="srcCv"></canvas><div id="drawHint" hidden></div></div>
       </div>
-    </section>
-    <aside id="versionsRail"><div class="label" style="margin-bottom:12px">Versions</div><div id="versions"></div></aside>
-  </div>
+      <div class="mon">
+        <div class="monHead"><b>PROGRAM</b><span class="mute" id="progLabel">final output · what Export writes</span></div>
+        <div class="screen" id="progScreen"><canvas id="progCv"></canvas><span id="progBadge" hidden></span></div>
+      </div>
+      <div id="picker" hidden></div>
+    </div>
+    <div id="transport">
+      <button id="playBtn" title="Play / pause (Space)" aria-label="Play" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+      <div style="display:flex;align-items:baseline;gap:8px"><span id="tc">0:00.00</span><span id="tcDur">/ 0:00.00</span></div>
+      <span class="mute" style="font-size:12px">both monitors follow this playhead</span>
+    </div>
+  </main>
+
+  <aside id="agent" class="panel">
+    <div class="h"><span class="n">02</span>Agent<span class="meta" id="planMeta"></span>
+      <button id="undoBtn" hidden title="Revert the latest change as a whole"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>Undo</button></div>
+    <div id="steps"></div>
+    <div id="notice" role="status"></div>
+    <div class="tlist">
+      <div class="trow head"><span>ID</span><span>Target</span><span>In</span><span>Out</span></div>
+      <div class="tbody" id="tbody"></div>
+      <div id="lowconf" hidden></div>
+    </div>
+    <div id="selPanel"></div>
+  </aside>
+
+  <section id="timeline">
+    <div class="tlHead">
+      <span class="h"><span class="n">03</span>Timeline</span><span class="mute" id="tlNote"></span>
+      <span class="legend first"><span style="width:14px;height:8px;background:var(--seg)"></span>masked</span>
+      <span class="legend"><span style="width:14px;height:2px;background:var(--divider)"></span>not masked</span>
+      <span class="legend"><span style="width:2px;height:10px;background:var(--acc)"></span>low confidence</span>
+    </div>
+    <div class="tlScroll"><div id="tlGrid"></div></div>
+  </section>
 </div>
+<video id="player" class="decoder" preload="auto" playsinline></video>
+<video id="expPlayer" class="decoder" preload="auto" playsinline muted></video>
 <script>
 // ---------- state ----------
 const S = {
@@ -270,15 +280,18 @@ const S = {
   ids: {},          // track_id -> "T1"... (stable for this video)
   desc: {},         // track_id -> what the VLM said yes to ("woman")
   vlm: {},          // track_id -> the VLM's latest answer about it: {q, a, p}
-  trackList: null, maskFrames: null,  // the preview layers' data (GET /tracks, GET /masks)
-  versions: [],     // {key, text, at, opIds, n, undone, card}
-  selected: null, busy: false, exportUrl: null, cards: [],
+  trackList: null, maskFrames: null,  // GET /tracks, GET /masks, indexed per frame
+  versions: [],     // {key, text, at, opIds, n, undone}
+  selected: null,
+  busy: null,       // null | 'request' | 'edit' | 'export'
+  reqStart: 0, lastMs: null, steps: null, drawMode: false, picker: false,
+  exportUrl: null, exportStats: null, exportSig: '', spotIdx: -1,
 };
 const $ = id => document.getElementById(id);
 const el = (tag, attrs = {}, ...kids) => {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== undefined && v !== null) e.setAttribute(k, v);
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== undefined && v !== null && v !== false) e.setAttribute(k, v);
   }
   for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k.nodeType ? k : String(k));
   return e;
@@ -294,10 +307,17 @@ const post = (path, body) => api(path, body === undefined ? { method: 'POST' } :
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const errText = e => (e && (typeof e.detail === 'string' ? e.detail : e.detail && JSON.stringify(e.detail))) || (e && e.message) || 'something went wrong';
 const fmt = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(0).padStart(2, '0')}`; };
-const fmtF = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
+const fmtF = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
+const fmtD = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${String(m).padStart(2, '0')}:${r.toFixed(2).padStart(5, '0')}`; };
 const dur = () => S.info ? S.info.n_frames / S.info.fps : 1;
 const pct = s => `${Math.max(0, Math.min(100, s / dur() * 100))}%`;
-const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+const ICON = {
+  play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+  pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="5" height="18"/><rect x="14" y="3" width="5" height="18"/></svg>',
+  arrow: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>',
+  download: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
+};
+const svg = name => { const t = document.createElement('template'); t.innerHTML = ICON[name]; return t.content.firstChild; };
 
 // Per-viewer memory (request wording, target names) so a reopened video keeps its history. Optional: the page
 // works the same without it.
@@ -305,15 +325,16 @@ const store = {
   key: () => `censor:${S.vid}`,
   load() { try { return JSON.parse(localStorage.getItem(this.key()) || 'null'); } catch { return null; } },
   save() {
-    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc, vlm: S.vlm,
-      versions: S.versions.map(({ card, ...v }) => v) })); } catch {}
+    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc, vlm: S.vlm, versions: S.versions })); } catch {}
   },
 };
 
 // ---------- names, segments ----------
-const LABELS = { 'license plate': 'Plate', 'face': 'Face', 'person': 'Person', 'user box': 'Drawn box' };
-const MAX_BARS = 8;  // coverage bars per result card before they're grouped by kind
-// Merge [start, end] spans that overlap or touch (within a frame)
+const LABELS = { 'license plate': 'Plate', 'face': 'Face', 'person': 'Person', 'user box': 'Your box' };
+const ONE = { 'license plate': 'plate', 'face': 'face', 'person': 'person', 'user box': 'your box' };
+const plural = { 'license plate': 'license plates', 'face': 'faces', 'person': 'people', 'user box': 'drawn boxes' };
+const FX = { blur: 'blur', pixelate: 'pixelate', box: 'box' };
+const MAX_ROWS = 8;  // target rows before they're grouped by kind
 function union(spans) {
   const out = [];
   for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
@@ -322,7 +343,6 @@ function union(spans) {
   }
   return out;
 }
-const plural = { 'license plate': 'license plates', 'face': 'faces', 'person': 'people', 'user box': 'drawn boxes' };
 const tid = id => S.ids[id] || (S.ids[id] = `T${Object.keys(S.ids).length + 1}`);
 const tname = (id, label) => {
   const base = LABELS[label] || (label ? label[0].toUpperCase() + label.slice(1) : id);
@@ -341,23 +361,46 @@ function runs(kfs, pick = () => true) {
   if (a !== null) out.push([a / fps, (b + 1) / fps]);
   return out;
 }
-function targetList(tl = S.timeline) {
-  if (!tl) return [];
-  return Object.entries(tl.targets).map(([id, t]) => ({
+// Every target: what the timeline masks, plus the people the vision model was asked about and the agent spared
+// (a yes in an "except" request, a no in an "only" one). Unsure answers stay masked, so they're never here.
+function targetList() {
+  if (!S.timeline) return [];
+  const out = Object.entries(S.timeline.targets).map(([id, t]) => ({
     id, chip: tid(id), label: t.label, name: tname(id, t.label), effect: t.effect, padding: t.padding, keyframes: t.keyframes,
-    segs: runs(t.keyframes), unc: runs(t.keyframes, k => k.state === 'uncertain'),
-  })).sort((a, b) => +a.chip.slice(1) - +b.chip.slice(1));
+    segs: runs(t.keyframes), unc: runs(t.keyframes, k => k.state === 'uncertain'), ext: [], spared: false,
+  }));
+  for (const tr of S.trackList || []) {
+    if (S.timeline.targets[tr.track_id] || !S.vlm[tr.track_id]) continue;
+    out.push({ id: tr.track_id, chip: tid(tr.track_id), label: tr.label, name: `${tname(tr.track_id, tr.label)} · spared`, effect: null,
+      keyframes: tr.keyframes, segs: [], unc: [], ext: runs(tr.keyframes), spared: true, answer: S.vlm[tr.track_id].a });
+  }
+  return out.sort((a, b) => +a.chip.slice(1) - +b.chip.slice(1));
 }
-// The masked area of a target at frame f: the nearest keyframe within a few frames, padded the way
-// censor/render/render.py pads it (uncertain boxes get double padding, at least 3 px a side)
-function boxAt(t, f) {
-  let best = null, d = 1e9;
-  for (const k of t.keyframes) { const dd = Math.abs(k.f - f); if (dd < d) { d = dd; best = k; } }
-  if (!best || d > 3) return null;
-  const [x1, y1, x2, y2] = best.box, pad = (t.padding || 0) * (best.state === 'uncertain' ? 2 : 1);
-  const px = Math.max((x2 - x1) * pad, 3), py = Math.max((y2 - y1) * pad, 3);
-  return [Math.max(0, x1 - px), Math.max(0, y1 - py), Math.min(S.info.width, x2 + px), Math.min(S.info.height, y2 + py)];
+const span = t => { const all = [...t.segs, ...t.ext]; return all.length ? [Math.min(...all.map(s => s[0])), Math.max(...all.map(s => s[1]))] : null; };
+// The rows the list and the timeline show: one per target while that's readable; for a crowd (127 targets on
+// street_plates), one per kind ("113 faces") plus the selected target's own row
+function rowsModel() {
+  const ts = targetList();
+  if (ts.length <= MAX_ROWS) return { rows: ts, grouped: false, ts };
+  const kinds = new Map();
+  for (const t of ts) {
+    const key = `${t.spared ? 'spared:' : ''}${t.label}`;
+    const k = kinds.get(key) || { id: null, key, group: true, label: t.label, n: 0, segs: [], ext: [], unc: [], spared: t.spared, effects: new Set() };
+    k.n++; k.segs.push(...t.segs); k.ext.push(...t.ext); k.unc.push(...t.unc); if (t.effect) k.effects.add(t.effect); kinds.set(key, k);
+  }
+  const rows = [...kinds.values()].map(k => ({ ...k, segs: union(k.segs), ext: union(k.ext), unc: union(k.unc),
+    chip: '', effect: [...k.effects].join('/') || null,
+    name: `${k.n} ${k.n === 1 ? (ONE[k.label] || k.label) : plural[k.label] || k.label}${k.spared ? ' · spared' : ''}` }));
+  const sel = ts.find(t => t.id === S.selected);
+  if (sel) rows.push(sel);
+  return { rows, grouped: true, ts };
 }
+// Low-confidence spots: runs of uncertain keyframes, each masked anyway with extra padding
+const spots = () => targetList().flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
+const curVersion = () => { const live = S.versions.filter(v => !v.undone); return live[live.length - 1]; };
+const vNum = v => S.versions.indexOf(v) + 1;
+const opsSig = () => S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
+const exportFresh = () => !!S.exportUrl && S.exportSig === opsSig();
 
 // ---------- loading a video ----------
 async function refreshState() {
@@ -365,21 +408,15 @@ async function refreshState() {
     api(`api/videos/${S.vid}/tracks`), api(`api/videos/${S.vid}/masks`)]);
   S.info = v.info; S.ops = v.ops; S.timeline = tl; S.queries = tracks.queries || [];
   indexLayers(tracks, masks);
-  // An edit since the last export makes it out of date: back to the live layers until the next Export
-  const stale = S.exportUrl && S.exportSig !== S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
-  const exBtn = $('srcCtl').querySelector('[data-src=export]');
-  exBtn.disabled = !S.exportUrl || stale;
-  exBtn.title = stale ? 'Changed since the last export: Export again to see the exact pixels' : 'The rendered export: the exact pixels that will be shared';
-  if (stale && P.src === 'export') setSrc('source');
   const present = new Set(S.ops.map(o => o.op_id));
   // A version whose ops left the log was undone. Sticky: op ids are reused after an undo.
   for (const ver of S.versions) if (ver.opIds.length && !ver.undone && ver.opIds.some(o => !present.has(o))) ver.undone = true;
   targetList(); store.save();
-  renderTargets(); renderVersions(); renderTimeline(); renderKinds(); renderSelBar();
-  S.cards.forEach(c => c.update());
+  setProgramSource();
+  renderAll();
   return v;
 }
-// The upload scan finishes in the background: refresh the boxes layer when its tracks land
+// The upload scan finishes in the background: refresh the boxes when its tracks land
 async function watchScan(vid, queries) {
   for (let i = 0; i < 60 && queries.length; i++) {
     await sleep(4000);
@@ -387,359 +424,205 @@ async function watchScan(vid, queries) {
     if (S.busy) continue;
     try {
       const tracks = await api(`api/videos/${vid}/tracks`);
-      if ((tracks.queries || []).length !== (S.queries || []).length) {
-        S.queries = tracks.queries || [];
-        indexLayers(tracks, { targets: {} }); await refreshState();
-      }
-      if (queries.every(q => S.queries.includes(q))) return;
+      if ((tracks.queries || []).length !== (S.queries || []).length) await refreshState();
+      if (queries.every(q => S.queries.includes(q))) { if (S.steps && S.steps.scan) { S.steps = null; renderAgent(); } return; }
     } catch { return; }
   }
 }
 async function openVideo(j, name) {
-  S.vid = j.video_id; S.info = j.info; S.name = name; S.ids = {}; S.desc = {}; S.vlm = {}; S.versions = []; S.cards = [];
-  S.selected = null; S.exportUrl = null;
+  Object.assign(S, { vid: j.video_id, info: j.info, name, timeline: null, trackList: null, maskFrames: null, ops: [], ids: {}, desc: {}, vlm: {}, versions: [], selected: null,
+    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false });
   const saved = store.load();
-  if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {}, versions: saved.versions || [] });
+  if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {},
+    versions: (saved.versions || []).map(({ card, ...v }) => v) });
   if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
   history.replaceState(null, '', `?video=${S.vid}`);
-  $('threadInner').replaceChildren();
-  $('fileName').textContent = S.name; $('dl').hidden = true; setSrc('source');
-  $('player').src = `api/videos/${S.vid}/source`;
-  ['timelineBtn', 'exportBtn', 'drawBtn', 'text'].forEach(id => $(id).disabled = false);
-  $('text').placeholder = 'Ask for a change…';
+  $('player').src = `api/videos/${S.vid}/source`; $('expPlayer').removeAttribute('src');
+  $('text').disabled = false; $('text').placeholder = 'What should be hidden?';
   const v = await refreshState();
-  openStage(0);
-  watchScan(S.vid, j.prescan || []);
   if (saved && S.versions.length > 1) {
-    note(`Reopened ${S.name}: ${v.summary.n_targets} target(s) masked so far. Earlier messages aren't kept, but the versions are on the right.`);
-    if (v.summary.n_targets) addCard(note(''), null);
-  } else {
-    note(`Loaded ${S.name} (${fmt(dur())}, ${S.info.width}×${S.info.height}, ${S.info.fps} fps). ` +
-      (j.prescan && j.prescan.length ? `Scanning for ${j.prescan.join(', ')} in the background, so the first request is quick.` :
-        'Ask for what to hide, or press ? for examples.'));
+    S.steps = { head: 'What the agent did', lines: [{ mark: '–', text: `Reopened ${S.name}: ${v.summary.n_targets} target${v.summary.n_targets === 1 ? '' : 's'} masked so far. The steps of earlier requests aren't kept.` }] };
+  } else if (j.prescan && j.prescan.length) {
+    S.steps = { head: 'Getting ready', scan: true, lines: [{ mark: '◐', now: true, bar: true, text: `Scanning for ${j.prescan.map(q => plural[q] || q).join(', ')} in the background, so the first request is quick.` }] };
   }
+  notice('');
+  renderAll(); layoutMonitors();
+  watchScan(S.vid, j.prescan || []);
   $('text').focus();
 }
 async function loadSample(id) {
-  status(`Loading ${id}…`);
-  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); status(''); }
-  catch (e) { status(`Couldn't load ${id}: ${errText(e)}`, true); }
+  notice(`Loading ${id}…`);
+  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); }
+  catch (e) { notice(`Couldn't load ${id}: ${errText(e)}`, true); }
 }
 async function uploadFile(file) {
-  status(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+  notice(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
   const fd = new FormData(); fd.append('file', file);
-  try { await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); status(''); }
-  catch (e) { status(`Upload failed: ${errText(e)}`, true); }
+  try { await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); }
+  catch (e) { notice(`Upload failed: ${errText(e)}`, true); }
 }
 async function uploadSidecar(file) {
-  if (!S.vid) return status('Load the video first, then its .tracks.json.', true);
+  if (!S.vid) return notice('Load the video first, then its .tracks.json.', true);
   const fd = new FormData(); fd.append('file', file);
-  try { await api(`api/videos/${S.vid}/tracks-sidecar`, { method: 'POST', body: fd }); note(`Attached ground-truth tracks from ${file.name} (stub mode).`); }
-  catch (e) { status(`Sidecar upload failed: ${errText(e)}`, true); }
+  try { await api(`api/videos/${S.vid}/tracks-sidecar`, { method: 'POST', body: fd }); S.picker = false; renderPicker(); notice(`Attached ground-truth tracks from ${file.name} (stub mode).`); }
+  catch (e) { notice(`Sidecar upload failed: ${errText(e)}`, true); }
 }
+function notice(msg, err = false) { $('notice').textContent = msg || ''; $('notice').classList.toggle('err', !!err); }
 
-// ---------- thread ----------
-const thread = () => $('threadInner');
-const scrollDown = () => { const t = $('thread'); requestAnimationFrame(() => t.scrollTop = t.scrollHeight); };
-function userMsg(text) { const e = el('div', { class: 'user' }, text); thread().append(e); scrollDown(); return e; }
-function note(text) { const e = el('div', { class: 'agent note' }, text ? el('div', { class: 'text' }, text) : null); thread().append(e); scrollDown(); return e; }
-function status(msg, err = false) { $('status').textContent = msg || ''; $('status').classList.toggle('err', !!err); }
-
-function welcome() {
-  const list = el('div', { class: 'samples' }, el('span', { class: 'rail-empty', style: 'padding:0' }, 'Looking for sample clips…'));
-  const w = el('div', { class: 'welcome' },
-    el('div', { class: 'label' }, 'Start'),
+function renderPicker() {
+  const show = !S.vid || S.picker;
+  $('picker').hidden = !show; $('openBtn').hidden = !S.vid;
+  $('openBtn').textContent = S.picker ? 'Back to the clip' : 'Open clip';
+  if (!show) return;
+  const list = el('div', { class: 'samples' }, el('span', { class: 'mute' }, 'Looking for sample clips…'));
+  $('picker').replaceChildren(el('div', { class: 'pick' },
+    el('div', { class: 'h' }, el('span', { class: 'n' }, '00'), 'Clip'),
     el('h1', {}, 'Hide people, faces and plates by asking.'),
-    el('p', {}, 'Pick a clip, then type what to hide: "blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". ' +
-      'Everything runs on this machine; nothing leaves it.'),
+    el('p', {}, 'Pick a clip, then type what to hide: "blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". Everything runs on this machine.'),
     list,
     el('div', { class: 'uploads' },
       el('label', { class: 'filebtn' }, 'Upload a video…', el('input', { type: 'file', accept: 'video/*', onchange: e => e.target.files[0] && uploadFile(e.target.files[0]) })),
       el('label', { class: 'filebtn', title: 'Stub mode only: ground-truth tracks from scripts/make_test_clip.py' },
         'Attach .tracks.json', el('input', { type: 'file', accept: '.json', onchange: e => e.target.files[0] && uploadSidecar(e.target.files[0]) })),
-      el('span', {}, 'Tip: in stub mode pick synthetic: its ground truth comes along.')));
-  thread().replaceChildren(w);
+      el('span', {}, 'In stub mode pick synthetic: its ground truth comes along.'))));
   api('api/samples').then(cl => {
-    list.replaceChildren(...(cl.length ? cl.map(c => el('button', { onclick: () => loadSample(c.id) }, c.id, el('span', { class: 'mb' }, `${c.mb} MB`)))
-      : [el('span', { class: 'rail-empty', style: 'padding:0' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
-  }).catch(e => list.replaceChildren(el('span', { class: 'rail-empty', style: 'padding:0' }, `Couldn't list samples: ${errText(e)}`)));
+    list.replaceChildren(...(cl.length ? cl.map(c => el('button', { onclick: () => loadSample(c.id) }, c.id, el('small', {}, `${c.mb} MB`)))
+      : [el('span', { class: 'mute' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
+  }).catch(e => list.replaceChildren(el('span', { class: 'mute' }, `Couldn't list samples: ${errText(e)}`)));
 }
 
-// Plain words for each tool call in a request response
+// ---------- the agent's steps, in plain words ----------
 function describe(calls, path) {
-  const items = [];
+  const lines = [], add = (text, cls) => lines.push({ mark: cls === 'err' ? '!' : '–', text, cls });
+  const tally = { yes: 0, no: 0, unknown: 0 };
   // A crowd's 113 faces read as a count, not 113 ids
   const names = ids => { const t = ids.map(i => tid(i)); return t.length <= 6 ? t.join(', ') : `${t.slice(0, 3).join(', ')} and ${t.length - 3} more`; };
-  if (path === 'template') items.push(el('li', {}, 'Understood the request directly, no language model needed.'));
+  if (path === 'template') add('Understood the request directly, no language model needed.');
   for (const c of calls) {
     const a = c.args || {}, r = c.result, ms = c.ms !== undefined ? ` (${c.ms < 1000 ? c.ms + ' ms' : (c.ms / 1000).toFixed(1) + ' s'})` : '';
-    if (c.error) {
-      items.push(el('li', { class: 'err' }, c.tool === '_plan' ? `The language model couldn't plan it: ${c.error}` : `${c.tool} failed: ${c.error}`));
-      continue;
-    }
+    if (c.error) { add(c.tool === '_plan' ? `The language model couldn't plan it: ${c.error}` : `${c.tool} failed: ${c.error}`, 'err'); continue; }
     switch (c.tool) {
       case '_plan': {
         const p = c.plan || {}, ts = (p.targets || []).map(t => [t.object, t.only && t.only.length ? `only "${t.only.join('", "')}"` : '',
           t.exclude && t.exclude.length ? `except "${t.exclude.join('", "')}"` : '', t.time ? `at ${Array.isArray(t.time) ? t.time.map(fmt).join('–') : t.time}` : '']
           .filter(Boolean).join(' '));
-        items.push(el('li', {}, 'Planned with the on-device language model', ms, ': ', el('b', {}, `${p.action || 'mask'}${p.action === 'mask' || !p.action ? ' (' + (p.effect || 'blur') + ')' : ''}`),
-          ts.length ? ` ${ts.join('; ')}.` : '.'));
+        add(el('span', {}, `Planned with the on-device LLM${ms}: `, el('b', {}, `${p.action || 'mask'}${p.action === 'mask' || !p.action ? ' (' + (p.effect || 'blur') + ')' : ''}`),
+          ts.length ? ` ${ts.join('; ')}` : ''));
         break;
       }
-      case 'resolve_time': items.push(el('li', {}, `Read "${a.phrase}" as `, el('b', {}, `${fmt(r[0])}–${fmt(r[1])}`), '.')); break;
+      case 'resolve_time': add(el('span', {}, `Read "${a.phrase}" as `, el('b', {}, `${fmt(r[0])}–${fmt(r[1])}`))); break;
       case 'find_objects': {
         const n = r.length, what = plural[a.query] || a.query;
-        items.push(el('li', {}, `Looked for ${what}${a.time_range ? ` between ${fmt(a.time_range[0])} and ${fmt(a.time_range[1])}` : ''}: `,
-          el('b', {}, n ? `${n} found` : 'none found'), n ? ` (${names(r.map(o => o.track_id))})` : '', ms, '.'));
+        add(el('span', {}, `Looked for ${what}${a.time_range ? ` between ${fmt(a.time_range[0])} and ${fmt(a.time_range[1])}` : ''}: `,
+          el('b', {}, n ? `${n} track${n === 1 ? '' : 's'}` : 'none found'), n ? ` (${names(r.map(o => o.track_id))})` : '', ms));
         break;
       }
       case 'check_attribute': {
         const t = { yes: 0, no: 0, unknown: 0 };
-        r.forEach(x => { t[x.answer] = (t[x.answer] || 0) + 1; });
+        r.forEach(x => { t[x.answer] = (t[x.answer] || 0) + 1; tally[x.answer] = (tally[x.answer] || 0) + 1; });
         const m = /^is (?:this|it) (?:a |an |the )?(.+?)\?*$/i.exec(a.question || '');
         if (m) r.forEach(x => { if (x.answer === 'yes') S.desc[x.track_id] = m[1]; });
         r.forEach(x => { S.vlm[x.track_id] = { q: a.question || '', a: x.answer, p: x.p_yes }; });
-        items.push(el('li', {}, `Asked "${a.question}" about ${r.length} track${r.length === 1 ? '' : 's'}`, ms, ':',
-          el('span', { class: 'tally yes' }, `${t.yes} yes`), el('span', { class: 'tally no' }, `${t.no} no`),
-          el('span', { class: 'tally unsure' }, `${t.unknown} unsure`),
-          t.unknown ? el('span', {}, ' (unsure stays masked)') : null));
+        add(`Asked "${a.question}" about ${r.length} ${r.length === 1 ? 'track' : 'tracks'}${ms}: ${t.yes} yes, ${t.no} no, ${t.unknown} unsure${t.unknown ? ' (unsure stays masked)' : ''}`);
         break;
       }
-      case 'person_for': items.push(el('li', {}, 'Matched each face to the person it belongs to.')); break;
+      case 'person_for': add('Matched each face to the person it belongs to'); break;
       case 'add_masks': {
         const ids = [...(a.track_ids || [])];
-        items.push(el('li', {}, `${{ blur: 'Blurred', pixelate: 'Pixelated', box: 'Covered' }[a.effect || 'blur'] || a.effect} `,
+        add(el('span', {}, `${{ blur: 'Blurred', pixelate: 'Pixelated', box: 'Covered' }[a.effect || 'blur'] || a.effect} `,
           el('b', {}, ids.length ? names(ids) : (a.labels || []).join(', ')),
-          a.time_range ? ` from ${fmt(a.time_range[0])} to ${fmt(a.time_range[1])}` : '', '.'));
+          a.time_range ? ` from ${fmt(a.time_range[0])} to ${fmt(a.time_range[1])}` : ' for the whole clip'));
         break;
       }
-      case 'remove_masks': items.push(el('li', {}, 'Removed the mask from ', el('b', {}, names(a.track_ids || [])), '.')); break;
-      case 'set_effect': items.push(el('li', {}, `Switched `, el('b', {}, names(a.track_ids || [])), ` to ${a.effect}.`)); break;
-      case 'add_rule': items.push(el('li', {}, `Added a rule: ${a.effect || 'blur'} every ${a.category}.`)); break;
-      case 'undo': items.push(el('li', {}, r ? `Undid ${r}.` : 'There was nothing to undo.')); break;
-      case 'track_box': items.push(el('li', {}, 'Tracked the drawn box from ', el('b', {}, `${fmt(r.start)} to ${fmt(r.end)}`), '.')); break;
-      default: items.push(el('li', {}, `${c.tool}${ms}`));
+      case 'remove_masks': add(el('span', {}, 'Removed the mask from ', el('b', {}, names(a.track_ids || [])))); break;
+      case 'set_effect': add(el('span', {}, 'Switched ', el('b', {}, names(a.track_ids || [])), ` to ${a.effect}`)); break;
+      case 'add_rule': add(`Added a rule: ${a.effect || 'blur'} every ${a.category}`); break;
+      case 'undo': add(r ? `Undid ${r}` : 'There was nothing to undo'); break;
+      case 'track_box': add(el('span', {}, 'Tracked the drawn box from ', el('b', {}, `${fmt(r.start)} to ${fmt(r.end)}`))); break;
+      default: add(`${c.tool}${ms}`);
     }
   }
-  return el('ul', { class: 'steps' }, items);
+  const asked = calls.some(c => c.tool === 'check_attribute' && !c.error);
+  return { lines, tally: asked ? tally : null };
 }
 const opIdsOf = calls => calls.filter(c => !c.error && ['add_masks', 'remove_masks', 'set_effect', 'add_rule'].includes(c.tool) && typeof c.result === 'string').map(c => c.result);
 
-// A result card: the masked frame (scrubbable), one coverage bar per target, and the actions
-function addCard(host, focusIds) {
-  const img = el('img', { alt: 'masked video frame' }), cv = el('canvas'), tc = el('div', { class: 'tc' });
-  const drawHint = el('div', { class: 'drawhint', hidden: '' }, 'drag to draw a box');
-  const frame = el('div', { class: 'frame loading' }, img, cv, tc, drawHint);
-  const strip = el('div', { class: 'strip', title: 'Click to see that moment' });
-  const legend = el('div', { class: 'legend' });
-  const reviewBtn = el('button', { class: 'primary', hidden: '' });
-  const undoBtn = el('button', { onclick: () => undoLast() }, 'Undo');
-  const card = el('div', { class: 'card' }, frame, strip, legend);
-  const actions = el('div', { class: 'actions' }, reviewBtn, el('button', { onclick: () => openStage(c.t), title: 'Play the video from this moment, with the boxes and masks drawn over it' }, 'Play here'), undoBtn);
-  host.append(card, actions);
-  const c = { t: 0, live: true, targets: [], unc: [], uncIdx: -1, frame, cv, img, undoBtn, card };
-  // Start on the first thing this request masked, else the middle of the clip
-  const first = focusIds && targetList().filter(t => focusIds.includes(t.id) && t.segs.length)[0];
-  c.t = first ? (first.segs[0][0] + first.segs[0][1]) / 2 : dur() / 2;
-  let loadTimer = null, wanted = '';
-  c.seek = (t, now = false) => {
-    c.t = Math.max(0, Math.min(dur() - 1 / S.info.fps, t));
-    const f = Math.round(c.t * S.info.fps);
-    tc.textContent = `video frame ${String(f).padStart(4, '0')} · ${fmtF(c.t)}`;
-    drawStrip(); overlay();
-    if (!c.live) return;
-    clearTimeout(loadTimer);
-    loadTimer = setTimeout(() => {
-      wanted = `api/videos/${S.vid}/preview/${f}.jpg?t=${Date.now()}`;
-      frame.classList.add('loading'); img.src = wanted;
-    }, now ? 0 : 120);
-  };
-  img.onload = () => { if (img.src.endsWith(wanted.split('/').pop())) frame.classList.remove('loading'); overlay(); };
-  img.onerror = () => frame.classList.remove('loading');
-  const head = el('div', { class: 'head' });
-  // One bar per target while that's readable; for a crowd (127 targets on street_plates pushed the frame off
-  // screen), one bar per kind (all faces, all plates) plus the selected target's own bar, with a legend
-  function rows() {
-    const one = t => ({ ...t, title: `${t.chip} ${t.name} (${t.effect})` });
-    if (c.targets.length <= MAX_BARS) return { rows: c.targets.map(one), grouped: false };
-    const kinds = new Map();
-    for (const t of c.targets) {
-      const k = kinds.get(t.label) || { id: `kind:${t.label}`, label: t.label, n: 0, segs: [], unc: [] };
-      k.n++; k.segs.push(...t.segs); k.unc.push(...t.unc); kinds.set(t.label, k);
-    }
-    const out = [...kinds.values()].map(k => ({ ...k, segs: union(k.segs), unc: union(k.unc),
-      title: `${k.n} ${k.n === 1 ? (LABELS[k.label] || k.label).toLowerCase() : plural[k.label] || k.label}` }));
-    const sel = c.targets.find(t => t.id === S.selected);
-    if (sel) out.push(one(sel));
-    return { rows: out, grouped: true };
-  }
-  function drawStrip() {
-    const { rows: rs, grouped } = rows();
-    legend.textContent = !c.targets.length ? '' : (grouped ? `Bars, top to bottom: ${rs.map(r => r.title).join(' · ')}. ` : '') +
-      (c.targets.some(t => t.unc.length) ? 'Bright marks: the detector was less sure there; those moments are masked anyway, with extra padding.' : '');
-    const kids = rs.map(t => {
-      const bar = el('div', { class: `bar${t.id === S.selected ? ' sel' : ''}`, title: t.title });
-      t.segs.forEach(([a, b]) => bar.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
-      t.unc.forEach(([a, b]) => bar.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
-      return bar;
-    });
-    if (!kids.length) kids.push(el('div', { style: 'font-size:12px;color:var(--faint)' }, 'Nothing masked.'));
-    head.style.left = `calc(12px + (100% - 24px) * ${c.t / dur()})`;
-    strip.replaceChildren(...kids, head);
-  }
-  // Outline of the selected target (and the box being drawn) over the image, in its letterboxed area
-  let drag = null;
-  function overlay() {
-    const r = cv.getBoundingClientRect(); if (!r.width) return;
-    cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
-    const g = cv.getContext('2d'); g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    const fit = fitRect(r);
-    const f = Math.round(c.t * S.info.fps);
-    for (const t of c.targets) {
-      if (t.id !== S.selected) continue;
-      const b = boxAt(t, f); if (!b) continue;
-      g.strokeStyle = '#4d6bff'; g.lineWidth = 2;
-      g.strokeRect(fit.x + b[0] * fit.s, fit.y + b[1] * fit.s, (b[2] - b[0]) * fit.s, (b[3] - b[1]) * fit.s);
-      g.fillStyle = '#4d6bff'; g.font = '600 11px ui-monospace, Menlo, monospace';
-      const lbl = t.chip, w = g.measureText(lbl).width + 10;
-      g.fillRect(fit.x + b[0] * fit.s - 1, fit.y + b[1] * fit.s - 17, w, 16);
-      g.fillStyle = '#fff'; g.fillText(lbl, fit.x + b[0] * fit.s + 4, fit.y + b[1] * fit.s - 5);
-    }
-    if (drag && drag.b) {
-      const [x1, y1, x2, y2] = drag.b; g.setLineDash([6, 4]); g.strokeStyle = '#fff'; g.lineWidth = 2;
-      g.strokeRect(fit.x + x1 * fit.s, fit.y + y1 * fit.s, (x2 - x1) * fit.s, (y2 - y1) * fit.s);
-    }
-  }
-  const fitRect = r => { const s = Math.min(r.width / S.info.width, r.height / S.info.height);
-    return { s, x: (r.width - S.info.width * s) / 2, y: (r.height - S.info.height * s) / 2 }; };
-  const toVideo = ev => { const r = cv.getBoundingClientRect(), fit = fitRect(r);
-    return [Math.max(0, Math.min(S.info.width, (ev.clientX - r.left - fit.x) / fit.s)), Math.max(0, Math.min(S.info.height, (ev.clientY - r.top - fit.y) / fit.s))]; };
-  cv.onpointerdown = ev => { if (!S.drawMode || !c.live || S.busy) return; cv.setPointerCapture(ev.pointerId); drag = { a: toVideo(ev), b: null }; };
-  cv.onpointermove = ev => { if (!drag) return; const p = toVideo(ev);
-    drag.b = [Math.min(drag.a[0], p[0]), Math.min(drag.a[1], p[1]), Math.max(drag.a[0], p[0]), Math.max(drag.a[1], p[1])]; overlay(); };
-  cv.onpointerup = () => { if (!drag) return; const b = drag.b; drag = null; overlay();
-    if (b && b[2] - b[0] >= 8 && b[3] - b[1] >= 8) sendBox(Math.round(c.t * S.info.fps), b.map(Math.round)); };
-  strip.onclick = ev => {
-    if (!c.live) return;
-    const r = strip.getBoundingClientRect();
-    c.seek((ev.clientX - r.left - 12) / (r.width - 24) * dur(), true);
-  };
-  reviewBtn.onclick = () => {
-    if (!c.unc.length) return;
-    c.uncIdx = (c.uncIdx + 1) % c.unc.length;
-    const u = c.unc[c.uncIdx]; S.selected = u.id; renderTargets(); S.cards.forEach(x => x.paint());
-    c.seek((u.a + u.b) / 2, true);
-    status(`Low-confidence spot ${c.uncIdx + 1} of ${c.unc.length}: ${u.chip} ${fmt(u.a)}–${fmt(u.b)}. The detector saw it but wasn't sure, ` +
-      `so it's masked with extra padding to be safe. Nothing to fix unless it isn't something you want hidden.`);
-  };
-  c.paint = () => { drawStrip(); overlay(); };
-  c.update = () => {
-    if (!c.live) return;
-    c.targets = targetList();
-    c.unc = c.targets.flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
-    reviewBtn.hidden = !c.unc.length;
-    const nt = new Set(c.unc.map(u => u.id)).size;
-    reviewBtn.textContent = `Check ${c.unc.length} low-confidence spot${c.unc.length === 1 ? '' : 's'}`;
-    reviewBtn.title = `Moments where the detector saw something but wasn't sure (${nt} target${nt === 1 ? '' : 's'}). ` +
-      `They're masked anyway, with extra padding. Click to step through them.`;
-    c.seek(c.t, true);
-  };
-  c.freeze = () => { c.live = false; card.classList.add('stale'); undoBtn.hidden = true; reviewBtn.hidden = true; drawHint.hidden = true; frame.classList.remove('drawing'); };
-  c.setDraw = on => { drawHint.hidden = !on; frame.classList.toggle('drawing', on); };
-  new ResizeObserver(overlay).observe(cv);
-  S.cards.forEach(x => x.freeze());
-  S.cards.push(c);
-  c.update();
-  c.setDraw(!!S.drawMode);
-  scrollDown();
-  return c;
-}
-
 // ---------- actions ----------
-function setBusy(msg) {
-  S.busy = !!msg;
-  ['text', 'drawBtn', 'exportBtn'].forEach(id => $(id).disabled = !!msg || !S.vid);
-  document.querySelectorAll('#threadInner .actions button').forEach(b => b.disabled = !!msg);
-  if (S.vid && S.selected) { renderSelBar(); renderTargets(); }  // the edit buttons follow the busy state too
-  status(msg || '');
+let ticker = null;
+function setBusy(kind) {
+  S.busy = kind || null;
+  clearInterval(ticker); ticker = null;
+  if (kind === 'request') ticker = setInterval(() => { renderRequest(); renderAgentHead(); }, 500);
+  if (kind) toggleDraw(false);
+  renderAll();
 }
-function pending(host, first) {
-  const t0 = Date.now(), line = el('div', { class: 'pending' }), sub = el('div', { class: 'pending sub' });
-  host.append(line, sub);
-  const tick = () => {
-    const s = Math.round((Date.now() - t0) / 1000);
-    line.replaceChildren(el('span', { class: 'dots' }, `working${s ? ` · ${s} s` : ''}`));
-    sub.textContent = first ? 'The first request on a new video waits for its scan (faces, plates, people).' :
-      s > 8 ? 'Still going: requests that need the language model or many person checks take longer.' : '';
-  };
-  tick(); const iv = setInterval(tick, 1000);
-  return () => { clearInterval(iv); line.remove(); sub.remove(); };
+function workingSteps(text, first) {
+  return { head: 'Working', lines: [
+    { mark: '◐', now: true, bar: true, text: `Working on "${text}"` },
+    { mark: '○', dim: true, text: first ? 'The first request on a new clip waits for its scan (faces, plates, people).'
+      : 'Plain requests take a moment; ones that need the language model or many person checks take longer.' },
+  ] };
 }
 async function sendRequest(text) {
   if (!S.vid || S.busy || !text.trim()) return;
-  if (/^\s*undo\s*$/i.test(text)) { $('text').value = ''; autosize(); return undoLast(); }
-  closeHints();
-  userMsg(text); $('text').value = ''; autosize();
-  const host = el('div', { class: 'agent' }); thread().append(host); scrollDown();
+  if (/^\s*undo\s*$/i.test(text)) { $('text').value = ''; return undoLast(); }
   const first = S.versions.length === 1;
-  const done = pending(host, first);
-  setBusy('Working on it…');
+  S.reqStart = Date.now(); S.steps = workingSteps(text, first); notice('');
+  setBusy('request');
   let j;
   try {
     j = await post(`api/videos/${S.vid}/request`, { text });
   } catch (err) {
     if (err && err.detail !== undefined) {
-      done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `That request failed: ${errText(err)}`));
+      S.steps = { head: 'What the agent did', lines: [{ mark: '!', cls: 'err', text: `That request failed: ${errText(err)}` }] };
       setBusy(); return;
     }
     // No answer from the app: a proxy in front of it (AUP's gives up after ~100 s) dropped the connection while
     // the server keeps working. Wait for it to finish, so nothing runs before the masks exist.
-    status('The connection dropped, but the server is still working on it. Waiting…');
+    S.steps.lines[1] = { mark: '○', dim: true, text: 'The connection dropped, but the server is still working on it. Waiting…' }; renderAgent();
     try {
       let v; do { await sleep(3000); v = await api(`api/videos/${S.vid}`); } while (v.busy);
-      done(); host.append(el('div', { class: 'text' }, `The server finished: ${v.summary.n_targets} target(s) masked now. The connection dropped before its answer came back, so the steps aren't shown.`));
+      S.lastMs = Date.now() - S.reqStart;
       S.versions.push({ key: `lost_${Date.now()}`, text, at: Date.now(), opIds: [], n: v.summary.n_targets, undone: false });
-      await refreshState(); addCard(host, null); setBusy(); return;
-    } catch (e2) { done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `That request failed: ${errText(e2)}`)); setBusy(); return; }
+      S.steps = { head: 'What the agent did', lines: [{ mark: '–', text: `The server finished: ${v.summary.n_targets} target(s) masked now. The connection dropped before its answer came back, so the steps aren't shown.` }] };
+      await refreshState(); setBusy(); return;
+    } catch (e2) {
+      S.steps = { head: 'What the agent did', lines: [{ mark: '!', cls: 'err', text: `That request failed: ${errText(e2)}` }] };
+      setBusy(); return;
+    }
   }
-  done();
-  const ops = opIdsOf(j.calls);
-  host.append(el('div', { class: 'text' }, j.message));
-  if (j.calls.length) host.append(describe(j.calls, j.path));
+  S.lastMs = Date.now() - S.reqStart;
+  const ops = opIdsOf(j.calls), d = describe(j.calls, j.path);
   if (ops.length) S.versions.push({ key: j.request_id, text, at: Date.now(), opIds: ops, n: j.summary.n_targets, undone: false });
+  const lines = d.lines;
+  if (!ops.length && j.message) lines.push({ mark: '–', text: j.message, cls: j.path === 'clarify' ? '' : '' });
+  S.steps = { head: 'What the agent did', lines, tally: d.tally, calls: j.calls, path: j.path, showCalls: false };
+  const added = j.calls.filter(c => c.tool === 'add_masks' && !c.error).flatMap(c => c.args.track_ids || []);
   await refreshState();
-  if (ops.length || j.calls.some(c => c.tool === 'undo' && c.result)) {
-    const added = j.calls.filter(c => c.tool === 'add_masks' && !c.error).flatMap(c => c.args.track_ids || []);
-    addCard(host, added);
-  } else if (j.path === 'clarify') {
-    host.append(el('div', { class: 'actions' }, el('button', { onclick: showHints }, 'See example requests')));
-  }
-  host.append(el('details', { class: 'raw' }, el('summary', {}, `Tool calls (${j.calls.length}) · ${j.path}`), el('pre', {}, JSON.stringify(j.calls, null, 1))));
-  setBusy(); scrollDown(); $('text').focus();
+  // Land on the first thing this request masked, like the review state of the design
+  const firstT = targetList().find(t => added.includes(t.id) && t.segs.length);
+  if (firstT) { S.selected = firstT.id; seek((firstT.segs[0][0] + firstT.segs[0][1]) / 2); }
+  setBusy(); $('text').focus();
 }
 async function sendBox(frame, box) {
-  if (S.busy) return;
+  if (S.busy || !S.vid) return;
   toggleDraw(false);
-  userMsg(`Box drawn on frame ${String(frame).padStart(4, '0')}`);
-  const host = el('div', { class: 'agent' }); thread().append(host);
-  const done = pending(host, false); setBusy('Tracking the box…');
+  setBusy('edit'); notice('Tracking the box through the clip…');
   try {
     const j = await post(`api/videos/${S.vid}/box`, { frame, box });
-    done();
     S.versions.push({ key: `box_${j.op_id}_${Date.now()}`, text: `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    S.selected = j.track.track_id;
     await refreshState();
-    host.append(el('div', { class: 'text' }, `Tracking ${tid(j.track.track_id)} from ${fmt(j.track.start)} to ${fmt(j.track.end)}; it's blurred wherever it was followed.`));
-    S.selected = j.track.track_id; renderTargets();
-    addCard(host, [j.track.track_id]);
-  } catch (e) { done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `Couldn't track that box: ${errText(e)}`)); }
+    notice(`Added ${tid(j.track.track_id)}: tracked from ${fmt(j.track.start)} to ${fmt(j.track.end)} and blurred wherever it was followed. Change its effect below.`);
+  } catch (e) { notice(`Couldn't track that box: ${errText(e)}`, true); }
   setBusy();
 }
 // Undo the latest version: every op it added (a request can add several), not just the last op
 async function undoLast() {
   if (S.busy || !S.vid) return;
   const ver = [...S.versions].reverse().find(v => !v.undone && v.opIds.length);
-  if (!ver) { note('Nothing to undo.'); return; }
-  setBusy('Undoing…');
+  if (!ver) { notice('Nothing to undo.'); return; }
+  setBusy('edit');
   try {
     for (let i = 0; i < 20; i++) {
       const last = S.ops[S.ops.length - 1];
@@ -748,163 +631,41 @@ async function undoLast() {
       S.ops = (await api(`api/videos/${S.vid}`)).ops;
     }
     ver.undone = true;
-    const n = S.versions.indexOf(ver) + 1;
     await refreshState();
-    const host = note(`Undid v${n} ("${ver.text}"). ${S.timeline ? Object.keys(S.timeline.targets).length : 0} target(s) masked now.`);
-    addCard(host, null);
-  } catch (e) { status(`Undo failed: ${errText(e)}`, true); }
+    const n = S.timeline ? Object.keys(S.timeline.targets).length : 0;
+    S.steps = { head: 'What the agent did', lines: [{ mark: '–', text: `Undid v${vNum(ver)} ("${ver.text}"). ${n} target${n === 1 ? '' : 's'} masked now.` }] };
+    notice('');
+  } catch (e) { notice(`Undo failed: ${errText(e)}`, true); }
   setBusy();
 }
 async function doExport() {
   if (!S.vid || S.busy) return;
-  if (!Object.keys(S.timeline.targets).length) { status('No masks yet: send a request first, or the export would just be the original.', true); return; }
-  setBusy('Rendering the blurred video…'); $('exportBtn').textContent = 'Rendering…';
+  if (!Object.keys(S.timeline.targets).length) { notice('No masks yet: send a request first, or the export would just be the original.', true); return; }
+  setBusy('export'); notice('');
   try {
     const j = await post(`api/videos/${S.vid}/export`);
-    S.exportUrl = j.url; S.exportSig = S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
-    $('dl').href = j.url; $('dl').hidden = false;
-    $('srcCtl').querySelector('[data-src=export]').disabled = false;
-    const live = S.versions.filter(v => !v.undone), cur = S.versions.indexOf(live[live.length - 1]) + 1;
-    note(`Exported v${cur}: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames${j.stats.failed_frames ? `, ${j.stats.failed_frames} frames failed to decode` : ''}. Rendered on this machine.`);
-    setSrc('export'); openStage(0);
-    setBusy();
-  } catch (e) { setBusy(); status(errText(e) || 'Export failed.', true); }
-  $('exportBtn').textContent = 'Export';
-}
-
-// ---------- rails ----------
-function select(id) {
-  S.selected = S.selected === id ? null : id;
-  if (S.selected) tid(S.selected);
-  renderTargets(); renderTimeline(); renderSelBar(); S.cards.forEach(c => c.paint()); drawLayers();
-}
-function renderTargets() {
-  const ts = targetList();
-  $('targets').replaceChildren(...(ts.length ? ts.flatMap(t => [el('button', { class: `target${t.id === S.selected ? ' sel' : ''}`, title: `${t.id} · ${t.effect}`, onclick: () => select(t.id) },
-    el('span', { class: 'chip' }, t.chip), el('span', { class: 'name' }, t.name), el('span', { class: 'fx' }, t.effect)),
-    t.id === S.selected ? editControls(t.id, true) : null]).filter(Boolean)
-    : [el('div', { class: 'rail-empty' }, S.vid ? 'Nothing masked yet.' : 'Load a clip to start.')]));
-}
-
-// ---------- hand edits on one target ----------
-// Pick a box (click it in the Preview, or a row in Targets), then mask it, unmask it or change its effect.
-// Each edit is one op in the log, so it shows up in Versions and Undo reverts it.
-const EFFECTS = [['blur', 'Blur'], ['pixelate', 'Pixelate'], ['box', 'Black box']];
-function editControls(id, compact = false) {
-  const tr = (S.trackList || []).find(t => t.track_id === id), target = S.timeline && S.timeline.targets[id];
-  if (!tr && !target) return null;
-  const label = (target || tr).label, chip = tid(id), busy = S.busy;
-  const what = el('span', { class: 'what' }, compact ? null : el('span', { class: 'chip', style: 'margin-right:6px' }, chip),
-    compact ? null : tname(id, label), el('small', {}, target ? `masked · ${target.effect}` : 'found, not masked'));
-  const kids = [what];
-  if (target) {
-    for (const [fx, name] of EFFECTS) kids.push(el('button', { class: fx === target.effect ? 'primary' : '', 'aria-pressed': String(fx === target.effect),
-      disabled: busy ? '' : null, onclick: () => fx !== target.effect && editTargets('effect', [id], fx) }, name));
-    kids.push(el('button', { class: 'danger', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Unmask'));
-    if (!compact) kids.push(el('span', { class: 'hint' }, 'In the wrong place? Drag the box or a corner in the Preview.'));
-  } else {
-    kids.push(el('span', { class: 'hint' }, 'Mask it with'));
-    for (const [fx, name] of EFFECTS) kids.push(el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, name));
-  }
-  if (!compact) kids.push(el('button', { class: 'cbtn', style: 'margin-left:auto', onclick: () => select(id) }, 'Deselect'));
-  return el('div', { class: 'edit' }, kids);
-}
-function renderSelBar() {
-  const c = S.selected && editControls(S.selected);
-  $('selBar').replaceChildren(...(c ? [c] : []));
+    S.exportUrl = j.url; S.exportStats = j.stats; S.exportSig = opsSig();
+    setProgramSource();
+  } catch (e) { notice(errText(e) || 'Export failed.', true); }
+  setBusy();
 }
 async function editTargets(action, ids, effect = 'blur') {
   if (S.busy || !S.vid) return;
   const names = ids.map(i => `${tid(i)} (${tname(i, (S.timeline.targets[i] || (S.trackList || []).find(t => t.track_id === i) || {}).label)})`).join(', ');
   const text = action === 'remove' ? `Unmasked ${names}` : action === 'add' ? `Masked ${names} with ${effect}` : `Changed ${names} to ${effect}`;
-  setBusy('Saving the edit…');
+  setBusy('edit');
   try {
     const j = await post(`api/videos/${S.vid}/targets`, { action, track_ids: ids, effect });
     S.versions.push({ key: `edit_${j.op_id}_${Date.now()}`, text, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
     await refreshState();
-    note(`${text}. Undo reverts it.`);
-  } catch (e) { status(`That edit failed: ${errText(e)}`, true); }
+    notice(`${text}. Undo reverts it.`);
+  } catch (e) { notice(`That edit failed: ${errText(e)}`, true); }
   setBusy();
 }
-// Preview geometry: a pointer event -> video pixels, and the scale (screen px per video px)
-function previewPoint(ev) {
-  const r = $('layers').getBoundingClientRect(), W = S.info.width, H = S.info.height;
-  const s = Math.min(r.width / W, r.height / H);
-  return { x: (ev.clientX - r.left - (r.width - W * s) / 2) / s, y: (ev.clientY - r.top - (r.height - H * s) / 2) / s, s };
-}
-// The box under a point of the Preview at the frame shown, smallest first (a face inside a person wins)
-function boxAtPoint(ev) {
-  if (!P.layers.boxes || !S.trackList || !S.info) return null;
-  const { x, y, s } = previewPoint(ev);
-  let best = null, area = Infinity;
-  for (const t of S.trackList) {
-    if (P.hiddenKinds.has(t.label)) continue;
-    const k = trackBox(t, P.frame); if (!k) continue;
-    const [x1, y1, x2, y2] = k.box, slop = 4 / s;  // a few screen pixels of slack for small plates
-    if (x < x1 - slop || x > x2 + slop || y < y1 - slop || y > y2 + slop) continue;
-    const a = (x2 - x1) * (y2 - y1); if (a < area) { area = a; best = t.track_id; }
-  }
-  return best;
-}
-// The selected target's masked box at the frame shown, if it can be moved there (masked, and on screen now)
-function movableBox() {
-  const id = S.selected, t = id && S.timeline && S.timeline.targets[id];
-  if (!t || !P.layers.boxes || P.src !== 'source') return null;
-  const k = trackBox({ keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }, P.frame);
-  return k ? { id, box: k.box } : null;
-}
-// Which part of the movable box a point is on: a corner (resize), inside (move) or nothing
-function grabAt(ev) {
-  const mb = movableBox(); if (!mb) return null;
-  const { x, y, s } = previewPoint(ev), [x1, y1, x2, y2] = mb.box, near = 9 / s;
-  const cx = Math.abs(x - x1) <= near ? 'w' : Math.abs(x - x2) <= near ? 'e' : '';
-  const cy = Math.abs(y - y1) <= near ? 'n' : Math.abs(y - y2) <= near ? 's' : '';
-  if (cx && cy) return { ...mb, handle: cy + cx };
-  if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return { ...mb, handle: 'move' };
-  return null;
-}
-// Drag the selected box (or a corner) to fix where it is; letting go re-tracks from this frame on.
-// A press without a drag is a click: select the box under it, or play / pause.
-let drag = null;
-$('hit').onpointerdown = ev => {
-  if (!S.info || ev.button !== 0) return;
-  const g = !S.busy && grabAt(ev);
-  drag = { x0: ev.clientX, y0: ev.clientY, grab: g || null, start: previewPoint(ev), frame: P.frame };
-  if (g) { $('player').pause(); $('hit').setPointerCapture(ev.pointerId); }
-};
-$('hit').onpointermove = ev => {
-  if (drag && drag.grab) {
-    const p = previewPoint(ev), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
-    let b = h === 'move' ? [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
-      : [h.includes('w') ? x1 + dx : x1, h.includes('n') ? y1 + dy : y1, h.includes('e') ? x2 + dx : x2, h.includes('s') ? y2 + dy : y2];
-    b = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])];
-    const W = S.info.width, H = S.info.height;
-    P.dragBox = [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(W, b[2]), Math.min(H, b[3])];
-    drawLayers(); return;
-  }
-  const g = !S.busy && grabAt(ev), id = g ? g.id : boxAtPoint(ev), hit = $('hit');
-  hit.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
-  hit.title = g ? 'Drag to move this mask, or a corner to resize it, from this frame on'
-    : id ? `${tid(id)} ${tname(id, (S.trackList.find(t => t.track_id === id) || {}).label)}: click to select` : '';
-};
-$('hit').onpointerup = ev => {
-  const d = drag; drag = null; if (!d) return;
-  const moved = Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 3;
-  if (d.grab && moved && P.dragBox) {
-    const box = P.dragBox.map(Math.round); P.dragBox = null;
-    if (box[2] - box[0] >= 4 && box[3] - box[1] >= 4) moveTarget(d.grab.id, d.frame, box); else drawLayers();
-    return;
-  }
-  P.dragBox = null;
-  if (moved) return;
-  const id = boxAtPoint(ev), v = $('player');
-  if (id) { if (id !== S.selected) select(id); return; }
-  v.paused ? v.play() : v.pause();  // like clicking the video itself
-};
 async function moveTarget(id, frame, box) {
   if (S.busy || !S.vid) return;
   const label = (S.timeline.targets[id] || {}).label, name = `${tid(id)} (${tname(id, label)})`;
-  setBusy(`Following ${name} from the corrected box…`);
+  setBusy('edit'); notice(`Following ${name} from the corrected box…`);
   try {
     const j = await post(`api/videos/${S.vid}/targets`, { action: 'move', track_ids: [id], frame, box });
     const nid = j.track.track_id;
@@ -913,68 +674,225 @@ async function moveTarget(id, frame, box) {
     if (S.desc[id]) S.desc[nid] = S.desc[id];
     S.selected = nid; tid(nid);
     await refreshState();
-    note(`Moved ${name}: from ${fmtF(frame / S.info.fps)} on, ${tid(nid)} follows the corrected box (until ${fmt(j.track.end)}); before that the old box stays. Undo reverts it.`);
-  } catch (e) { status(`Couldn't move it: ${errText(e)}`, true); }
-  setBusy(); drawLayers();
+    notice(`Moved ${name}: from ${fmtF(frame / S.info.fps)} on, ${tid(nid)} follows the corrected box (until ${fmt(j.track.end)}); before that the old box stays. Undo reverts it.`);
+  } catch (e) { notice(`Couldn't move it: ${errText(e)}`, true); }
+  setBusy();
 }
-// Our own controls (the browser's covered the bottom of the picture, where plates often are)
-(function playerControls() {
-  const v = $('player'), sc = $('scrub');
-  const sync = () => {
-    $('playBtn').textContent = v.paused ? '▶' : '❚❚';
-    if (isFinite(v.duration)) { sc.max = v.duration; if (!sc.matches(':active')) sc.value = v.currentTime; }
-    $('pctlTime').textContent = `${fmtF(v.currentTime || 0)} / ${fmt(isFinite(v.duration) ? v.duration : 0)}`;
-  };
-  ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'durationchange'].forEach(e => v.addEventListener(e, sync));
-  $('playBtn').onclick = () => v.paused ? v.play() : v.pause();
-  sc.oninput = () => { v.currentTime = +sc.value; };
-  const step = n => { v.pause(); if (S.info) v.currentTime = Math.max(0, Math.min(dur() - 1 / S.info.fps, (P.frame + n + 0.5) / S.info.fps)); };
-  $('stepBack').onclick = () => step(-1); $('stepFwd').onclick = () => step(1);
-  document.addEventListener('keydown', e => {
-    if ($('stage').hidden || !S.vid || /^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(document.activeElement.tagName)) return;
-    if (e.key === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
-    else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
-  });
-})();
-function renderVersions() {
-  const live = S.versions.filter(v => !v.undone);
-  const cur = live[live.length - 1];
-  $('fileMeta').textContent = S.vid ? `${fmt(dur())} · v${S.versions.indexOf(cur) + 1}` : '';
-  $('versions').replaceChildren(...S.versions.map((v, i) => [v, i]).reverse().map(([v, i]) =>
-    el('div', { class: `version${v === cur ? ' cur' : ''}${v.undone ? ' undone' : ''}`, title: v.key },
-      el('span', { class: 'vid' }, `v${i + 1}`), el('span', { class: 'vtext' }, v.text), el('span'),
-      el('span', { class: 'vmeta' }, v.undone ? 'undone' : i === 0 ? ago(v.at) : `${ago(v.at)} · ${v.n} target${v.n === 1 ? '' : 's'}`))));
+function select(id) {
+  S.selected = id && S.selected === id ? null : id;
+  if (S.selected) tid(S.selected);
+  renderAgent(); renderTimeline(); drawAll();
+}
+function checkSpot() {
+  const sp = spots(); if (!sp.length) return;
+  S.spotIdx = (S.spotIdx + 1) % sp.length;
+  const u = sp[S.spotIdx];
+  S.selected = u.id; seek((u.a + u.b) / 2);
+  renderAgent(); renderTimeline();
 }
 
-// ---------- preview stage ----------
-// The original video with two stackable layers drawn on a canvas over it, synced to the frame on screen:
-//  Boxes: every detected track (masked or not), labeled with the vision model's answer when it was asked;
-//  Masks: the renderer's own rectangles (GET /masks), blurred / pixelated / boxed the way the export does it.
-// "Exact export" swaps in the rendered file, so the pixels that will be shared can be checked too.
-const KIND = {
-  'face': { name: 'Faces', one: 'face', color: '#ffd27a' }, 'license plate': { name: 'Plates', one: 'plate', color: '#7fd4ff' },
-  'person': { name: 'People', one: 'person', color: '#9fe0b0' }, 'user box': { name: 'Drawn', one: 'drawn box', color: '#d4a6ff' },
-};
-const kindOf = label => KIND[label] || { name: label, one: label, color: '#eef1f6' };
-const P = { layers: { boxes: true, masks: true }, hiddenKinds: new Set(), src: 'source', frame: -1, small: null };
+// ---------- rendering the panels ----------
+function renderAll() {
+  renderHeader(); renderPicker(); renderRequest(); renderExport(); renderAgent(); renderTimeline(); drawAll();
+}
+function renderHeader() {
+  $('fileName').textContent = S.vid ? S.name : 'No clip';
+  $('fileMeta').textContent = S.info ? `${S.info.width}×${S.info.height} · ${+S.info.fps.toFixed(2)} fps · ${fmtD(dur())}` : '';
+  $('hdrNote').textContent = exportFresh() && S.exportStats ? `exported · ${S.exportStats.masked_boxes.toLocaleString()} masked boxes` : '';
+}
+function renderRequest() {
+  const running = S.busy === 'request';
+  $('text').classList.toggle('running', running);
+  $('text').readOnly = running;
+  $('genBtn').hidden = running; $('genProg').hidden = !running;
+  $('genBtn').disabled = !S.vid || !!S.busy;
+  if (running) $('genLabel').textContent = `Working · ${((Date.now() - S.reqStart) / 1000).toFixed(0)} s`;
+  $('drawBtn').disabled = !S.vid || !!S.busy;
+  $('drawBtn').classList.toggle('on', !!S.drawMode);
+  $('playBtn').disabled = !S.vid;
+  for (const b of $('examples').children) b.disabled = !S.vid || running;
+}
+function renderExport() {
+  const n = S.timeline ? Object.keys(S.timeline.targets).length : 0, p = $('expPanel');
+  const head = meta => el('div', { class: 'h' }, el('span', { class: 'n' }, '04'), 'Export', el('span', { class: 'meta' }, meta));
+  const btn = (label, disabled) => { const b = el('button', { class: 'primary', disabled: disabled ? '' : null, onclick: doExport }, label, svg('arrow')); return b; };
+  const sub = S.info ? `export.mp4 · H.264 · ${S.info.width}×${S.info.height}` : 'Pick a clip first.';
+  if (S.busy === 'request') {
+    p.replaceChildren(head('waits for the request'), el('span', { class: 'exTitle mute' }, `Waiting for v${S.versions.length + 1}`),
+      el('span', { class: 'exSub' }, sub), btn('Export', true));
+  } else if (S.busy === 'export') {
+    p.replaceChildren(head(`${n} masked target${n === 1 ? '' : 's'}`), el('span', { class: 'exTitle' }, 'Rendering…'),
+      el('span', { class: 'exSub' }, 'Writing every frame with its masks, on this machine.'), btn('Export', true));
+  } else if (exportFresh()) {
+    const st = S.exportStats;
+    p.replaceChildren(head(`${n} masked target${n === 1 ? '' : 's'}`),
+      el('span', { class: 'exTitle' }, el('span', { class: 'sq' }), 'Exported'),
+      el('span', { class: 'exSub' }, `export.mp4 · ${st.frames.toLocaleString()} frames · ${st.failed_frames} failed segments`),
+      el('a', { class: 'primary', href: S.exportUrl, download: 'export.mp4' }, svg('download'), 'Download'));
+  } else {
+    p.replaceChildren(head(S.vid ? `${n} masked target${n === 1 ? '' : 's'}` : ''),
+      el('span', { class: `exTitle${n ? '' : ' mute'}` }, n ? 'Ready to export' : 'Nothing masked yet'),
+      el('span', { class: 'exSub' }, n || !S.vid ? sub : 'Send a request or draw a box first.'), btn('Export', !S.vid || !n || !!S.busy));
+  }
+}
+function renderAgentHead() {
+  const cur = curVersion();
+  $('planMeta').textContent = !S.vid ? '' : S.busy === 'request' ? `v${S.versions.length + 1} · working`
+    : `v${vNum(cur)}${S.lastMs !== null && cur && cur.key !== 'upload' ? ` · ${(S.lastMs / 1000).toFixed(1)} s` : ''}`;
+  $('undoBtn').hidden = !S.vid || S.busy === 'request' || !S.versions.some(v => !v.undone && v.opIds.length);
+  $('undoBtn').disabled = !!S.busy;
+}
+function renderAgent() {
+  renderAgentHead();
+  // Steps card
+  const st = S.steps, box = $('steps');
+  if (!st) {
+    box.replaceChildren(el('span', { class: 'sh' }, 'What the agent did'),
+      el('div', { class: 'step dim' }, el('span', { class: 'mk' }, '○'), el('span', {}, S.vid ? 'Nothing yet. Type a request on the left, or draw a box on Source.' : 'Pick a clip to start.')));
+  } else {
+    const kids = [el('span', { class: 'sh' }, st.head)];
+    for (const l of st.lines) {
+      kids.push(el('div', { class: `step${l.now ? ' now' : ''}${l.dim ? ' dim' : ''}${l.cls ? ' ' + l.cls : ''}` }, el('span', { class: 'mk' }, l.mark), el('span', {}, l.text)));
+      if (l.bar) kids.push(el('div', { class: 'stepBar' }, el('i')));
+    }
+    if (st.calls) {
+      const t = st.tally;
+      const toggle = el('button', { onclick: () => { st.showCalls = !st.showCalls; renderAgent(); } }, `Tool calls ${st.showCalls ? '▾' : '▸'}`);
+      kids.push(el('div', { class: 'tally' },
+        t ? [el('span', { class: t.yes ? 'yes' : '' }, `${t.yes} yes`), el('span', {}, `${t.no} no`), el('span', {}, `${t.unknown} unsure`)] : null, toggle));
+      if (st.showCalls) kids.push(el('pre', {}, `path: ${st.path}\n` + JSON.stringify(st.calls, null, 1)));
+    }
+    box.replaceChildren(...kids);
+  }
+  // Target list
+  const { rows, grouped, ts } = rowsModel();
+  const busy = !!S.busy;
+  $('tbody').replaceChildren(...(rows.length ? rows.map(r => {
+    const sp = span(r), sel = !r.group && r.id === S.selected;
+    return el('div', { class: `trow${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}`,
+      title: r.group ? 'Grouped by kind; select one on Source or step through the low-confidence spots' : `${r.chip} ${r.name}${r.effect ? ` · ${r.effect}` : ''}`,
+      onclick: r.group ? null : () => { select(r.id); if (S.selected && sp) seek(Math.max(sp[0], Math.min(sp[1], P.t))); } },
+      el('span', { class: 'id' }, r.group ? '·' : r.chip), el('span', { class: 'nm' }, r.name),
+      el('span', { class: 't' }, sp ? fmtF(sp[0]) : '–'), el('span', { class: 't' }, sp ? fmtF(sp[1]) : '–'));
+  }) : [el('div', { class: 'tempty' }, S.vid ? 'Nothing masked yet.' : 'No clip loaded.')]));
+  // Low-confidence spots
+  const sp = spots();
+  $('lowconf').hidden = !sp.length || S.busy === 'request';
+  if (sp.length) {
+    const cur = S.spotIdx >= 0 && sp[S.spotIdx % sp.length];
+    $('lowconf').replaceChildren(el('i'),
+      el('span', {}, cur ? `Spot ${S.spotIdx % sp.length + 1} of ${sp.length}: ${cur.chip} at ${fmtF(cur.a)}–${fmtF(cur.b)}. The detector wasn't sure there, so it's masked with extra padding.`
+        : `${sp.length} low-confidence spot${sp.length === 1 ? '' : 's'}, masked anyway with extra padding`),
+      el('button', { onclick: checkSpot, title: 'Step through them' }, cur ? 'Next' : 'Check'));
+  }
+  // Selected target
+  const sp2 = $('selPanel'), id = S.selected;
+  const t = id && ts.find(x => x.id === id), tr = id && (S.trackList || []).find(x => x.track_id === id);
+  if (!id || (!t && !tr)) {
+    sp2.replaceChildren(el('span', { class: 'selHint' }, S.vid ? 'Select a target on Source, in the list or in the timeline to change its effect or remove it.' : ''));
+    return;
+  }
+  const label = (t || tr).label, masked = t && !t.spared;
+  const range = t ? span(t) : (tr.keyframes.length ? [tr.keyframes[0].f / S.info.fps, (tr.keyframes[tr.keyframes.length - 1].f + 1) / S.info.fps] : null);
+  const head = el('div', { class: 'selHead' }, el('span', { class: 'sid' }, tid(id)), el('span', { class: 'snm' }, t ? t.name : tname(id, label)),
+    el('span', { class: 'stm' }, range ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
+  const fxs = [['blur', 'Blur'], ['pixelate', 'Pixelate'], ['box', 'Box']];
+  if (masked) {
+    const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect' }, fxs.map(([fx, nm]) =>
+      el('button', { class: fx === t.effect ? 'on' : '', 'aria-pressed': String(fx === t.effect), disabled: busy ? '' : null,
+        onclick: () => fx !== t.effect && editTargets('effect', [id], fx) }, nm)));
+    sp2.replaceChildren(head, el('div', { class: 'selRow' }, seg,
+      el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Remove')),
+      el('span', { class: 'selHint' }, 'In the wrong place? Drag the box or a corner on Source; from that frame on, a new track follows it.'));
+  } else {
+    const ans = S.vlm[id];
+    sp2.replaceChildren(head, el('span', { class: 'selHint' }, t && t.spared ? `Spared: the vision model answered ${ans.a} to "${ans.q}".` : 'Found, not masked.'),
+      el('div', { class: 'selRow' }, el('span', { class: 'mute' }, 'Mask it with'), el('div', { class: 'seg' }, fxs.map(([fx, nm]) =>
+        el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, nm)))));
+  }
+}
+function renderTimeline() {
+  const g = $('tlGrid');
+  if (!S.info) { g.replaceChildren(); $('tlNote').textContent = ''; return; }
+  const { rows, ts } = rowsModel(), d = dur();
+  const nMasked = ts.filter(t => !t.spared).length, nSpared = ts.filter(t => t.spared).length, nSpots = spots().length;
+  $('tlNote').textContent = S.busy === 'request' ? `v${S.versions.length + 1} in progress` : S.drawMode ? `drawing T${Object.keys(S.ids).length + 1} on Source`
+    : [`${nMasked} masked`, nSpared ? `${nSpared} spared` : '', nSpots ? `${nSpots} low-confidence spot${nSpots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+  const step = d > 300 ? 60 : d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
+  const ruler = el('div', { class: 'ruler', title: 'Click to seek' });
+  for (let s = 0; s < d - 1e-6; s += step) ruler.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
+  ruler.onclick = ev => { const r = ruler.getBoundingClientRect(); seek((ev.clientX - r.left) / r.width * d); };
+  const kids = [el('div', { class: 'ruler corner' }), ruler];
+  for (const r of rows) {
+    const sel = !r.group && r.id === S.selected;
+    kids.push(el('div', { class: `rl${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}`, onclick: r.group ? null : () => select(r.id) },
+      el('span', { class: 'id' }, r.group ? '' : r.chip), el('span', { class: 'nm' }, r.name), el('span', { class: 'fx' }, r.spared ? '—' : r.effect || '')));
+    const lane = el('div', { class: `lane${sel ? ' sel' : ''}`, title: r.group ? r.name : `${r.chip} ${r.name}` });
+    const color = sel ? 'var(--acc)' : r.effect === 'box' ? 'var(--text)' : 'var(--seg)';
+    r.ext.forEach(([a, b]) => lane.append(el('span', { class: 'x', style: `left:${pct(a)};width:${pct(b - a)}` })));
+    r.segs.forEach(([a, b]) => lane.append(el('span', { class: 's', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px);background:${color}` })));
+    r.unc.forEach(([a, b]) => lane.append(el('span', { class: 'u', style: `left:${pct(a)};width:${pct(b - a)}` })));
+    lane.onclick = ev => {
+      const rc = lane.getBoundingClientRect(); seek((ev.clientX - rc.left) / rc.width * d);
+      if (!r.group && r.id !== S.selected) select(r.id);
+    };
+    kids.push(lane);
+  }
+  if (!rows.length) kids.push(el('div', { class: 'tempty', style: 'grid-column:1 / -1' }, 'Nothing masked yet.'));
+  kids.push(el('div', { id: 'ph' }, el('span', { id: 'phTag' })));
+  g.replaceChildren(...kids);
+  placePlayhead();
+}
+function placePlayhead() {
+  const ph = $('ph'); if (!ph || !S.info) return;
+  const labelW = $('tlGrid').firstChild ? $('tlGrid').firstChild.getBoundingClientRect().width : 240;
+  ph.style.left = `calc(${labelW}px + (100% - ${labelW}px) * ${Math.min(1, P.t / dur())})`;
+  $('phTag').textContent = fmtF(P.t);
+}
 
-function openStage(t) {
-  if (!S.vid) return;
-  $('stage').hidden = false; renderTimeline(); renderKinds(); drawLayers();
-  if (typeof t === 'number' && isFinite(t)) $('player').currentTime = Math.max(0, t);
+// ---------- monitors ----------
+// One hidden <video> decodes the source; both monitors draw from it on every frame it presents, so they can't
+// drift. Source: the frame plus one labeled box per target. Program: the frame with the masks applied the way
+// the renderer does it, or, after Export, the exported file itself (a second hidden <video> kept on the playhead).
+const P = { t: 0, frame: 0, hits: [], dragBox: null, newBox: null, src: 'source' };
+function seek(t) {
+  if (!S.info) return;
+  const v = $('player'); t = Math.max(0, Math.min(dur() - 1 / S.info.fps, t));
+  v.currentTime = t; P.t = t; drawAll();
 }
-function setSrc(which) {
-  P.src = which;
-  for (const b of $('srcCtl').children) b.classList.toggle('on', b.dataset.src === which);
-  const t = $('player').currentTime || 0;
-  const src = which === 'export' && S.exportUrl ? S.exportUrl : S.vid ? `api/videos/${S.vid}/source` : '';
-  if (src && !$('player').src.endsWith(src)) { $('player').src = src; $('player').currentTime = t; }
-  // The export is already blurred: drawing the masks again on top would hide what it really looks like
-  $('layerCtl').querySelector('[data-layer=masks]').disabled = which === 'export';
-  drawLayers();
+function setProgramSource() {
+  const fresh = exportFresh(), ex = $('expPlayer');
+  P.src = fresh ? 'export' : 'source';
+  if (fresh && !ex.src.endsWith(S.exportUrl)) { ex.src = S.exportUrl; ex.currentTime = $('player').currentTime || 0; }
+  if (!fresh && ex.getAttribute('src')) { ex.pause(); ex.removeAttribute('src'); ex.load(); }
 }
-// Per-frame lookups, rebuilt whenever the tracks or masks change
+function layoutMonitors() {
+  if (!S.info) return;
+  const r = $('well').getBoundingClientRect(), W = S.info.width, H = S.info.height, head = 25 + 4;
+  const side = Math.min((r.width - 32 - 28 - 8) / 2 / W, (r.height - 18 - head) / H);
+  const stack = Math.min((r.width - 32 - 8) / W, (r.height - 18 - 14 - 2 * head) / 2 / H);
+  // Side by side, as designed, unless that makes them much smaller than stacking would (a phone, a wide clip)
+  const stacked = side < stack * 0.6;
+  $('well').classList.toggle('stacked', stacked);
+  const s = Math.max(0.01, stacked ? stack : side);
+  const w = Math.floor(W * s), h = Math.floor(H * s), dpr = devicePixelRatio || 1;
+  for (const id of ['srcScreen', 'progScreen']) { $(id).style.width = `${w}px`; $(id).style.height = `${h}px`; $(id).parentNode.style.width = `${w}px`; }
+  for (const id of ['srcCv', 'progCv']) { const c = $(id); if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); } }
+  drawAll();
+}
+new ResizeObserver(layoutMonitors).observe($('well'));
+// A track's box at frame f: its keyframe, or interpolated between two keyframes up to 15 frames apart (the
+// renderer's MAX_GAP)
+function trackBox(t, f) {
+  const k = t.keyframes; let lo = 0, hi = k.length - 1;
+  if (!k.length || f < k[0].f || f > k[hi].f) return null;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (k[mid].f <= f) lo = mid; else hi = mid; }
+  const a = k[lo], b = k[hi];
+  if (a.f === f) return a; if (b.f === f) return b;
+  if (b.f - a.f > 15) return null;
+  const u = (f - a.f) / (b.f - a.f);
+  return { box: a.box.map((v, i) => v + (b.box[i] - v) * u), conf: a.conf, state: a.state === 'uncertain' || b.state === 'uncertain' ? 'uncertain' : a.state };
+}
 function indexLayers(tracks, masks) {
   S.trackList = Object.values(tracks.tracks || {}).map(t => ({ ...t, keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }));
   const byFrame = new Map();
@@ -985,17 +903,150 @@ function indexLayers(tracks, masks) {
     }
   S.maskFrames = byFrame;
 }
-// A track's box at frame f: its keyframe, or interpolated between two keyframes up to 15 frames apart (the
-// renderer's MAX_GAP). No lead-in or hold: this layer shows what the detector saw, the masks layer the rest.
-function trackBox(t, f) {
-  const k = t.keyframes; let lo = 0, hi = k.length - 1;
-  if (!k.length || f < k[0].f || f > k[hi].f) return null;
-  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (k[mid].f <= f) lo = mid; else hi = mid; }
-  const a = k[lo], b = k[hi];
-  if (a.f === f) return a; if (b.f === f) return b;
-  if (b.f - a.f > 15) return null;
-  const u = (f - a.f) / (b.f - a.f);
-  return { box: a.box.map((v, i) => v + (b.box[i] - v) * u), conf: a.conf, state: a.state === 'uncertain' || b.state === 'uncertain' ? 'uncertain' : a.state };
+const currentFrame = t => S.info ? Math.max(0, Math.min(S.info.n_frames - 1, Math.round(t * S.info.fps))) : 0;
+function drawAll(mediaTime) {
+  if (!S.info || !S.timeline) return;
+  const v = $('player');
+  P.t = mediaTime !== undefined ? mediaTime : v.currentTime || 0;
+  P.frame = currentFrame(P.t);
+  drawSource(); drawProgram();
+  $('tc').textContent = fmtF(P.t); $('tcDur').textContent = `/ ${fmtF(dur())}`;
+  $('playBtn').replaceChildren(svg(v.paused ? 'play' : 'pause'));
+  $('playBtn').setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
+  const exportLabel = P.src === 'export';
+  $('progLabel').textContent = exportLabel ? 'export.mp4 · what was written' : S.busy === 'request' ? `final output · v${vNum(curVersion())}` : 'final output · what Export writes';
+  const badge = $('progBadge');
+  badge.hidden = S.busy !== 'request';
+  if (!badge.hidden) badge.textContent = `Showing v${vNum(curVersion())} · updates when v${S.versions.length + 1} is done`;
+  placePlayhead();
+}
+// Label placement: above or below the box, anchored left or right, so neighbors don't overlap
+function placeLabel(g, text, x1, y1, x2, y2, placed, cw, ch) {
+  const w = Math.ceil(g.measureText(text).width) + 8, h = 13;
+  const cands = [[x1 - 1, y1 - h - 2], [x1 - 1, y2 + 2], [x2 - w + 1, y1 - h - 2], [x2 - w + 1, y2 + 2]];
+  const fits = ([x, y]) => x >= 0 && y >= 0 && x + w <= cw && y + h <= ch;
+  const free = ([x, y]) => !placed.some(p => x < p[0] + p[2] && x + w > p[0] && y < p[1] + p[3] && y + h > p[1]);
+  let pos = cands.find(c => fits(c) && free(c)) || cands.find(fits) || cands[0];
+  pos = [Math.max(0, Math.min(cw - w, pos[0])), Math.max(0, Math.min(ch - h, pos[1]))];
+  placed.push([pos[0], pos[1], w, h]);
+  return { x: pos[0], y: pos[1], w, h };
+}
+function drawSource() {
+  const cv = $('srcCv'), v = $('player'), dpr = devicePixelRatio || 1;
+  const cw = cv.width / dpr, ch = cv.height / dpr; if (!cw) return;
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#000'; g.fillRect(0, 0, cw, ch);
+  if (v.readyState >= 2) g.drawImage(v, 0, 0, cw, ch);
+  const s = cw / S.info.width, f = P.frame;
+  const maskNow = new Map(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => [m.id, m]));
+  const items = [];
+  // Masked targets at their exact export rectangle; spared and other detected tracks at the detector's box
+  for (const [id, m] of maskNow) items.push({ id, r: m.r, kind: id === S.selected ? 'sel' : m.effect === 'box' ? 'user' : 'mask', effect: m.effect });
+  for (const t of S.trackList || []) {
+    if (maskNow.has(t.track_id)) continue;
+    const k = trackBox(t, f); if (!k) continue;
+    const spared = !!S.vlm[t.track_id];
+    items.push({ id: t.track_id, r: k.box, kind: t.track_id === S.selected ? 'selOpen' : spared ? 'spared' : 'found', state: k.state, label: t.label });
+  }
+  const label = it => {
+    const tr = (S.trackList || []).find(t => t.track_id === it.id), tl = S.timeline.targets[it.id];
+    const lab = (tl || tr || {}).label, chip = tid(it.id), ans = S.vlm[it.id];
+    if (it.kind === 'spared' || (it.kind === 'selOpen' && ans)) return `${chip} · spared · ${ans.a === 'unknown' ? 'unsure' : ans.a}`;
+    if (it.kind === 'found' || it.kind === 'selOpen') return `${chip} · ${ONE[lab] || lab} · not masked`;
+    const what = lab === 'user box' ? 'your box' : S.desc[it.id] || ONE[lab] || lab;
+    const kf = tl && trackBox({ keyframes: [...tl.keyframes].sort((a, b) => a.f - b.f) }, f);
+    return `${chip} · ${what}${kf && kf.state === 'uncertain' ? ' · low conf' : ''}`;
+  };
+  const many = items.length > 30;  // a crowd: skip the frosted fill, it's 127 blurs a frame
+  P.hits = [];
+  const boxes = items.map(it => ({ ...it, x: it.r[0] * s, y: it.r[1] * s, w: (it.r[2] - it.r[0]) * s, h: (it.r[3] - it.r[1]) * s }));
+  // Unlabeled found boxes first, the selected one last, so it sits on top
+  const order = { found: 0, spared: 1, mask: 2, user: 2, selOpen: 3, sel: 3 };
+  boxes.sort((a, b) => order[a.kind] - order[b.kind]);
+  for (const b of boxes) {
+    P.hits.push({ id: b.id, r: b.r });
+    g.save();
+    if ((b.kind === 'mask' || b.kind === 'sel') && !many && v.readyState >= 2) {
+      g.beginPath(); g.rect(b.x, b.y, b.w, b.h); g.clip();
+      g.filter = 'blur(8px)'; g.drawImage(v, 0, 0, cw, ch); g.filter = 'none';
+      g.restore(); g.save();
+    }
+    if (b.kind === 'mask') { g.fillStyle = 'rgba(243,242,242,.14)'; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = '#f3f2f2'; g.lineWidth = 1.5; }
+    else if (b.kind === 'sel') { g.fillStyle = 'rgba(77,107,255,.22)'; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = '#4d6bff'; g.lineWidth = 2; }
+    else if (b.kind === 'user') { g.fillStyle = '#201e1d'; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = '#f3f2f2'; g.lineWidth = 1.5; }
+    else if (b.kind === 'selOpen') { g.setLineDash([5, 3]); g.strokeStyle = '#4d6bff'; g.lineWidth = 2; }
+    else if (b.kind === 'spared') { g.setLineDash([5, 3]); g.strokeStyle = '#f3f2f2'; g.lineWidth = 1.5; }
+    else { g.setLineDash([3, 3]); g.strokeStyle = 'rgba(243,242,242,.45)'; g.lineWidth = 1; }
+    g.strokeRect(b.x, b.y, b.w, b.h);
+    g.restore();
+  }
+  // Labels after every box, so a neighbor's fill never covers one
+  g.font = '600 9px ui-monospace, Menlo, monospace'; g.textBaseline = 'middle';
+  const placed = [];
+  for (const b of [...boxes].reverse()) {
+    if (b.kind === 'found' && b.w < 40) continue;  // unasked, unmasked detections stay quiet unless they're big
+    const text = label(b), L = placeLabel(g, text, b.x, b.y, b.x + b.w, b.y + b.h, placed, cw, ch);
+    const [bg, fg] = b.kind === 'sel' || b.kind === 'selOpen' ? ['#4d6bff', '#fff'] : b.kind === 'spared' || b.kind === 'found' ? ['rgba(21,20,20,.85)', '#f3f2f2'] : ['#f3f2f2', '#201e1d'];
+    g.fillStyle = bg; g.fillRect(L.x, L.y, L.w, L.h);
+    g.fillStyle = fg; g.fillText(text, L.x + 4, L.y + L.h / 2 + .5);
+  }
+  // The selected mask's corner handles (drag to fix it), the box being moved, and a box being drawn
+  const mb = !P.dragBox && !S.busy && !S.drawMode && movableBox();
+  if (mb) { g.fillStyle = '#4d6bff'; const [x1, y1, x2, y2] = mb.box; for (const [cx, cy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) g.fillRect(cx * s - 3.5, cy * s - 3.5, 7, 7); }
+  if (P.dragBox) { const [x1, y1, x2, y2] = P.dragBox; g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#9fb0ff'; g.strokeRect(x1 * s, y1 * s, (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]); }
+  const hint = $('drawHint');
+  if (P.newBox) {
+    const [x1, y1, x2, y2] = P.newBox;
+    g.fillStyle = 'rgba(77,107,255,.12)'; g.fillRect(x1 * s, y1 * s, (x2 - x1) * s, (y2 - y1) * s);
+    g.setLineDash([5, 3]); g.lineWidth = 1.5; g.strokeStyle = '#9fb0ff'; g.strokeRect(x1 * s, y1 * s, (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]);
+    g.fillStyle = '#9fb0ff'; g.fillRect(x2 * s - 3.5, y2 * s - 3.5, 7, 7);
+    hint.hidden = false;
+    hint.replaceChildren(`New box · ${Math.round(x2 - x1)} × ${Math.round(y2 - y1)} px`, el('br'),
+      el('span', {}, `Release to add T${Object.keys(S.ids).length + 1}. It's tracked through the clip.`));
+    const below = y2 * s + 6 + 40 < ch;
+    hint.style.left = `${Math.max(0, Math.min(cw - 200, x1 * s - 1))}px`;
+    hint.style.top = below ? `${y2 * s + 6}px` : ''; hint.style.bottom = below ? '' : `${ch - y1 * s + 6}px`;
+  } else hint.hidden = true;
+}
+function drawProgram() {
+  const cv = $('progCv'), dpr = devicePixelRatio || 1;
+  const cw = cv.width / dpr, ch = cv.height / dpr; if (!cw) return;
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#000'; g.fillRect(0, 0, cw, ch);
+  if (P.src === 'export') {
+    const ex = $('expPlayer'), v = $('player');
+    if (!v.paused && ex.paused) ex.play().catch(() => {});
+    if (v.paused && !ex.paused) ex.pause();
+    // Paused: land mid-frame on the same frame Source shows (a seek to exactly f / fps can show frame f - 1)
+    const want = v.paused ? (P.frame + 0.5) / S.info.fps : P.t;
+    if (Math.abs(ex.currentTime - want) > (v.paused ? 0.25 / S.info.fps : 0.15) && !ex.seeking) ex.currentTime = want;
+    if (ex.readyState >= 2) g.drawImage(ex, 0, 0, cw, ch);
+    return;
+  }
+  const v = $('player'); if (v.readyState < 2) return;
+  g.drawImage(v, 0, 0, cw, ch);
+  // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
+  // the monitor looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and mirrored
+  // border) at that size, bilinear back up; pixelate = INTER_LINEAR shrink to 1/12, nearest back up.
+  const s = cw / S.info.width, rects = (S.maskFrames && S.maskFrames.get(P.frame)) || [];
+  const live = rects.filter(m => m.effect !== 'box' && m.r[2] > m.r[0] && m.r[3] > m.r[1]);
+  const fp = live.length ? framePixels(v, P.frame, live) : null;
+  for (const m of rects) {
+    const [x1, y1, x2, y2] = m.r, w = x2 - x1, h = y2 - y1; if (w <= 0 || h <= 0) continue;
+    if (m.effect === 'box') { g.fillStyle = '#000'; g.fillRect(x1 * s, y1 * s, w * s, h * s); continue; }
+    const k = m.effect === 'pixelate' ? 12 : 24, sw = Math.max(1, Math.floor(w / k)), sh = Math.max(1, Math.floor(h / k));
+    const rx = x1 - fp.x0, ry = y1 - fp.y0;
+    let small = m.effect === 'pixelate' ? shrinkLinear(fp.data, fp.w, rx, ry, w, h, sw, sh) : shrinkArea(fp.data, fp.w, rx, ry, w, h, sw, sh);
+    if (m.effect === 'blur') small = gaussian(small, sw, sh, Math.max(3, Math.floor(Math.min(sw, sh) / 2) | 1));
+    const tiny = P.small || (P.small = document.createElement('canvas'));
+    tiny.width = sw; tiny.height = sh;
+    const id = new ImageData(sw, sh);
+    for (let i = 0, j = 0; i < sw * sh; i++, j += 3) { id.data[i * 4] = small[j]; id.data[i * 4 + 1] = small[j + 1]; id.data[i * 4 + 2] = small[j + 2]; id.data[i * 4 + 3] = 255; }
+    tiny.getContext('2d').putImageData(id, 0, 0);
+    g.imageSmoothingEnabled = m.effect !== 'pixelate';
+    g.drawImage(tiny, 0, 0, sw, sh, x1 * s, y1 * s, w * s, h * s);
+    g.imageSmoothingEnabled = true;
+  }
 }
 // The decoded frame's RGBA pixels inside the box around all of this frame's masks, read once per frame shown.
 // Only that box: copying a whole 720p frame to the CPU and reading it back cost 12 ms of the 15 ms per frame.
@@ -1078,199 +1129,145 @@ function gaussian(img, w, h, ks) {
   };
   return pass(pass(img, true), false);
 }
-function currentFrame(mediaTime) {
-  if (!S.info) return 0;
-  const t = mediaTime !== undefined ? mediaTime : $('player').currentTime || 0;
-  return Math.max(0, Math.min(S.info.n_frames - 1, Math.round(t * S.info.fps)));
-}
-function drawLayers(mediaTime) {
-  const cv = $('layers'), v = $('player');
-  if ($('stage').hidden || !S.info) return;
-  const r = cv.getBoundingClientRect(); if (!r.width) return;
-  const dpr = devicePixelRatio || 1;
-  if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
-  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
-  const W = S.info.width, H = S.info.height, s = Math.min(r.width / W, r.height / H), ox = (r.width - W * s) / 2, oy = (r.height - H * s) / 2;
-  const f = P.frame = currentFrame(mediaTime);
-  const X = x => ox + x * s, Y = y => oy + y * s;
-  const ready = v.readyState >= 2;
-  let nMasks = 0, nBoxes = 0;
-  if (P.layers.masks && P.src === 'source' && ready) {
-    const rects = S.maskFrames && S.maskFrames.get(f) || [];
-    nMasks = rects.length;
-    // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
-    // the preview looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and
-    // mirrored border) at that size, bilinear back up; pixelate = INTER_LINEAR shrink to 1/12, nearest back up.
-    // (The browser's own resampling skipped pixels: a plate's dark letters vanished and it stayed white.)
-    const live = rects.filter(m => m.effect !== 'box' && m.r[2] > m.r[0] && m.r[3] > m.r[1]);
-    const fp = live.length ? framePixels(v, f, live) : null;
-    for (const m of rects) {
-      const [x1, y1, x2, y2] = m.r, w = x2 - x1, h = y2 - y1; if (w <= 0 || h <= 0) continue;
-      if (m.effect === 'box') { g.fillStyle = '#000'; g.fillRect(X(x1), Y(y1), w * s, h * s); continue; }
-      const k = m.effect === 'pixelate' ? 12 : 24, sw = Math.max(1, Math.floor(w / k)), sh = Math.max(1, Math.floor(h / k));
-      const rx = x1 - fp.x0, ry = y1 - fp.y0;
-      let small = m.effect === 'pixelate' ? shrinkLinear(fp.data, fp.w, rx, ry, w, h, sw, sh) : shrinkArea(fp.data, fp.w, rx, ry, w, h, sw, sh);
-      if (m.effect === 'blur') small = gaussian(small, sw, sh, Math.max(3, Math.floor(Math.min(sw, sh) / 2) | 1));
-      const tiny = P.small || (P.small = document.createElement('canvas'));
-      tiny.width = sw; tiny.height = sh;
-      const id = new ImageData(sw, sh);
-      for (let i = 0, j = 0; i < sw * sh; i++, j += 3) { id.data[i * 4] = small[j]; id.data[i * 4 + 1] = small[j + 1]; id.data[i * 4 + 2] = small[j + 2]; id.data[i * 4 + 3] = 255; }
-      tiny.getContext('2d').putImageData(id, 0, 0);
-      g.imageSmoothingEnabled = m.effect !== 'pixelate';
-      g.drawImage(tiny, 0, 0, sw, sh, X(x1), Y(y1), w * s, h * s);
-    }
-  }
-  if (P.layers.boxes && S.trackList) {
-    // Solid only where the export masks it on this frame (a time window or a move can end a mask mid-track)
-    const masked = new Set(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => m.id));
-    g.font = '600 11px ui-monospace, Menlo, monospace'; g.textBaseline = 'bottom';
-    for (const t of S.trackList) {
-      if (P.hiddenKinds.has(t.label)) continue;
-      const k = trackBox(t, f); if (!k) continue;
-      nBoxes++;
-      const [x1, y1, x2, y2] = k.box, sel = t.track_id === S.selected, on = masked.has(t.track_id);
-      const color = sel ? '#4d6bff' : kindOf(t.label).color;
-      g.globalAlpha = on || sel ? 1 : .7;
-      g.setLineDash(on || sel ? [] : [5, 4]); g.lineWidth = sel ? 3 : on ? 2 : 1.5; g.strokeStyle = color;
-      g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s);
-      g.setLineDash([]);
-      // Label: chip, kind, and the vision model's answer if it was asked about this track
-      const ans = S.vlm[t.track_id];
-      // With an answer, the question says what it is ("T2 · woman? yes 0.97"); otherwise the kind ("T1 · plate")
-      const lbl = [S.ids[t.track_id] || '',
-        ans ? `${ans.q.replace(/^is (this|it) (an? |the )?/i, '').replace(/\?$/, '')}? ${ans.a === 'unknown' ? 'unsure' : ans.a} ${(+ans.p).toFixed(2)}` : kindOf(t.label).one,
-        k.state === 'uncertain' ? 'low conf' : ''].filter(Boolean).join(' · ');
-      if ((x2 - x1) * s >= 14 || sel || ans) {
-        const w = g.measureText(lbl).width + 8, lx = X(x1) - (sel ? 1.5 : 1), ly = Math.max(14, Y(y1));
-        g.fillStyle = color; g.fillRect(lx, ly - 14, w, 14);
-        g.fillStyle = '#0b0d12'; g.fillText(lbl, lx + 4, ly - 1);
-      }
-      g.globalAlpha = 1;
-    }
-  }
-  // The selected mask's corner handles (it can be dragged), and the box being dragged
-  const mb = !P.dragBox && !S.busy && movableBox();
-  if (mb) {
-    g.fillStyle = '#4d6bff';
-    const [x1, y1, x2, y2] = mb.box;
-    for (const [cx, cy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) g.fillRect(X(cx) - 4, Y(cy) - 4, 8, 8);
-  }
-  if (P.dragBox) {
-    const [x1, y1, x2, y2] = P.dragBox;
-    g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#fff';
-    g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]);
-  }
-  $('stageTime').textContent = `${fmtF(f / S.info.fps)} · frame ${f}`;
-  const ph = $('ph'); if (ph) ph.style.left = pct(f / S.info.fps);
-  const notes = [];
-  if (P.layers.boxes) notes.push(`${nBoxes} box${nBoxes === 1 ? '' : 'es'} on this frame (solid: masked, dashed: found but not masked)`);
-  if (P.layers.masks && P.src === 'source') notes.push(`${nMasks} mask${nMasks === 1 ? '' : 's'} (a live preview; Export renders the exact pixels)`);
-  if (P.src === 'export') notes.push('Showing the rendered export: the exact pixels that will be shared');
-  $('layerNote').textContent = notes.join(' · ');
-}
-// Redraw on every frame the browser presents (frame-accurate while playing), and on seek, pause and resize
+// Redraw on every frame the browser presents (frame-accurate while playing), and on seek, pause and load
 (function syncLayers() {
-  const v = $('player');
+  const v = $('player'), ex = $('expPlayer');
   if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-    const onFrame = (_, meta) => { drawLayers(meta.mediaTime); v.requestVideoFrameCallback(onFrame); };
+    const onFrame = (_, meta) => { drawAll(meta.mediaTime); v.requestVideoFrameCallback(onFrame); };
     v.requestVideoFrameCallback(onFrame);
   } else {
-    const tick = () => { if (!v.paused) drawLayers(); requestAnimationFrame(tick); }; tick();
+    const tick = () => { if (!v.paused) drawAll(); requestAnimationFrame(tick); }; tick();
   }
-  ['seeked', 'pause', 'loadeddata', 'timeupdate'].forEach(e => v.addEventListener(e, () => drawLayers()));
-  new ResizeObserver(() => drawLayers()).observe($('playerWrap'));
+  ['seeked', 'pause', 'play', 'loadeddata', 'timeupdate'].forEach(e => v.addEventListener(e, () => drawAll()));
+  ['seeked', 'loadeddata'].forEach(e => ex.addEventListener(e, () => drawProgram()));
+  v.addEventListener('ended', () => ex.pause());
 })();
-function renderKinds() {
-  const kinds = [...new Set((S.trackList || []).map(t => t.label))];
-  $('kinds').replaceChildren(...kinds.map(l => {
-    const n = S.trackList.filter(t => t.label === l).length;
-    return el('button', { class: P.hiddenKinds.has(l) ? '' : 'on', title: `Show or hide ${kindOf(l).name.toLowerCase()} boxes`,
-      onclick: () => { P.hiddenKinds.has(l) ? P.hiddenKinds.delete(l) : P.hiddenKinds.add(l); renderKinds(); drawLayers(); } },
-      el('i', { style: `background:${kindOf(l).color}` }), `${kindOf(l).name} ${n}`);
-  }));
-  $('kinds').hidden = !P.layers.boxes;
-}
-function renderTimeline() {
-  const tl = $('tl'); if ($('stage').hidden || !S.info) return;
-  const ts = targetList(), d = dur(), step = d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
-  const axis = el('div', { class: 'axis' });
-  for (let s = 0; s <= d + 1e-6; s += step) axis.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
-  const lanes = el('div', { class: 'lanes' });
-  const labels = [];
-  ts.forEach(t => {
-    labels.push(el('div', { class: 'rowlabel', onclick: () => select(t.id), title: t.id },
-      el('span', { class: 'chip', style: t.id === S.selected ? 'background:var(--accent)' : '' }, t.chip),
-      el('span', { class: 'name' }, t.name), el('span', { class: 'fx' }, t.effect)));
-    const lane = el('div', { class: `lane${t.id === S.selected ? ' sel' : ''}`, title: `${t.chip} ${t.name}: ${t.segs.map(([a, b]) => `${fmt(a)}–${fmt(b)}`).join(', ')}` });
-    t.segs.forEach(([a, b]) => lane.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
-    t.unc.forEach(([a, b]) => lane.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
-    lane.onclick = ev => { const r = lane.getBoundingClientRect(); $('player').currentTime = (ev.clientX - r.left) / r.width * d; };
-    lanes.append(lane);
-  });
-  const ph = el('div', { class: 'ph', id: 'ph' }); lanes.append(ph);
-  const labelCol = el('div', {}, el('div', { class: 'axis' }), ...labels);
-  if (!ts.length) labelCol.append(el('div', { class: 'rail-empty', style: 'padding:6px 0' }, 'Nothing masked yet.'));
-  tl.replaceChildren(labelCol, el('div', {}, axis, lanes));
-  drawLayers();
-}
 
-// ---------- composer ----------
-const EXAMPLES = [
-  ['blur all plates', ''], ['blur the woman', 'vision model'], ['pixelate faces', ''],
-  ['blur people in the first 5 seconds', ''], ['blur everyone except the man in red', 'language model'],
-  ['unblur the plates', ''], ['undo', ''],
-];
-function showHints() {
-  $('hints').hidden = false; $('hintBtn').classList.add('on'); $('hintBtn').setAttribute('aria-expanded', 'true');
+// ---------- pointer on Source: select, move a mask, or draw a new box ----------
+function srcPoint(ev) {
+  const r = $('srcCv').getBoundingClientRect(), s = r.width / S.info.width;
+  return { x: Math.max(0, Math.min(S.info.width, (ev.clientX - r.left) / s)), y: Math.max(0, Math.min(S.info.height, (ev.clientY - r.top) / s)), s };
 }
-function closeHints() { $('hints').hidden = true; $('hintBtn').classList.remove('on'); $('hintBtn').setAttribute('aria-expanded', 'false'); }
-$('examples').append(...EXAMPLES.map(([t, n]) => el('button', { type: 'button', onclick: () => {
-  closeHints(); if (!S.vid) return status('Pick a clip first.', true);
-  $('text').value = t; autosize(); $('text').focus();
-} }, t, n ? el('small', {}, n) : null)));
-$('hintBtn').onclick = () => $('hints').hidden ? showHints() : closeHints();
-function autosize() { const t = $('text'); t.style.height = '21px'; t.style.height = Math.min(120, t.scrollHeight) + 'px'; }
-$('text').oninput = autosize;
-$('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendRequest($('text').value); } };
-$('composer').onsubmit = e => { e.preventDefault(); sendRequest($('text').value); };
-function toggleDraw(on = !S.drawMode) {
-  S.drawMode = on; $('drawBtn').classList.toggle('on', on);
-  const live = S.cards.filter(c => c.live);
-  if (on && !live.length) {  // nothing to draw on yet: show the current frame first
-    const host = note('Drag a box around what to hide. It will be tracked through the clip.'); addCard(host, null);
+// The box under a point at the frame shown, smallest first (a face inside a person wins)
+function boxAtPoint(ev) {
+  const { x, y, s } = srcPoint(ev), slop = 4 / s;
+  let best = null, area = Infinity;
+  for (const h of P.hits) {
+    const [x1, y1, x2, y2] = h.r;
+    if (x < x1 - slop || x > x2 + slop || y < y1 - slop || y > y2 + slop) continue;
+    const a = (x2 - x1) * (y2 - y1); if (a < area) { area = a; best = h.id; }
   }
-  S.cards.forEach(c => c.setDraw(on && c.live));
-  if (on) { const c = S.cards[S.cards.length - 1]; c.card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); status('Draw mode: drag on the latest frame. Esc to cancel.'); }
-  else if (!S.busy) status('');
+  return best;
+}
+// The selected target's masked box at the frame shown, if it can be moved there
+function movableBox() {
+  const id = S.selected, t = id && S.timeline && S.timeline.targets[id];
+  if (!t) return null;
+  const k = trackBox({ keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }, P.frame);
+  return k ? { id, box: k.box } : null;
+}
+function grabAt(ev) {
+  const mb = movableBox(); if (!mb) return null;
+  const { x, y, s } = srcPoint(ev), [x1, y1, x2, y2] = mb.box, near = 9 / s;
+  const cx = Math.abs(x - x1) <= near ? 'w' : Math.abs(x - x2) <= near ? 'e' : '';
+  const cy = Math.abs(y - y1) <= near ? 'n' : Math.abs(y - y2) <= near ? 's' : '';
+  if (cx && cy) return { ...mb, handle: cy + cx };
+  if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return { ...mb, handle: 'move' };
+  return null;
+}
+let drag = null;
+const srcCv = $('srcCv');
+srcCv.onpointerdown = ev => {
+  if (!S.info || ev.button !== 0) return;
+  const p = srcPoint(ev);
+  if (S.drawMode) {
+    if (S.busy) return;
+    $('player').pause(); srcCv.setPointerCapture(ev.pointerId);
+    drag = { draw: true, a: [p.x, p.y], frame: P.frame }; return;
+  }
+  const g = !S.busy && grabAt(ev);
+  drag = { x0: ev.clientX, y0: ev.clientY, grab: g || null, start: p, frame: P.frame };
+  if (g) { $('player').pause(); srcCv.setPointerCapture(ev.pointerId); }
+};
+srcCv.onpointermove = ev => {
+  if (!S.info) return;
+  if (drag && drag.draw) {
+    const p = srcPoint(ev), [ax, ay] = drag.a;
+    P.newBox = [Math.min(ax, p.x), Math.min(ay, p.y), Math.max(ax, p.x), Math.max(ay, p.y)];
+    drawSource(); return;
+  }
+  if (drag && drag.grab) {
+    const p = srcPoint(ev), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
+    let b = h === 'move' ? [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
+      : [h.includes('w') ? x1 + dx : x1, h.includes('n') ? y1 + dy : y1, h.includes('e') ? x2 + dx : x2, h.includes('s') ? y2 + dy : y2];
+    b = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])];
+    P.dragBox = [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(S.info.width, b[2]), Math.min(S.info.height, b[3])];
+    drawSource(); return;
+  }
+  if (S.drawMode) { srcCv.style.cursor = ''; srcCv.title = 'Drag around what to hide'; return; }
+  const g = !S.busy && grabAt(ev), id = g ? g.id : boxAtPoint(ev);
+  srcCv.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
+  srcCv.title = g ? 'Drag to move this mask, or a corner to resize it, from this frame on' : id ? `${tid(id)}: click to select` : '';
+};
+srcCv.onpointerup = ev => {
+  const d = drag; drag = null; if (!d) return;
+  if (d.draw) {
+    const b = P.newBox; P.newBox = null; drawSource();
+    if (b && b[2] - b[0] >= 8 && b[3] - b[1] >= 8) sendBox(d.frame, b.map(Math.round));
+    return;
+  }
+  const moved = Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 3;
+  if (d.grab && moved && P.dragBox) {
+    const box = P.dragBox.map(Math.round); P.dragBox = null;
+    if (box[2] - box[0] >= 4 && box[3] - box[1] >= 4) moveTarget(d.grab.id, d.frame, box); else drawSource();
+    return;
+  }
+  P.dragBox = null;
+  if (moved) return;
+  const id = boxAtPoint(ev);
+  if (id) { if (id !== S.selected) select(id); return; }
+  const v = $('player'); v.paused ? v.play() : v.pause();  // like clicking the video itself
+};
+srcCv.onpointercancel = () => { drag = null; P.newBox = null; P.dragBox = null; drawSource(); };
+
+// ---------- request panel, transport, keys ----------
+const EXAMPLES = ['blur the woman', 'blur everyone except the guy in the red hoodie', "pixelate all faces but mine, I'm the one in the black t-shirt"];
+$('examples').append(...EXAMPLES.map(t => el('button', { type: 'button', onclick: () => { if (!S.vid) return; $('text').value = t; $('text').focus(); } }, t)));
+$('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendRequest($('text').value); } };
+$('genBtn').onclick = () => sendRequest($('text').value);
+function toggleDraw(on = !S.drawMode) {
+  if (on && (!S.vid || S.busy)) return;
+  S.drawMode = on; P.newBox = null;
+  if (on) { $('player').pause(); S.picker = false; renderPicker(); }
+  $('srcScreen').classList.toggle('drawing', on);
+  renderRequest(); renderTimeline(); drawSource();
+  if (on) notice('Draw mode: drag on Source around what to hide. Esc to cancel.'); else if ($('notice').textContent.startsWith('Draw mode')) notice('');
 }
 $('drawBtn').onclick = () => toggleDraw();
-$('exportBtn').onclick = doExport;
-$('timelineBtn').onclick = () => $('stage').hidden ? openStage() : ($('stage').hidden = true);
-$('stageClose').onclick = () => $('stage').hidden = true;
-$('layerCtl').onclick = e => {
-  const b = e.target.closest('button'); if (!b || b.disabled) return;
-  P.layers[b.dataset.layer] = !P.layers[b.dataset.layer]; b.classList.toggle('on', P.layers[b.dataset.layer]);
-  renderKinds(); drawLayers();
-};
-$('srcCtl').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setSrc(b.dataset.src); };
-$('targetsToggle').onclick = () => $('targetsRail').classList.toggle('open');
-$('versionsToggle').onclick = () => $('versionsRail').classList.toggle('open');
+$('undoBtn').onclick = undoLast;
+$('openBtn').onclick = () => { S.picker = !S.picker; renderPicker(); };
+$('playBtn').onclick = () => { const v = $('player'); v.paused ? v.play() : v.pause(); };
+const step = n => { const v = $('player'); v.pause(); if (S.info) seek((P.frame + n + 0.5) / S.info.fps); };
 document.addEventListener('keydown', e => {
-  if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && S.timeline.targets[S.selected]
-      && !/^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName)) { e.preventDefault(); editTargets('remove', [S.selected]); return; }
-  if (e.key !== 'Escape') return;
-  if (S.drawMode) toggleDraw(false); else if (!$('hints').hidden) closeHints();
+  const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
+  if (e.key === 'Escape') { if (S.drawMode) toggleDraw(false); else if (S.picker && S.vid) { S.picker = false; renderPicker(); } return; }
+  if (typing || !S.vid) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && S.timeline.targets[S.selected]) { e.preventDefault(); editTargets('remove', [S.selected]); return; }
+  if (document.activeElement.tagName === 'BUTTON') return;
+  if (e.key === ' ') { e.preventDefault(); $('playBtn').click(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
 });
-setInterval(() => S.vid && renderVersions(), 30000);
+window.addEventListener('resize', () => renderTimeline());
 
 // ---------- start ----------
-renderTargets(); renderVersions();
+renderAll();
 // ?video=<id> reopens a video uploaded earlier, with its masks so far
 const reopen = new URLSearchParams(location.search).get('video');
 if (reopen) {
   api(`api/videos/${reopen}`).then(j => openVideo({ video_id: reopen, info: j.info, prescan: [] }, `video ${reopen}`))
-    .catch(e => { welcome(); status(`Couldn't reopen video ${reopen}: ${errText(e)}`, true); history.replaceState(null, '', location.pathname); });
-} else welcome();
+    .catch(e => { notice(`Couldn't reopen video ${reopen}: ${errText(e)}`, true); history.replaceState(null, '', location.pathname); });
+}
 </script>
 </body>
 </html>
