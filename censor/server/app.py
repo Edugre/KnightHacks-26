@@ -2,6 +2,7 @@
 
   POST /api/videos                      multipart file (a video or a photo) -> {video_id, info, prescan}  (starts a
                                         background scan). A photo is a one-frame video: info.kind is "image".
+  GET  /api/config                      -> {offline, stub}: what a separately hosted page can't get injected into it
   GET  /api/samples[?kind=image]        clips in bench/clips, or photos in bench/photos -> [{id, mb, ...}]
   GET  /api/samples/{id}/photo          a sample photo, for the home screen's thumbnails
   POST /api/samples/{id}[?kind=image]   load one of them like an upload (no file picker needed)
@@ -22,11 +23,14 @@
   GET  /api/videos/{id}/preview/{f}.jpg masked frame f
   POST /api/videos/{id}/export          render -> {url, kind, stats}  (waits for a running request; 409 if it takes too long)
   GET  /api/videos/{id}/export.<ext>    rendered video (.mp4) or photo (the source's format, no metadata); the url
-                                        from export carries ?v=<render time>
+                                        from export carries ?v=<render time>; &download=1 sends it as an attachment
 
 Requests, boxes, undo and exports on one video take turns, so an export always includes every finished edit.
 Nothing is cached: AUP's Cloudflare keeps .mp4 and .jpg responses for 4 hours when the origin says nothing, which
 served an old, unmasked export after a new one had been rendered.
+
+The page can also be hosted on its own (web/index.html, <meta name="censor-api">): set CENSOR_CORS_ORIGINS to its
+origin(s), comma-separated, so the browser lets it call these routes and draw the videos on its canvases.
 
 Run: uvicorn censor.server.app:app --host 0.0.0.0 --port 8000   (see run.sh)
 """
@@ -46,6 +50,7 @@ from typing import Literal, Optional
 
 import cv2
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
@@ -72,6 +77,9 @@ SAMPLE_NAME = re.compile(r"[\w-]+")  # a bare file stem: no paths
 # Cloudflare waits for a response, so the user gets a message rather than a timeout page.
 EXPORT_WAIT = float(os.environ.get("CENSOR_EXPORT_WAIT", "80"))
 app = FastAPI(title="censor agent")
+CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CENSOR_CORS_ORIGINS", "").split(",") if o.strip()]
+if CORS_ORIGINS:  # no cookies or auth: the API has none, and "*" works as an origin for a quick test
+    app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 
 
 def _warm_up() -> None:
@@ -163,6 +171,12 @@ def index():
     # offers "Attach .tracks.json" only in stub mode, the one place a sidecar does anything
     flags = (' data-offline="1"' if netguard.active() else '') + (' data-stub="1"' if os.environ.get("CENSOR_STUB") == "1" else '')
     return html.replace("<body>", f"<body{flags}>", 1) if flags else html
+
+
+@app.get("/api/config")
+def config():
+    """The flags index() puts on <body>, for a copy of the page hosted elsewhere."""
+    return {"offline": netguard.active(), "stub": os.environ.get("CENSOR_STUB") == "1"}
 
 
 @app.post("/api/videos")
@@ -409,10 +423,12 @@ def export(vid: str):
 
 
 @app.get("/api/videos/{vid}/export.{ext}")
-def export_file(vid: str, ext: str):
+def export_file(vid: str, ext: str, download: bool = False):
     if f".{ext}" not in IMAGE_EXT | {".mp4"}:
         raise HTTPException(404, f"no export.{ext}")
     out = session(vid).workdir / f"export.{ext}"
     if not out.exists():
         raise HTTPException(404, "not exported yet")
-    return FileResponse(out, media_type=mimetypes.guess_type(out.name)[0] or "application/octet-stream")
+    # download: the Download button's link. A cross-origin page's <a download> is ignored, so the header asks instead
+    return FileResponse(out, media_type=mimetypes.guess_type(out.name)[0] or "application/octet-stream",
+                        filename=out.name if download else None)
