@@ -216,7 +216,7 @@ class LiveReplay:
         self._history: deque[tuple[int, bytes]] = deque(maxlen=HISTORY)
         self._threads: list[threading.Thread] = []
         self._logged: set[tuple[str, str]] = set()
-        self._n = dict(frames_out=0, blind=0, dropped_out=0, emit_errors=0, det_errors=0, passes=0,
+        self._n = dict(frames_in=0, frames_out=0, blind=0, dropped_out=0, emit_errors=0, det_errors=0, passes=0,
                        gaps=0, gap_sum=0, gap_max=0, last_det_f=-1)
         self._first_passes: list[float] = []
         self._recent_passes: deque[float] = deque(maxlen=RECENT_PASSES)
@@ -296,6 +296,7 @@ class LiveReplay:
                     img = cv2.resize(img, self.size, interpolation=cv2.INTER_AREA)
                 with self._cv:
                     self._ring.append(_Slot(f, clip_f, img, time.monotonic()))
+                    self._n["frames_in"] += 1
                     self._cv.notify_all()
                 f, clip_f = f + 1, clip_f + 1
         finally:
@@ -429,7 +430,8 @@ class LiveReplay:
                              "p95_ms": _pct(self._recent_passes, "p95"),
                              "baseline_p95_ms": _pct(self._first_passes, "p95"), "errors": n["det_errors"]},
                 "emit": {"p50_ms": _pct(self._emit_s, "p50"), "p95_ms": _pct(self._emit_s, "p95")},
-                "detected_share": n["passes"] / out if out else 0.0,
+                # Over frames that have arrived, not frames sent: emits lag arrivals by the delay buffer
+                "detected_share": n["passes"] / n["frames_in"] if n["frames_in"] else 0.0,
                 "gap_frames": {"mean": n["gap_sum"] / n["gaps"] if n["gaps"] else None,
                                "max": n["gap_max"] if n["gaps"] else None},
                 "hold_frames": HOLD_FRAMES, "frame_age_ms": {"p50": _pct(self._age_s, "p50")},

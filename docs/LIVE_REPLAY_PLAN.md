@@ -297,7 +297,8 @@ line.
 "emit": {"p50_ms", "p95_ms"}, "detected_share": float, "gap_frames": {"mean", "max"}, "hold_frames": 15,
 "frame_age_ms": {"p50"}}`. Percentiles via `bench.live_speed.stats_ms` guarded: `null` when there are no samples.
 `baseline_p95_ms` = p95 of the first 50 passes; `p50_ms`/`p95_ms` are over the last 100 passes. `detected_share` =
-passes / frames_out; `gap_frames` over consecutive detection frame numbers; `frame_age_ms` = emit time − t_arrive.
+passes / frames arrived at the source (not frames sent, which lag by the delay); `gap_frames` over consecutive
+detection frame numbers; `frame_age_ms` = emit time − t_arrive.
 
 ### 3.4 Computation budget (720p; the street clips are 25 fps, synthetic 30; STACK.md:38-40)
 
