@@ -103,6 +103,15 @@
       },
       "VideoInfo": {
         "properties": {
+          "kind": {
+            "default": "video",
+            "enum": [
+              "video",
+              "image"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "fps": {
             "title": "Fps",
             "type": "number"
@@ -132,7 +141,7 @@
     },
     "properties": {
       "version": {
-        "default": 2,
+        "default": 3,
         "title": "Version",
         "type": "integer"
       },

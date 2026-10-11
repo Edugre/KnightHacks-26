@@ -59,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 test
 
 In the app, pick **synthetic** on the start screen (its ground-truth sidecar comes along, so the stub detector finds the shapes), then type a request such as `blur all plates and the woman`. Uploading `synthetic.mp4` and then attaching its `synthetic.mp4.tracks.json` on the start screen also works. With no models, requests the template can't parse get a "clarify" reply, and person questions are always "unsure", so every person is blurred (fail closed).
 
-**Tests:** `./run.sh test` runs the suite in about 15 s with no GPU. It covers the schema, fold/undo, the fail-closed renderer, the request templates, upload → request → export end to end, and the benchmark scoring.
+**Tests:** `./run.sh test` runs the suite in about 15 s with no GPU. It covers the schema, fold/undo, the fail-closed renderer, the request templates, upload → request → export end to end, photos (read as one frame, masked, exported without their metadata) and the benchmark scoring.
 
 ## Benchmark
 

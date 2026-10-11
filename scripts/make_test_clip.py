@@ -6,7 +6,11 @@ Writes <out>.mp4 plus <out>.mp4.tracks.json (ground truth TrackStore, which the 
 - two "person" boxes: one red, one blue (for attribute requests),
 - a "screen" that appears only in the second half.
 
+With --image, writes one frame of it as a photo instead (<out>.png or .jpg plus <out>.tracks.json, every
+keyframe at f=0), with the screen showing.
+
 Usage: python scripts/make_test_clip.py bench/clips/synthetic.mp4 [seconds]
+       python scripts/make_test_clip.py --image bench/photos/synthetic.png
 """
 import sys
 from pathlib import Path
@@ -20,6 +24,36 @@ from censor.core.tracks import Keyframe, Track, TrackStore  # noqa: E402
 W, H, FPS = 1280, 720, 30
 
 
+def draw(f: int, n: int) -> tuple[np.ndarray, dict]:
+    """Frame f of an n-frame clip, and the ground-truth box of each object in it."""
+    gt = {}
+    img = np.full((H, W, 3), (60, 90, 60), np.uint8)
+    cv2.rectangle(img, (0, 500), (W, H), (80, 80, 80), -1)  # road
+    # plate
+    x = int(50 + (W - 300) * f / n)
+    plate = (x, 560, x + 160, 600)
+    cv2.rectangle(img, plate[:2], plate[2:], (255, 255, 255), -1)
+    cv2.putText(img, "ABC 1234", (x + 8, 590), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+    gt["plate"] = plate
+    # face
+    cy = int(150 + 20 * np.sin(f / 8))
+    cv2.ellipse(img, (900, cy), (45, 60), 0, 0, 360, (140, 170, 220), -1)
+    cv2.circle(img, (885, cy - 10), 6, (0, 0, 0), -1); cv2.circle(img, (915, cy - 10), 6, (0, 0, 0), -1)
+    gt["face"] = (855, cy - 60, 945, cy + 60)
+    # people
+    rx = int(300 + 100 * np.sin(f / 20))
+    cv2.rectangle(img, (rx, 250), (rx + 90, 480), (40, 40, 220), -1)  # red (BGR)
+    gt["red"] = (rx, 250, rx + 90, 480)
+    cv2.rectangle(img, (650, 260), (740, 480), (220, 80, 40), -1)  # blue
+    gt["blue"] = (650, 260, 740, 480)
+    # screen, second half only
+    if f >= n // 2:
+        cv2.rectangle(img, (1050, 300), (1230, 420), (30, 30, 30), -1)
+        cv2.putText(img, "PASSWORD", (1060, 370), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        gt["screen"] = (1050, 300, 1230, 420)
+    return img, gt
+
+
 def main(out: str, seconds: float = 6.0):
     n = int(seconds * FPS)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
@@ -27,30 +61,9 @@ def main(out: str, seconds: float = 6.0):
     vw = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), FPS, (W, H))
     gt = {k: [] for k in ("plate", "face", "red", "blue", "screen")}
     for f in range(n):
-        img = np.full((H, W, 3), (60, 90, 60), np.uint8)
-        cv2.rectangle(img, (0, 500), (W, H), (80, 80, 80), -1)  # road
-        # plate
-        x = int(50 + (W - 300) * f / n)
-        plate = (x, 560, x + 160, 600)
-        cv2.rectangle(img, plate[:2], plate[2:], (255, 255, 255), -1)
-        cv2.putText(img, "ABC 1234", (x + 8, 590), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
-        gt["plate"].append(plate)
-        # face
-        cy = int(150 + 20 * np.sin(f / 8))
-        cv2.ellipse(img, (900, cy), (45, 60), 0, 0, 360, (140, 170, 220), -1)
-        cv2.circle(img, (885, cy - 10), 6, (0, 0, 0), -1); cv2.circle(img, (915, cy - 10), 6, (0, 0, 0), -1)
-        gt["face"].append((855, cy - 60, 945, cy + 60))
-        # people
-        rx = int(300 + 100 * np.sin(f / 20))
-        cv2.rectangle(img, (rx, 250), (rx + 90, 480), (40, 40, 220), -1)  # red (BGR)
-        gt["red"].append((rx, 250, rx + 90, 480))
-        cv2.rectangle(img, (650, 260), (740, 480), (220, 80, 40), -1)  # blue
-        gt["blue"].append((650, 260, 740, 480))
-        # screen, second half only
-        if f >= n // 2:
-            cv2.rectangle(img, (1050, 300), (1230, 420), (30, 30, 30), -1)
-            cv2.putText(img, "PASSWORD", (1060, 370), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            gt["screen"].append((1050, 300, 1230, 420))
+        img, boxes = draw(f, n)
+        for k, b in boxes.items():
+            gt[k].append(b)
         vw.write(img)
     vw.release()
 
@@ -71,7 +84,24 @@ def main(out: str, seconds: float = 6.0):
     print(f"wrote {out} ({n} frames) and {out}.tracks.json ({len(store.tracks)} tracks)")
 
 
+def main_image(out: str):
+    """One frame from the middle of the clip, the screen showing, as a photo with its ground truth at f=0."""
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    img, gt = draw(90, 180)
+    cv2.imwrite(out, img)
+    labels = {"plate": "license plate", "face": "face", "red": "person", "blue": "person", "screen": "screen"}
+    store = TrackStore()
+    for k, b in gt.items():
+        store.add(Track(track_id=store.next_id(), label=labels[k], keyframes=[Keyframe(f=0, box=b, conf=0.9, state="detected")]))
+    store.save(out + ".tracks.json")
+    print(f"wrote {out} ({W}x{H} photo) and {out}.tracks.json ({len(store.tracks)} tracks)")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         sys.exit(__doc__)
+    if sys.argv[1] == "--image":
+        if len(sys.argv) != 3:
+            sys.exit(__doc__)
+        sys.exit(main_image(sys.argv[2]))
     main(sys.argv[1], float(sys.argv[2]) if len(sys.argv) > 2 else 6.0)

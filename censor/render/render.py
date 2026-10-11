@@ -1,4 +1,4 @@
-"""Deterministic renderer: Timeline -> censored video. The only code that writes pixels.
+"""Deterministic renderer: Timeline -> censored video or photo. The only code that writes pixels.
 
 Rules (IMPLEMENTATION.md section 3), all fail-closed:
 - interpolate boxes between keyframes up to MAX_GAP frames apart;
@@ -9,7 +9,9 @@ Rules (IMPLEMENTATION.md section 3), all fail-closed:
 - 'uncertain' keyframes double the padding; every box gets at least MIN_PAD_PX on each side;
 - an error while processing a frame blurs the whole frame and is counted in the stats.
 
-CLI: python -m censor.render.render input.mp4 timeline.json out.mp4
+A photo is a one-frame timeline (censor/core/video.py): render_image masks frame 0 with the same FrameMasker.
+
+CLI: python -m censor.render.render input.mp4|input.jpg timeline.json out.mp4|out.jpg
 """
 from __future__ import annotations
 
@@ -22,7 +24,7 @@ import cv2
 import numpy as np
 
 from censor.core.timeline import Target, Timeline
-from censor.core.video import frames
+from censor.core.video import frames, is_image, read_image
 
 HOLD_FRAMES = 15
 # Growth only covers what the speed estimate misses. 0.05 per frame, without following the motion, let a
@@ -192,8 +194,22 @@ def render_video(src: str, timeline: Timeline, dst: str, crf: int = 20) -> Rende
     return stats
 
 
+def render_image(src: str, timeline: Timeline, dst: str, jpeg_quality: int = 95) -> RenderStats:
+    """Mask a photo and write it in dst's format. cv2.imwrite writes pixels only, so the export carries none of
+    the source's metadata (EXIF GPS position, camera serial, capture time); the EXIF rotation is already in the
+    pixels, since read_image applied it."""
+    frame = read_image(src)
+    stats = RenderStats(frames=1)
+    FrameMasker(timeline).apply(frame, 0, stats)
+    params = [cv2.IMWRITE_JPEG_QUALITY, jpeg_quality] if str(dst).lower().endswith((".jpg", ".jpeg")) else []
+    if not cv2.imwrite(str(dst), frame, params):
+        raise RuntimeError(f"cannot write image {dst}")
+    return stats
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 4:
         sys.exit(__doc__)
-    s = render_video(sys.argv[1], Timeline.load(sys.argv[2]), sys.argv[3])
+    render = render_image if is_image(sys.argv[1]) else render_video
+    s = render(sys.argv[1], Timeline.load(sys.argv[2]), sys.argv[3])
     print(f"rendered {s.frames} frames, {s.masked_boxes} masked boxes, {len(s.failed_frames)} failed frames")
