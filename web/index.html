@@ -48,7 +48,6 @@
   .kbd { font:500 13px/1 var(--mono); color:var(--faint); }
   .secondary .kbd { font:400 12px/1 var(--mono); color:var(--meta); }
   .h { display:flex; align-items:baseline; gap:10px; font:500 11px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--mute); flex:none; }
-  .h .n { color:var(--acc); }
   .h .meta { margin-left:auto; letter-spacing:0; text-transform:none; color:var(--faint); }
   .mute { color:var(--mute); }
 
@@ -115,12 +114,19 @@
   #drawHint { position:absolute; width:max-content; max-width:200px; background:rgba(17,17,17,.92); border:1px solid var(--seg); border-radius:4px; color:var(--text);
     font:400 10.5px/1.35 var(--mono); padding:4px 6px; pointer-events:none; }
   #drawHint span { color:var(--mute); font-family:var(--font); }
-  #transport { display:flex; align-items:center; justify-content:center; gap:16px; padding:12px 16px; border-top:1px solid var(--gridbg); flex:none; }
+  #transport { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:16px; padding:12px 16px; border-top:1px solid var(--gridbg); flex:none; }
+  #transport #playBtn { justify-self:end; }
   #playBtn { width:36px; height:30px; display:grid; place-items:center; background:var(--primary-bg); color:var(--primary-fg); border:0; border-radius:6px; padding:0; }
   #playBtn:hover:not(:disabled) { background:#E6E6E6; }
   #tc { font:500 22px/1 var(--mono); letter-spacing:-.02em; color:var(--ink); }
   #tcDur { font:400 12px/1 var(--mono); color:var(--meta); }
-  .tpHint { font:400 12px/1.2 var(--font); color:var(--faint); }
+  #srcCtl { justify-self:start; display:flex; align-items:center; }
+  #srcSwitch { display:flex; align-items:center; gap:8px; border:0; padding:0; color:#CFCFCF; }
+  #srcSwitch:hover { background:none !important; color:var(--ink); }
+  #srcSwitch .lbl { font:500 10.5px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); }
+  #srcSwitch .trk { width:26px; height:15px; border-radius:8px; background:#333; position:relative; transition:background .15s; }
+  #srcSwitch .trk i { position:absolute; top:2px; left:2px; width:11px; height:11px; border-radius:50%; background:#BDBDBD; transition:left .15s; }
+  #srcSwitch .trk.on { background:var(--primary-bg); } #srcSwitch .trk.on i { left:13px; background:var(--ink-dark); }
 
   /* picker (no clip yet, or Open clip) */
   #picker { position:absolute; inset:0; background:var(--well); display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto; z-index:5; }
@@ -206,10 +212,10 @@
   .rl .fx { margin-left:auto; padding-right:10px; font:400 11px/1 var(--mono); color:var(--faint); }
   .rl.sel { color:var(--ink); } .rl.sel .id { color:var(--acc); }
   .rl.spared, .rl.spared .id { color:var(--faint); } .rl.group { cursor:default; }
-  .ruler { position:sticky; top:0; z-index:2; height:22px; background:var(--head); border-bottom:1px solid #2A2A2A; cursor:pointer; }
+  .ruler { position:sticky; top:0; z-index:2; height:22px; background:var(--head); border-bottom:1px solid #2A2A2A; cursor:ew-resize; touch-action:none; }
   .ruler.corner { cursor:default; }
   .ruler span { position:absolute; top:0; bottom:0; padding:5px 0 0 4px; border-left:1px solid #2A2A2A; font:400 10px/1 var(--mono); color:var(--faint); pointer-events:none; }
-  .lane { position:relative; height:21px; border-bottom:1px solid #1C1C1C; cursor:pointer; }
+  .lane { position:relative; height:21px; border-bottom:1px solid #1C1C1C; cursor:ew-resize; touch-action:none; }
   .lane.sel { background:rgba(255,255,255,.035); }
   .lane .s { position:absolute; top:5px; bottom:5px; background:var(--seg); border-radius:2px; }
   .lane .x { position:absolute; top:10px; height:1px; background:#262626; }
@@ -248,7 +254,7 @@
 
   <aside id="left">
     <div class="panel" id="reqPanel">
-      <div class="h"><span class="n">01</span>Request</div>
+      <div class="h">Request</div>
       <div class="reqField" id="reqField"><textarea id="text" rows="3" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea></div>
       <button class="primary" id="genBtn" disabled>Generate masks<span class="kbd" aria-hidden="true">↵</span></button>
       <div id="genProg" hidden><div class="indet"></div><span id="genLabel">Working</span></div>
@@ -277,12 +283,12 @@
     <div id="transport">
       <button id="playBtn" title="Play / pause (Space)" aria-label="Play" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
       <div style="display:flex;align-items:baseline;gap:8px"><span id="tc">0:00.00</span><span id="tcDur">/ 0:00.00</span></div>
-      <span class="tpHint">both monitors follow this playhead</span>
+      <div id="srcCtl"><button id="srcSwitch" role="switch" aria-checked="true" aria-label="Show Source"><span class="lbl">Source</span><span class="trk on"><i></i></span></button></div>
     </div>
   </main>
 
   <aside id="agent" class="panel">
-    <div class="h"><span class="n">02</span>Agent<span class="meta" id="planMeta"></span>
+    <div class="h">Agent<span class="meta" id="planMeta"></span>
       <button id="undoBtn" hidden title="Revert the latest change as a whole"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>Undo</button></div>
     <div id="steps"></div>
     <div id="notice" role="status"></div>
@@ -296,7 +302,7 @@
 
   <section id="timeline">
     <div class="tlHead">
-      <span class="h"><span class="n">03</span>Timeline</span><span class="mute" id="tlNote"></span>
+      <span class="h">Timeline</span><span class="mute" id="tlNote"></span>
       <span class="legend first"><span style="width:14px;height:8px;background:var(--seg);border-radius:2px"></span>masked</span>
       <span class="legend"><span style="width:14px;height:1px;background:#3A3A3A"></span>not masked</span>
       <span class="legend"><span style="width:3px;height:10px;background:var(--acc)"></span>low confidence</span>
@@ -463,7 +469,7 @@ async function watchScan(vid, queries) {
 }
 async function openVideo(j, name) {
   Object.assign(S, { vid: j.video_id, info: j.info, name, timeline: null, trackList: null, maskFrames: null, ops: [], ids: {}, desc: {}, vlm: {}, versions: [], selected: null,
-    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false });
+    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false, srcSeen: false });
   const saved = store.load();
   if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {},
     versions: (saved.versions || []).map(({ card, ...v }) => v) });
@@ -508,7 +514,7 @@ function renderPicker() {
   if (!show) return;
   const list = el('div', { class: 'samples' }, el('span', { class: 'mute' }, 'Looking for sample clips…'));
   $('picker').replaceChildren(el('div', { class: 'pick' },
-    el('div', { class: 'h' }, el('span', { class: 'n' }, '00'), 'Clip'),
+    el('div', { class: 'h' }, 'Clip'),
     el('h1', {}, 'Hide people, faces and plates by asking.'),
     el('p', {}, 'Pick a clip, then type what to hide: "blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". Everything runs on this machine.'),
     list,
@@ -853,9 +859,9 @@ function renderTimeline() {
   $('tlNote').textContent = S.busy === 'request' ? `v${S.versions.length + 1} in progress` : S.drawMode ? `drawing T${Object.keys(S.ids).length + 1} on Source`
     : [`${nMasked} masked`, nSpared ? `${nSpared} spared` : '', nSpots ? `${nSpots} low-confidence spot${nSpots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
   const step = d > 300 ? 60 : d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
-  const ruler = el('div', { class: 'ruler', title: 'Click to seek' });
+  const ruler = el('div', { class: 'ruler', title: 'Click or drag to seek' });
   for (let s = 0; s < d - 1e-6; s += step) ruler.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
-  ruler.onclick = ev => { const r = ruler.getBoundingClientRect(); seek((ev.clientX - r.left) / r.width * d); };
+  ruler.onpointerdown = ev => scrub(ev, ruler);
   const kids = [el('div', { class: 'ruler corner' }), ruler];
   for (const r of rows) {
     const sel = !r.group && r.id === S.selected;
@@ -866,16 +872,24 @@ function renderTimeline() {
     r.ext.forEach(([a, b]) => lane.append(el('span', { class: 'x', style: `left:${pct(a)};width:${pct(b - a)}` })));
     r.segs.forEach(([a, b]) => lane.append(el('span', { class: 's', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px);background:${color}` })));
     r.unc.forEach(([a, b]) => lane.append(el('span', { class: 'u', style: `left:${pct(a)};width:${pct(b - a)}` })));
-    lane.onclick = ev => {
-      const rc = lane.getBoundingClientRect(); seek((ev.clientX - rc.left) / rc.width * d);
-      if (!r.group && r.id !== S.selected) select(r.id);
-    };
+    lane.onpointerdown = ev => scrub(ev, lane, !r.group && r.id !== S.selected ? r.id : null);
     kids.push(lane);
   }
   if (!rows.length) kids.push(el('div', { class: 'tempty', style: 'grid-column:1 / -1' }, 'Nothing masked yet.'));
   kids.push(el('div', { id: 'ph' }, el('span', { id: 'phTag' })));
   g.replaceChildren(...kids);
   placePlayhead();
+}
+// Click or drag on the ruler or a lane to move the playhead. Listens on window so the drag survives
+// renderTimeline() replacing the lane it started on.
+function scrub(ev, node, selId) {
+  if (ev.button !== 0 || !S.info) return;
+  ev.preventDefault();
+  const rc = node.getBoundingClientRect(), at = e => seek((e.clientX - rc.left) / rc.width * dur());
+  $('player').pause(); at(ev);
+  if (selId) select(selId);
+  const move = e => at(e), up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
 }
 function placePlayhead() {
   const ph = $('ph'); if (!ph || !S.info) return;
@@ -900,18 +914,40 @@ function setProgramSource() {
   if (fresh && !ex.src.endsWith(S.exportUrl)) { ex.src = S.exportUrl; ex.currentTime = $('player').currentTime || 0; }
   if (!fresh && ex.getAttribute('src')) { ex.pause(); ex.removeAttribute('src'); ex.load(); }
 }
+// Program alone until the clip first plays; then Source appears beside it and stays (pausing doesn't hide it),
+// unless the Source switch is off. Draw box always shows Source, since boxes are drawn there.
+const srcShown = () => S.drawMode || (!S.srcOff && (S.srcSeen || !$('player').paused));
+const setSrcOff = off => { S.srcOff = off; layoutMonitors(); };
+function renderSrcSwitch() {
+  const on = !S.srcOff, b = $('srcSwitch');
+  b.setAttribute('aria-checked', String(on));
+  b.title = on ? 'Source shows once the clip plays. Click to hide it.' : 'Source is hidden. Click to show it.';
+  b.querySelector('.trk').classList.toggle('on', on);
+}
 function layoutMonitors() {
+  renderSrcSwitch();
   if (!S.info) return;
-  const r = $('well').getBoundingClientRect(), W = S.info.width, H = S.info.height, head = 25 + 4;
-  const side = Math.min((r.width - 32 - 28 - 8) / 2 / W, (r.height - 18 - head) / H);
-  const stack = Math.min((r.width - 32 - 8) / W, (r.height - 18 - 14 - 2 * head) / 2 / H);
-  // Side by side, as designed, unless that makes them much smaller than stacking would (a phone, a wide clip)
-  const stacked = side < stack * 0.6;
-  $('well').classList.toggle('stacked', stacked);
-  const s = Math.max(0.01, stacked ? stack : side);
-  const w = Math.floor(W * s), h = Math.floor(H * s), dpr = devicePixelRatio || 1;
+  const well = $('well'), r = well.getBoundingClientRect(), W = S.info.width, H = S.info.height, head = 25 + 4;
+  const srcMon = $('srcScreen').parentNode, progMon = $('progScreen').parentNode, show = srcShown(), dpr = devicePixelRatio || 1;
+  let s;
+  if (show) {
+    const side = Math.min((r.width - 32 - 28 - 8) / 2 / W, (r.height - 18 - head) / H);
+    const stack = Math.min((r.width - 32 - 8) / W, (r.height - 18 - 14 - 2 * head) / 2 / H);
+    // Side by side, as designed, unless that makes them much smaller than stacking would (a phone, a wide clip)
+    const stacked = side < stack * 0.6;
+    well.classList.toggle('stacked', stacked);
+    s = stacked ? stack : side;
+  } else {
+    well.classList.remove('stacked');
+    s = Math.min((r.width - 32) / W, (r.height - 18 - head) / H);
+  }
+  srcMon.hidden = !show;
+  s = Math.max(0.01, s);
+  const w = Math.floor(W * s), h = Math.floor(H * s);
   for (const id of ['srcScreen', 'progScreen']) { $(id).style.width = `${w}px`; $(id).style.height = `${h}px`; $(id).parentNode.style.width = `${w}px`; }
   for (const id of ['srcCv', 'progCv']) { const c = $(id); if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); } }
+  // Draw box sits over whichever monitor leads: Source when it's up, otherwise Program
+  (show ? srcMon : progMon).querySelector('.monHead').append($('drawBtn'));
   drawAll();
 }
 new ResizeObserver(layoutMonitors).observe($('well'));
@@ -1173,6 +1209,7 @@ function gaussian(img, w, h, ks) {
     const tick = () => { if (!v.paused) drawAll(); requestAnimationFrame(tick); }; tick();
   }
   ['seeked', 'pause', 'play', 'loadeddata', 'timeupdate'].forEach(e => v.addEventListener(e, () => drawAll()));
+  v.addEventListener('play', () => { if (!S.srcSeen) { S.srcSeen = true; layoutMonitors(); } });
   ['seeked', 'loadeddata'].forEach(e => ex.addEventListener(e, () => drawProgram()));
   v.addEventListener('ended', () => ex.pause());
 })();
@@ -1274,10 +1311,12 @@ function toggleDraw(on = !S.drawMode) {
   S.drawMode = on; P.newBox = null;
   if (on) { $('player').pause(); S.picker = false; renderPicker(); }
   $('srcScreen').classList.toggle('drawing', on);
+  layoutMonitors();
   renderRequest(); renderTimeline(); drawSource();
   if (on) notice('Draw mode: drag on Source around what to hide. Esc to cancel.'); else if ($('notice').textContent.startsWith('Draw mode')) notice('');
 }
 $('drawBtn').onclick = () => toggleDraw();
+$('srcSwitch').onclick = () => setSrcOff(!S.srcOff);
 $('undoBtn').onclick = undoLast;
 $('openBtn').onclick = () => { S.picker = !S.picker; renderPicker(); };
 $('playBtn').onclick = () => { const v = $('player'); v.paused ? v.play() : v.pause(); };
