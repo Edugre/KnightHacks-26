@@ -603,15 +603,16 @@ function listSamples() {
       b.insertAdjacentHTML('beforeend', ARROW);
       return b;
     }) : [el('div', { class: 'hEmpty' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
-  }).catch(e => { samplesListed = false; rows.replaceChildren(el('div', { class: 'hEmpty' }, `Couldn't list samples: ${errText(e)}`)); });
-  // Live mode (camera or a clip as a stream) has its own page; the row shows only where the server runs with CENSOR_LIVE=1
-  fetch('api/live/stats', { cache: 'no-store' }).then(r => {
-    if (!r.ok) return;
-    const a = el('a', { class: 'hRow', href: 'api/live/live', title: 'Live replay: your camera or a clip as a stream, masked behind a 1 s delay' },
-      el('span', { class: 'id' }, 'Live camera (this device)'), el('span', { class: 'meta' }, 'live · 1 s delay'));
-    a.insertAdjacentHTML('beforeend', ARROW);
-    rows.append(a);
-  }).catch(() => {});
+  }).catch(e => { samplesListed = false; rows.replaceChildren(el('div', { class: 'hEmpty' }, `Couldn't list samples: ${errText(e)}`)); })
+    .then(() => fetch('api/live/stats', { cache: 'no-store' })).then(r => {
+      // Live mode (camera or a clip as a stream) has its own page; the row shows only where the server runs with
+      // CENSOR_LIVE=1. Appended after the sample rows are in place, so neither answer can wipe the other.
+      if (!r.ok || rows.querySelector('a.hRow')) return;
+      const a = el('a', { class: 'hRow', href: 'api/live/live', title: 'Live replay: your camera or a clip as a stream, masked behind a 1 s delay' },
+        el('span', { class: 'id' }, 'Live camera (this device)'), el('span', { class: 'meta' }, 'live · 1 s delay'));
+      a.insertAdjacentHTML('beforeend', ARROW);
+      rows.append(a);
+    }).catch(() => {});
 }
 $('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f); };
 $('stubInput').onchange = e => {

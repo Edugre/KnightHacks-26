@@ -1,6 +1,8 @@
 # Live replay (M6): plan
 
-*Sun 2026-10-11, started 04:05 EDT. Deadline 11:00. Branch `feat/live-replay`, off `main` at 365aac6.*
+*Sun 2026-10-11, started 04:05 EDT. Deadline 11:00. Branch `feat/live-replay-phoyo008` (re-authored copy of
+`feat/live-replay` from ~06:55; work continues there), off `main` at 365aac6. On the GPU server it runs from the
+worktree `~/live-wt`, so the team's shared checkout stays on `main`.*
 
 ## 1. What we're asked for, and why
 
@@ -490,6 +492,24 @@ masked; `enroll` picks the largest face; `enroll` without faces → ok false; ro
 **Model file (needs the owner's yes):** `face_recognition_sface_2021dec.onnx` (~38 MB) from opencv_zoo,
 `CENSOR_SFACE=<path>`; on the server it must be uploaded by hand like EgoBlur. Until then the toggle is disabled and
 the README says why.
+
+**§8 review (folded, ~07:15):** three SEV-1s replaced the rule above. (1) *Per-bracket sparing, never per track:* the
+box at frame f is spared only if the bracketing keyframes a ≤ f ≤ b are both flagged, the track has ≥ 3 keyframes in
+the window, `_same(a.box, b.box)` and `b.f - a.f <= LINK_GAP`, and no unspared face overlaps the box at a.f or b.f
+(IoU ≥ 0.1): a one-detection "track" is never spared, and a stranger who steps into the owner's spot (greedy `link`
+would merge them) gets the owner blurred for a few frames instead of the stranger spared. Held and lead boxes are
+never spared. (2) *Generation counter:* `enroll` / `clear_enrolled` bump `gen`; detections from an older gen count
+as unspared and the BoxCache key carries `gen`, so "Forget me" takes effect on the next frame. (3) *Raw-box
+embedding with aligned crops:* embed the box before FACE_EXPAND; primary path crop → YuNet on the crop → `alignCrop`
+→ `feature` → L2-normalize (SFace's output is not unit-norm; `alignCrop` needs YuNet's landmark row, EgoBlur has
+none); plain crops only behind `CENSOR_SPARE_PLAIN=1`; `SPARE_COS` 0.5. Also folded: `enroll` is served by the
+detector thread (no second thread touches the models) and refuses unless exactly one face ≥ 8 % of the frame is
+visible, averages 3 consecutive passes (pairwise cos ≥ 0.6), never updates afterwards; embed only when enrolled, cap
+6 faces per pass (largest, raw height ≥ 48 px), skipped faces unspared, `skipped_embeds` and `embed_ms_p50` in
+stats; `/start` gets `except_me`; `identity` keys pinned; honest copy on the page ("may blur you, may rarely leave a
+lookalike visible; not an access control"). **Calibration before any demo use:** enroll each face track of
+`street_walk` and record the max cosine against every other track; `SPARE_COS` must exceed it by 0.1 (STACK.md).
+Status: merged off by default (no model file); not demoed until the calibration passes.
 
 ## 5. Adversarial review
 
