@@ -1,6 +1,6 @@
 # Devpost write-up (draft)
 
-*Draft. Every speed and memory number names the GPU and resolution it was measured on. R9700 (Dublin) numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 before the Dublin hub went down; Strix Halo numbers are from docs/STACK.md, measured Sun Oct 11 on the San Jose hub's Radeon 8060S, which is the demo hardware. Plate recall, over-blur and request success on the Strix Halo are TODO (`bench.review` comparison pending). For the request success rate, run the 20 real-clip requests: `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk` (without `--clip` the synthetic ones are pooled in). Don't invent numbers to fill them.*
+*Draft. Every speed and memory number names the GPU and resolution it was measured on. R9700 (Dublin) numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 before the Dublin hub went down; Strix Halo numbers are from docs/STACK.md, measured Sun Oct 11 on the San Jose hub's Radeon 8060S, which is the demo hardware. Request success and recall on the Strix Halo come from `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk` (Sun 07:00 UTC, commit 62955f4). Plate numbers on both GPUs come from `bench.review`. Don't invent numbers.*
 
 ## Censor: redaction you can ask for
 
@@ -36,8 +36,9 @@ Stack: FastAPI backend, PyTorch on ROCm, transformers, Ultralytics, OpenCV, and 
 
 Everything runs on one AMD GPU with ROCm. We built and measured it on **one AMD Radeon AI PRO R9700** (RDNA 4, gfx1201, 32 GB) with the preinstalled PyTorch 2.9.1+rocm7.13; each number below says which card it's from. When that hub went down we moved to a **Radeon 8060S** (Strix Halo iGPU, gfx1151, 64 GB shared LPDDR5X) on the San Jose hub, which is the demo hardware. It has the same ROCm 7.13 and PyTorch 2.9.1, and runs the same code.
 
-- **Every model on one card:** detection, the 8B vision-language model and the planner peak at **17.9 GB of 32 GB on the R9700** and **18.9 GB on the Strix Halo** (`./run.sh bench`) with everything loaded. One Qwen3-VL process serves both the planner and the attribute checks, loaded once and kept resident.
-- **Strix Halo, `street_walk` at 1280x720 (`./run.sh bench`):** detection 45.4 ms/frame, rendering 3.5 ms/frame, 0.8x real time offline. Its upload scan, EgoBlur per-frame time and VLM latency are not measured yet.
+- **Every model on one card:** detection, the 8B vision-language model and the planner peak at **17.9 GB of 32 GB on the R9700** and **19.3 GB on the Strix Halo** (`./run.sh bench`) with everything loaded. One Qwen3-VL process serves both the planner and the attribute checks, loaded once and kept resident.
+- **Strix Halo, `street_walk` at 1280x720 (`./run.sh bench`):** the face + plate + person scan takes 105 ms/frame and rendering 3.7 ms/frame: 0.4x real time offline. EgoBlur is most of it, and fp16 still cuts each EgoBlur call 2.9x here (0.376 s to 0.129 s at 1080p) with the same boxes.
+- **Strix Halo, could it keep up with a live stream? (`bench.live_speed`, `street_plates`, 30 fps):** one face + plate + person pass takes 134 ms at 720p and 284 ms at 1080p, so detecting every 5th frame (720p) or 9th (1080p) behind a delay buffer of under 0.8 s would keep every mask in place. That sizes the live mode in "What's next"; it isn't built.
 - **R9700: upload scan at 0.76x real time at 1080p**, 17.2 s for a 13 s clip, down from 48.1 s. On a 720p clip the GPU scans at 1.12x real time against 0.05x on a 64-thread Threadripper PRO CPU alone: **24x faster**.
 - **How we got there (R9700):** we profiled first. Decoding was 0.2 s of a 48 s scan, and EgoBlur was 87% of it. **fp16 autocast** cut each EgoBlur call 3x (0.147 s to 0.049 s per 1080p frame) with the same boxes (mean IoU 0.999 on faces against fp32, none lost), and a warm-up at startup removed about 6 s of first-call cost per model. Batching, two streams, MIOpen autotuning and smaller inputs didn't help, and we measured each of them.
 - **ROCm lessons:** MIOpen couldn't read its kernel database on the cloud image, so every new crop size triggered a kernel search (~15 s per VLM call). Fixed crop sizes plus `MIOPEN_FIND_MODE=FAST` fixed it. Asking the model for only the last position's logits (`logits_to_keep=1`) avoided a 16 GB spike with three images per call.
@@ -51,14 +52,15 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 
 | | R9700 (Dublin) | Strix Halo (San Jose, demo hardware) |
 | --- | --- | --- |
-| Plates masked (share of plate frames), `street_plates` 1080p / `street_walk` 720p | **100% / 94.6%** | *TODO (`bench.review` comparison pending)* |
-| Longest a plate stays visible | 0 s / 0.16 s (one 11x7 px plate) | *TODO* |
-| Plate over-blur, mean | 3.0% / 0.1% of the frame | *TODO* |
+| Plates masked (share of plate frames), `street_plates` 1080p / `street_walk` 720p | **100% / 94.6%** | **100% / 93.7%** (the gap: one 11x7 px plate on 4 frames) |
+| Longest a plate stays visible | 0 s / 0.16 s (one 11x7 px plate) | 0 s / 0.16 s (the same plate) |
+| Plate over-blur, mean | 3.0% / 0.1% of the frame | 2.5% / 0.06% of the frame |
 | Person questions on the three people in focus on `street_walk` | every answer right, at p 0.00 or 1.00 | not measured |
 | Upload scan, `street_plates` 1080p | 0.76x real time | not measured |
-| Detection and offline speed, `street_walk` 1280x720 | not measured | 45.4 ms/frame detect, 3.5 ms/frame render, 0.8x real time |
-| Peak GPU memory, all models | 17.9 GB of 32 GB | 18.9 GB (64 GB shared with the CPU) |
-| Request success rate (20 real-clip requests) | *TODO* | *TODO after the `--clip` run above* |
+| Detection and offline speed, `street_walk` 1280x720 | not measured | 105 ms/frame detect (face + plate + person), 3.7 ms/frame render, 0.4x real time |
+| Peak GPU memory, all models | 17.9 GB of 32 GB | 19.3 GB (64 GB shared with the CPU) |
+| Request success rate (20 real-clip requests) | not measured (the requests were written after the Dublin hub went down) | **13 / 20** (keyword baseline 6 / 20, fail-closed off 11 / 20) |
+| Labeled boxes at least 90% masked, three clips | not measured | faces 0.92, plates 0.95, people 0.99. The face labels are head boxes (hair to chin), so a face masked from forehead to chin can still count as a miss |
 
 ## Challenges
 
