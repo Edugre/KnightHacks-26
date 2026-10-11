@@ -57,7 +57,7 @@ schema/
   timeline.schema.json # generated from core/timeline.py, the shared contract
   examples/            # hand-written timelines for stubs and tests
 web/
-  index.html           # test UI: sample-clip dropdown, request box with a status line, preview + draw-a-box, undo, export that plays the blurred result; no timeline strip yet
+  index.html           # the editor (layout 4a): requests with the agent's steps, coverage strips, targets, versions, timeline + player, draw-a-box, undo, export
 bench/
   clips/               # gitignored; manifest.yaml lists sources and consent
   labels/              # per-clip box labels for every 10th frame
