@@ -59,10 +59,12 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 | Upload scan, `street_plates` 1080p | 0.76x real time | not measured |
 | Detection and offline speed, `street_walk` 1280x720 | not measured | 105 ms/frame detect (face + plate + person), 3.7 ms/frame render, 0.4x real time |
 | Peak GPU memory, all models | 17.9 GB of 32 GB | 19.3 GB (64 GB shared with the CPU) |
-| Request success rate (20 real-clip requests) | not measured (the requests were written after the Dublin hub went down) | **13 / 20** (keyword baseline 6 / 20, fail-closed off 11 / 20) |
-| Labeled boxes at least 90% masked, three clips | not measured | faces 0.92, plates 0.95, people 0.99. The face labels are head boxes (hair to chin), so a face masked from forehead to chin can still count as a miss |
+| Request success rate (20 real-clip requests) | not measured (the requests were written after the Dublin hub went down) | **14 / 20** (keyword baseline 7 / 20, fail-closed off 11 / 20), after correcting 28 verified label errors on `street_plates`; 13 / 20 on the original labels |
+| Labeled boxes at least 90% masked, three clips | not measured | faces 0.95 (0.947), plates 0.98, people 0.99 (0.92 / 0.95 / 0.99 on the original labels). The face labels are head boxes (hair to chin), so a face masked from forehead to chin can still count as a miss |
 
 ## Challenges
+
+- **Checking our own benchmark.** We looked at every failed request frame by frame. On the night-crowd clip most "misses" were label errors: face boxes drawn half a face to the side of an already-blurred face, a plate box left on a frame after the plate drove out of view, a head seen from behind. We corrected the 28 boxes we could verify on the frame, left every ambiguous one as drawn, and report both scores (13 / 20 before, 14 / 20 after). What's left is real: dim, motion-blurred faces in medical masks that EgoBlur doesn't see even at a 0.05 threshold, one vision-model miss (a charcoal denim shirt), and a woman whose label box includes her tote bag.
 
 - **Plate false alarms.** At a low threshold EgoBlur flags tail lights, signs and shoes. A plate track now needs two confident detections, or a plate shape and enough frames; on `street_plates` that took 232 plate tracks down to 49 while keeping every real plate.
 - **Small, fast plates.** A 13 px plate moving 10 px between checked frames doesn't overlap itself, so the tracker split it. Linking by size and distance, and starting masks a few frames early, took `street_walk` from 72% to 94.6% of plate frames masked.
