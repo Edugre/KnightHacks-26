@@ -76,16 +76,30 @@ class Timeline(BaseModel):
 
 class OpLog(BaseModel):
     ops: list[Op] = Field(default_factory=list)
+    undone: list[Op] = Field(default_factory=list)  # popped by undo, latest last; redo puts them back
 
     def next_id(self) -> str:
         return f"op_{len(self.ops) + 1}"
 
     def append(self, op: Op) -> Op:
         self.ops.append(op)
+        self.undone.clear()  # a new edit starts a new history: what was undone can't come back on top of it
         return op
 
     def undo(self) -> Optional[Op]:
-        return self.ops.pop() if self.ops else None
+        if not self.ops:
+            return None
+        op = self.ops.pop()
+        self.undone.append(op)
+        return op
+
+    def redo(self) -> Optional[Op]:
+        """Put back the op the latest undo took, with its own id (ids follow the log's length, so it's free)."""
+        if not self.undone:
+            return None
+        op = self.undone.pop()
+        self.ops.append(op)
+        return op
 
 
 def fold(ops: list[Op], tracks: TrackStore, video: VideoInfo) -> Timeline:

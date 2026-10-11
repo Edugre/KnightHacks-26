@@ -124,3 +124,18 @@ def test_one_person_or_a_group_is_read_from_the_words():
     assert intents.one_person("blur everyone but the men") is False
     assert intents.one_person("blur everyone except people in red") is False
     assert intents.one_person("blur all plates") is None
+
+
+def test_a_reference_person_spares_or_keeps_just_their_face():
+    def masked(mode):
+        calls = []
+
+        def call(name, args):
+            calls.append((name, args))
+            return [{"track_id": t} for t in ("t1", "t2", "t3")] if name == "find_objects" else "op"
+        planner.execute(planner.Plan(targets=[planner.Target("face")]), FakeSession({"t1": "p1", "t2": "p2"}), call,
+                        ref={"track_id": "p2", "label": "person", "mode": mode})
+        assert not any(n == "check_attribute" for n, _ in calls)  # the pointer replaces the questions
+        return [a["track_ids"] for n, a in calls if n == "add_masks"][0]
+    assert masked("except") == ["t1", "t3"]
+    assert masked("only") == ["t2"]

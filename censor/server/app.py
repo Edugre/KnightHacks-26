@@ -5,13 +5,15 @@
   POST /api/samples/{id}                load one of them like an upload (no file picker needed)
   GET  /api/videos/{id}                 -> {info, summary, ops, busy}  (busy: the request still running, if any)
   GET  /api/videos/{id}/source          original video
-  POST /api/videos/{id}/request         {"text": str}  -> agent result
+  POST /api/videos/{id}/request         {"text": str, "ref"?: {"track_id": str} | {"frame": int, "box": [x1,y1,x2,y2]}}
+                                        -> agent result; ref is what "this person" means ("blur everyone except this person")
   POST /api/videos/{id}/box             {"frame": int, "box": [x1,y1,x2,y2], "effect": "blur"} -> track + op
   POST /api/videos/{id}/targets         {"action": "add"|"remove"|"effect", "track_ids": [...], "effect": "blur"}
                                         mask, unmask or restyle chosen tracks by hand -> {op_id, summary};
                                         {"action": "move", "track_ids": [one], "frame": f, "box": [x1,y1,x2,y2]}
                                         re-tracks from the corrected box from frame f on -> {op_ids, track, summary}
   POST /api/videos/{id}/undo            -> {undone, summary}
+  POST /api/videos/{id}/redo            put back the op the latest undo took -> {redone, summary}  (summary.n_redo: how many can)
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
   GET  /api/videos/{id}/masks           per-frame masked rectangles, exactly as the renderer applies them (UI preview)
@@ -119,8 +121,15 @@ def session(vid: str) -> Session:
     return _sessions[vid]
 
 
+class RefIn(BaseModel):
+    track_id: Optional[str] = None  # a target the user picked
+    frame: Optional[int] = None     # or a box they drew on this frame
+    box: Optional[list[float]] = None
+
+
 class RequestIn(BaseModel):
     text: str
+    ref: Optional[RefIn] = None
 
 
 class TargetsIn(BaseModel):
@@ -237,7 +246,7 @@ def request(vid: str, body: RequestIn):
     t0 = time.perf_counter()
     with turn(vid, body.text):
         waited = time.perf_counter() - t0
-        out = Agent(s).run(body.text)
+        out = Agent(s).run(body.text, ref=body.ref.model_dump(exclude_none=True) if body.ref else None)
     print(_request_log(vid, body.text, waited, time.perf_counter() - t0, out), file=sys.stderr)
     return out
 
@@ -292,6 +301,13 @@ def undo(vid: str):
     s = session(vid)
     with turn(vid, "undo"):
         return {"undone": s.undo(), "summary": s.summarize()}
+
+
+@app.post("/api/videos/{vid}/redo")
+def redo(vid: str):
+    s = session(vid)
+    with turn(vid, "redo"):
+        return {"redone": s.redo(), "summary": s.summarize()}
 
 
 @app.get("/api/videos/{vid}/timeline")

@@ -38,6 +38,8 @@
   a { color:var(--text); } a:hover { color:var(--ink); }
   [hidden] { display:none !important; }
   svg { display:block; flex:none; }
+  /* a button's icon is redrawn while the clip plays; a press that lands on it must still reach the button */
+  button svg { pointer-events:none; }
   .primary { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; background:var(--primary-bg); border:0; border-radius:6px;
     color:var(--primary-fg); padding:11px 14px; font:600 14px/1.2 var(--font); text-decoration:none; }
   .primary:hover:not(:disabled) { background:#E6E6E6; color:var(--primary-fg); }
@@ -84,6 +86,15 @@
   #genProg span { position:relative; }
   .indet { position:absolute; top:0; bottom:0; width:35%; background:rgba(229,72,77,.18); animation:indet 1.6s ease-in-out infinite; }
   @keyframes indet { 0% { left:-35%; } 100% { left:100%; } }
+  #refRow { display:flex; flex:none; }
+  .refBtn { display:flex; align-items:center; gap:6px; width:100%; border:1px dashed #3A3A3A; border-radius:6px; padding:7px 10px; font:500 12px/1.3 var(--font); color:#CFCFCF; text-align:left; }
+  .refBtn.on { border-style:solid; border-color:var(--text); color:var(--ink); }
+  .refChip { display:flex; align-items:center; gap:8px; width:100%; min-width:0; border:1px solid var(--text); border-radius:6px; padding:4px 4px 4px 8px; font:500 12px/1.3 var(--font); }
+  .refChip b { font:600 10px/1.4 var(--mono); letter-spacing:.08em; background:var(--text); color:var(--ink-dark); padding:0 5px; border-radius:3px; flex:none; }
+  .refChip .what { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; padding:2px 0; text-align:left; border-radius:0; }
+  .refChip .what:hover:not(:disabled) { background:none; color:var(--ink); }
+  .refChip .x { border:0; padding:2px 6px; color:var(--mute); }
+  .refChip .x:hover:not(:disabled) { color:var(--ink); }
   .try { display:flex; flex-direction:column; margin-top:4px; }
   .try .th { display:flex; font:500 10.5px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); padding-bottom:6px; border-bottom:1px solid #262626; }
   .try .th span { margin-left:auto; letter-spacing:0; text-transform:none; }
@@ -109,7 +120,7 @@
   .screen canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
   #srcScreen { outline:1px solid #2A2A2A; }
   #progScreen { outline:1px solid var(--acc); outline-offset:2px; }
-  #srcScreen.drawing canvas { cursor:crosshair; }
+  .screen.drawing canvas { cursor:crosshair; }
   #progBadge { position:absolute; left:8px; bottom:8px; background:rgba(17,17,17,.85); color:var(--text); font:400 10px/1.4 var(--mono); padding:2px 6px; }
   #drawHint { position:absolute; width:max-content; max-width:200px; background:rgba(17,17,17,.92); border:1px solid var(--seg); border-radius:4px; color:var(--text);
     font:400 10.5px/1.35 var(--mono); padding:4px 6px; pointer-events:none; }
@@ -132,8 +143,8 @@
 
   /* ---- agent ---- */
   #agent { grid-row:2; grid-column:3; display:flex; flex-direction:column; gap:12px; min-height:0; overflow:hidden; }
-  #undoBtn { display:flex; align-items:center; gap:4px; border:0; padding:0; font:500 11px/1.4 var(--font); letter-spacing:0; text-transform:none; color:#CFCFCF; }
-  #undoBtn:hover:not(:disabled) { background:none; color:var(--ink); }
+  .hist { display:flex; align-items:center; gap:4px; border:0; padding:0; font:500 11px/1.4 var(--font); letter-spacing:0; text-transform:none; color:#CFCFCF; }
+  .hist:hover:not(:disabled) { background:none; color:var(--ink); }
   #steps { display:flex; flex-direction:column; gap:6px; padding:12px; background:var(--field); border:1px solid #262626; border-radius:8px;
     font:400 11.5px/1.45 var(--mono); color:#BDBDBD; flex:none; max-height:42%; overflow:auto; }
   #steps .sh { font:500 10.5px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); }
@@ -154,7 +165,7 @@
   #notice:empty { display:none; }
   #notice.err { color:var(--err); }
   .tlist { display:flex; flex-direction:column; min-height:0; flex:1; }
-  .trow { display:grid; grid-template-columns:32px minmax(0,1fr) 48px 48px; gap:6px; align-items:center; font:400 12.5px/1.3 var(--font); color:#CFCFCF;
+  .trow { display:grid; grid-template-columns:32px minmax(0,1fr) 48px 48px 20px; gap:6px; align-items:center; font:400 12.5px/1.3 var(--font); color:#CFCFCF;
     padding:7px 8px; margin:0 -8px; border-bottom:1px solid var(--hair); }
   .trow.head { font:500 10px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--faint); padding:0 0 6px; margin:0; border-bottom:1px solid #2A2A2A; flex:none; }
   .tbody { overflow:auto; min-height:0; }
@@ -167,7 +178,12 @@
   .trow.sel .id { color:var(--acc); }
   .trow.spared { border-bottom:1px dashed #262626; color:var(--faint); }
   .trow.spared .id { color:var(--faint); }
-  .trow.group { cursor:default; }
+  .trow.child .id { padding-left:8px; }
+  .trow .chev { display:inline-block; width:10px; color:var(--mute); transition:transform .12s; }
+  .trow .chev.open { transform:rotate(90deg); }
+  .trow .xb { width:20px; height:20px; display:grid; place-items:center; border:0; border-radius:4px; padding:0; color:var(--mute); opacity:0; }
+  .trow:hover .xb, .trow.sel .xb, .trow .xb:focus-visible { opacity:1; }
+  .trow .xb:hover:not(:disabled) { color:var(--ink); background:rgba(255,255,255,.08); }
   .tempty { font-size:12px; color:var(--mute); padding:8px 0; }
   #lowconf { display:flex; gap:8px; padding:8px 0 0; font:400 11.5px/1.4 var(--font); color:var(--mute); align-items:flex-start; flex:none; }
   #lowconf i { width:8px; height:8px; margin-top:4px; background:var(--acc); flex:none; }
@@ -185,6 +201,8 @@
   .seg button.on { background:var(--primary-bg); color:var(--primary-fg); }
   .seg button.on:hover:not(:disabled) { background:#E6E6E6; }
   #removeBtn { margin-left:auto; border-color:#3A3A3A; padding:5px 12px; font:600 12px/1.2 var(--font); color:var(--text); }
+  .refUse { align-self:flex-start; border:0; padding:0; font:500 11.5px/1.4 var(--font); color:var(--text); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--seg); }
+  .refUse:hover:not(:disabled) { background:none; color:var(--ink); }
   .selHint { font-size:11px; line-height:1.45; color:var(--meta); }
 
   /* ---- timeline ---- */
@@ -200,7 +218,7 @@
   .rl .nm { overflow:hidden; text-overflow:ellipsis; min-width:0; }
   .rl .fx { margin-left:auto; padding-right:10px; font:400 11px/1 var(--mono); color:var(--faint); }
   .rl.sel { color:var(--ink); } .rl.sel .id { color:var(--acc); }
-  .rl.spared, .rl.spared .id { color:var(--faint); } .rl.group { cursor:default; }
+  .rl.spared, .rl.spared .id { color:var(--faint); }
   .ruler { position:sticky; top:0; z-index:2; height:22px; background:var(--head); border-bottom:1px solid #2A2A2A; cursor:ew-resize; touch-action:none; }
   .ruler.corner { cursor:default; }
   .ruler span { position:absolute; top:0; bottom:0; padding:5px 0 0 4px; border-left:1px solid #2A2A2A; font:400 10px/1 var(--mono); color:var(--faint); pointer-events:none; }
@@ -316,6 +334,7 @@
     <div class="panel" id="reqPanel">
       <div class="h">Request</div>
       <div class="reqField" id="reqField"><textarea id="text" rows="3" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea></div>
+      <div id="refRow"></div>
       <button class="primary" id="genBtn" disabled>Generate masks<span class="kbd" aria-hidden="true">↵</span></button>
       <div id="genProg" hidden><div class="indet"></div><span id="genLabel">Working</span></div>
       <div class="try">
@@ -348,7 +367,8 @@
 
   <aside id="agent" class="panel">
     <div class="h">Agent<span class="meta" id="planMeta"></span>
-      <button id="undoBtn" hidden title="Revert the latest change as a whole"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>Undo</button></div>
+      <button id="undoBtn" class="hist" hidden title="Revert the latest change as a whole (⌘Z / Ctrl+Z)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>Undo</button>
+      <button id="redoBtn" class="hist" hidden title="Put back what Undo took (⇧⌘Z / Ctrl+Y)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg>Redo</button></div>
     <div id="steps"></div>
     <div id="notice" role="status"></div>
     <div class="tlist">
@@ -379,8 +399,13 @@ const S = {
   desc: {},         // track_id -> what the VLM said yes to ("woman")
   vlm: {},          // track_id -> the VLM's latest answer about it: {q, a, p}
   trackList: null, maskFrames: null,  // GET /tracks, GET /masks, indexed per frame
-  versions: [],     // {key, text, at, opIds, n, undone}
-  selected: null,
+  versions: [],     // {key, text, at, opIds, n, undone, redoN}
+  redo: [],         // keys of undone versions Redo can put back, latest last; cleared by any new edit
+  nRedo: 0,         // ops the server can redo (summary.n_redo)
+  selected: null,   // a track id, or "g:<kind key>" for a whole group of a crowd
+  hover: null,      // Set of track ids the pointer is over in the list or timeline, outlined on the monitors
+  open: new Set(),  // groups expanded in the target list
+  ref: null,        // who "this person" means in the next request: {track_id} or {frame, box, guess}
   busy: null,       // null | 'request' | 'edit' | 'export'
   reqStart: 0, lastMs: null, steps: null, drawMode: false, picker: false,
   exportUrl: null, exportStats: null, exportSig: '', spotIdx: -1,
@@ -422,7 +447,7 @@ const store = {
   key: () => `censor:${S.vid}`,
   load() { try { return JSON.parse(localStorage.getItem(this.key()) || 'null'); } catch { return null; } },
   save() {
-    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc, vlm: S.vlm, versions: S.versions })); } catch {}
+    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc, vlm: S.vlm, versions: S.versions, redo: S.redo })); } catch {}
   },
 };
 
@@ -475,23 +500,44 @@ function targetList() {
 }
 const span = t => { const all = [...t.segs, ...t.ext]; return all.length ? [Math.min(...all.map(s => s[0])), Math.max(...all.map(s => s[1]))] : null; };
 // The rows the list and the timeline show: one per target while that's readable; for a crowd (127 targets on
-// street_plates), one per kind ("113 faces") plus the selected target's own row
+// street_plates), one per kind ("113 faces"), which can be selected and edited as a whole or expanded to pick one,
+// plus the selected target's own row. A group's id is "g:<key>"; ids holds its masked members, all every member.
 function rowsModel() {
   const ts = targetList();
   if (ts.length <= MAX_ROWS) return { rows: ts, grouped: false, ts };
   const kinds = new Map();
   for (const t of ts) {
     const key = `${t.spared ? 'spared:' : ''}${t.label}`;
-    const k = kinds.get(key) || { id: null, key, group: true, label: t.label, n: 0, segs: [], ext: [], unc: [], spared: t.spared, effects: new Set() };
-    k.n++; k.segs.push(...t.segs); k.ext.push(...t.ext); k.unc.push(...t.unc); if (t.effect) k.effects.add(t.effect); kinds.set(key, k);
+    const k = kinds.get(key) || { id: `g:${key}`, key, group: true, label: t.label, n: 0, segs: [], ext: [], unc: [], spared: t.spared, effects: new Set(), ids: [], members: [] };
+    k.n++; k.segs.push(...t.segs); k.ext.push(...t.ext); k.unc.push(...t.unc); if (t.effect) k.effects.add(t.effect);
+    k.members.push(t); if (!t.spared) k.ids.push(t.id);
+    kinds.set(key, k);
   }
-  const rows = [...kinds.values()].map(k => ({ ...k, segs: union(k.segs), ext: union(k.ext), unc: union(k.unc),
-    chip: '', effect: [...k.effects].join('/') || null,
-    name: `${k.n} ${k.n === 1 ? (ONE[k.label] || k.label) : plural[k.label] || k.label}${k.spared ? ' · spared' : ''}` }));
+  const rows = [];
+  for (const k of kinds.values()) {
+    const open = S.open.has(k.key);
+    rows.push({ ...k, segs: union(k.segs), ext: union(k.ext), unc: union(k.unc), chip: '', open, all: k.members.map(t => t.id),
+      effect: [...k.effects].join('/') || null,
+      name: `${k.n} ${k.n === 1 ? (ONE[k.label] || k.label) : plural[k.label] || k.label}${k.spared ? ' · spared' : ''}` });
+    if (open) rows.push(...k.members.map(t => ({ ...t, child: true })));
+  }
   const sel = ts.find(t => t.id === S.selected);
-  if (sel) rows.push(sel);
+  if (sel && !rows.some(r => r.id === sel.id)) rows.push(sel);
   return { rows, grouped: true, ts };
 }
+const isGroup = id => typeof id === 'string' && id.startsWith('g:');
+// The track ids the selection stands for: the target, or every member of the selected group
+function selIds() {
+  const id = S.selected;
+  if (!id || !S.timeline) return new Set();
+  if (!isGroup(id)) return new Set([id]);
+  const key = id.slice(2), spared = key.startsWith('spared:'), label = spared ? key.slice(7) : key;
+  if (!spared) return new Set(Object.entries(S.timeline.targets).filter(([, t]) => t.label === label).map(([i]) => i));
+  return new Set((S.trackList || []).filter(t => t.label === label && !S.timeline.targets[t.track_id] && S.vlm[t.track_id]).map(t => t.track_id));
+}
+const maskedSel = () => [...selIds()].filter(i => S.timeline.targets[i]);
+function hoverRow(r) { S.hover = r ? new Set(r.group ? r.all : [r.id]) : null; drawAll(); }
+function toggleOpen(key) { S.open.has(key) ? S.open.delete(key) : S.open.add(key); renderAgent(); renderTimeline(); }
 // Low-confidence spots: runs of uncertain keyframes, each masked anyway with extra padding
 const spots = () => targetList().flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
 const curVersion = () => { const live = S.versions.filter(v => !v.undone); return live[live.length - 1]; };
@@ -504,6 +550,8 @@ async function refreshState() {
   const [v, tl, tracks, masks] = await Promise.all([api(`api/videos/${S.vid}`), api(`api/videos/${S.vid}/timeline`),
     api(`api/videos/${S.vid}/tracks`), api(`api/videos/${S.vid}/masks`)]);
   S.info = v.info; S.ops = v.ops; S.timeline = tl; S.queries = tracks.queries || [];
+  S.nRedo = v.summary.n_redo || 0;
+  if (!S.nRedo) S.redo = [];  // the server's history moved on (an edit elsewhere, or "undo" typed as a request)
   indexLayers(tracks, masks);
   const present = new Set(S.ops.map(o => o.op_id));
   // A version whose ops left the log was undone. Sticky: op ids are reused after an undo.
@@ -527,11 +575,11 @@ async function watchScan(vid, queries) {
   }
 }
 async function openVideo(j, name) {
-  Object.assign(S, { vid: j.video_id, info: j.info, name, timeline: null, trackList: null, maskFrames: null, ops: [], ids: {}, desc: {}, vlm: {}, versions: [], selected: null,
+  Object.assign(S, { vid: j.video_id, info: j.info, name, timeline: null, trackList: null, maskFrames: null, ops: [], ids: {}, desc: {}, vlm: {}, versions: [], redo: [], nRedo: 0, selected: null, hover: null, open: new Set(), ref: null,
     exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false, srcSeen: false });
   const saved = store.load();
   if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {},
-    versions: (saved.versions || []).map(({ card, ...v }) => v) });
+    versions: (saved.versions || []).map(({ card, ...v }) => v), redo: saved.redo || [] });
   if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
   history.replaceState(null, '', `?video=${S.vid}`);
   $('player').src = `api/videos/${S.vid}/source`; $('expPlayer').removeAttribute('src');
@@ -635,6 +683,7 @@ function describe(calls, path) {
   // A crowd's 113 faces read as a count, not 113 ids
   const names = ids => { const t = ids.map(i => tid(i)); return t.length <= 6 ? t.join(', ') : `${t.slice(0, 3).join(', ')} and ${t.length - 3} more`; };
   if (path === 'template') add('Understood the request directly, no language model needed.');
+  if (path === 'reference') add('Used your reference for "this", no language model or vision questions needed.');
   for (const c of calls) {
     const a = c.args || {}, r = c.result, ms = c.ms !== undefined ? ` (${c.ms < 1000 ? c.ms + ' ms' : (c.ms / 1000).toFixed(1) + ' s'})` : '';
     if (c.error) { add(c.tool === '_plan' ? `The language model couldn't plan it: ${c.error}` : `${c.tool} failed: ${c.error}`, 'err'); continue; }
@@ -675,6 +724,12 @@ function describe(calls, path) {
       case 'set_effect': add(el('span', {}, 'Switched ', el('b', {}, names(a.track_ids || [])), ` to ${a.effect}`)); break;
       case 'add_rule': add(`Added a rule: ${a.effect || 'blur'} every ${a.category}`); break;
       case 'undo': add(r ? `Undid ${r}` : 'There was nothing to undo'); break;
+      case 'resolve_ref': {
+        const how = { picked: 'the target you picked', matched: 'the detection that fills the box you drew', tracked: 'your box, tracked by itself (nothing detected there)' }[r.how] || r.how;
+        tid(r.track_id);
+        add(el('span', {}, 'Reference: ', el('b', {}, `${tid(r.track_id)} (${ONE[r.label] || r.label})`), `, ${how}`, ms));
+        break;
+      }
       case 'track_box': add(el('span', {}, 'Tracked the drawn box from ', el('b', {}, `${fmt(r.start)} to ${fmt(r.end)}`))); break;
       default: add(`${c.tool}${ms}`);
     }
@@ -700,15 +755,19 @@ function workingSteps(text, first) {
       : 'Plain requests take a moment; ones that need the language model or many person checks take longer.' },
   ] };
 }
+function pushVersion(v) { S.versions.push(v); S.redo = []; }
+// The reference as the server takes it: the target picked, or the box drawn and its frame
+const refBody = r => r && (r.track_id ? { track_id: r.track_id } : { frame: r.frame, box: r.box });
 async function sendRequest(text) {
   if (!S.vid || S.busy || !text.trim()) return;
   if (/^\s*undo\s*$/i.test(text)) { $('text').value = ''; return undoLast(); }
-  const first = S.versions.length === 1;
+  if (/^\s*redo\s*$/i.test(text)) { $('text').value = ''; return redoLast(); }
+  const first = S.versions.length === 1, ref = refBody(S.ref);
   S.reqStart = Date.now(); S.steps = workingSteps(text, first); notice('');
   setBusy('request');
   let j;
   try {
-    j = await post(`api/videos/${S.vid}/request`, { text });
+    j = await post(`api/videos/${S.vid}/request`, ref ? { text, ref } : { text });
   } catch (err) {
     if (err && err.detail !== undefined) {
       S.steps = { head: 'What the agent did', lines: [{ mark: '!', cls: 'err', text: `That request failed: ${errText(err)}` }] };
@@ -720,7 +779,7 @@ async function sendRequest(text) {
     try {
       let v; do { await sleep(3000); v = await api(`api/videos/${S.vid}`); } while (v.busy);
       S.lastMs = Date.now() - S.reqStart;
-      S.versions.push({ key: `lost_${Date.now()}`, text, at: Date.now(), opIds: [], n: v.summary.n_targets, undone: false });
+      pushVersion({ key: `lost_${Date.now()}`, text, at: Date.now(), opIds: [], n: v.summary.n_targets, undone: false });
       S.steps = { head: 'What the agent did', lines: [{ mark: '✓', text: `The server finished: ${v.summary.n_targets} target(s) masked now. The connection dropped before its answer came back, so the steps aren't shown.` }] };
       await refreshState(); setBusy(); return;
     } catch (e2) {
@@ -730,11 +789,12 @@ async function sendRequest(text) {
   }
   S.lastMs = Date.now() - S.reqStart;
   const ops = opIdsOf(j.calls), d = describe(j.calls, j.path);
-  if (ops.length) S.versions.push({ key: j.request_id, text, at: Date.now(), opIds: ops, n: j.summary.n_targets, undone: false });
+  if (ops.length) pushVersion({ key: j.request_id, text, at: Date.now(), opIds: ops, n: j.summary.n_targets, undone: false });
   const lines = d.lines;
   if (!ops.length && j.message) lines.push({ mark: '✓', text: j.message, cls: j.path === 'clarify' ? '' : '' });
   S.steps = { head: 'What the agent did', lines, tally: d.tally, calls: j.calls, path: j.path, showCalls: false };
   const added = j.calls.filter(c => c.tool === 'add_masks' && !c.error).flatMap(c => c.args.track_ids || []);
+  if (ref && ops.length) S.ref = null;  // used: the next request starts without one
   await refreshState();
   // Land on the first thing this request masked, like the review state of the design
   const firstT = targetList().find(t => added.includes(t.id) && t.segs.length);
@@ -747,7 +807,7 @@ async function sendBox(frame, box) {
   setBusy('edit'); notice('Tracking the box through the clip…');
   try {
     const j = await post(`api/videos/${S.vid}/box`, { frame, box });
-    S.versions.push({ key: `box_${j.op_id}_${Date.now()}`, text: `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    pushVersion({ key: `box_${j.op_id}_${Date.now()}`, text: `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
     S.selected = j.track.track_id;
     await refreshState();
     notice(`Added ${tid(j.track.track_id)}: tracked from ${fmt(j.track.start)} to ${fmt(j.track.end)} and blurred wherever it was followed. Change its effect below.`);
@@ -761,19 +821,43 @@ async function undoLast() {
   if (!ver) { notice('Nothing to undo.'); return; }
   setBusy('edit');
   try {
+    let n = 0;
     for (let i = 0; i < 20; i++) {
       const last = S.ops[S.ops.length - 1];
       if (!last || !ver.opIds.includes(last.op_id)) break;
-      await post(`api/videos/${S.vid}/undo`);
+      await post(`api/videos/${S.vid}/undo`); n++;
       S.ops = (await api(`api/videos/${S.vid}`)).ops;
     }
-    ver.undone = true;
+    ver.undone = true; ver.redoN = n;
     await refreshState();
-    const n = S.timeline ? Object.keys(S.timeline.targets).length : 0;
-    S.steps = { head: 'What the agent did', lines: [{ mark: '✓', text: `Undid v${vNum(ver)} ("${ver.text}"). ${n} target${n === 1 ? '' : 's'} masked now.` }] };
+    if (n) S.redo.push(ver.key);  // after refreshState, which empties the stack when the server has nothing to redo
+    store.save();
+    historySteps('Undid', ver);
     notice('');
   } catch (e) { notice(`Undo failed: ${errText(e)}`, true); }
   setBusy();
+}
+// Redo the latest undone version: put back as many ops as its undo took
+async function redoLast() {
+  if (S.busy || !S.vid) return;
+  const ver = S.versions.find(v => v.key === S.redo[S.redo.length - 1]);
+  if (!ver || !S.nRedo) { S.redo = []; notice('Nothing to redo.'); renderAgentHead(); return; }
+  setBusy('edit');
+  try {
+    for (let i = 0; i < (ver.redoN || ver.opIds.length); i++) await post(`api/videos/${S.vid}/redo`);
+    S.redo.pop(); ver.undone = false;
+    const keep = S.redo;
+    await refreshState();
+    if (S.nRedo) S.redo = keep;
+    store.save();
+    historySteps('Redid', ver);
+    notice('');
+  } catch (e) { notice(`Redo failed: ${errText(e)}`, true); }
+  setBusy();
+}
+function historySteps(verb, ver) {
+  const n = S.timeline ? Object.keys(S.timeline.targets).length : 0;
+  S.steps = { head: 'What the agent did', lines: [{ mark: '✓', text: `${verb} v${vNum(ver)} ("${ver.text}"). ${n} target${n === 1 ? '' : 's'} masked now.` }] };
 }
 async function doExport() {
   if (!S.vid || S.busy) return;
@@ -787,13 +871,16 @@ async function doExport() {
   setBusy();
 }
 async function editTargets(action, ids, effect = 'blur') {
-  if (S.busy || !S.vid) return;
-  const names = ids.map(i => `${tid(i)} (${tname(i, (S.timeline.targets[i] || (S.trackList || []).find(t => t.track_id === i) || {}).label)})`).join(', ');
+  if (S.busy || !S.vid || !ids.length) return;
+  const labelOf = i => (S.timeline.targets[i] || (S.trackList || []).find(t => t.track_id === i) || {}).label;
+  const kinds = new Set(ids.map(labelOf)), k = [...kinds][0];
+  const names = ids.length <= 3 ? ids.map(i => `${tid(i)} (${tname(i, labelOf(i))})`).join(', ')
+    : `${ids.length} ${kinds.size === 1 ? plural[k] || k : 'targets'}`;
   const text = action === 'remove' ? `Unmasked ${names}` : action === 'add' ? `Masked ${names} with ${effect}` : `Changed ${names} to ${effect}`;
   setBusy('edit');
   try {
     const j = await post(`api/videos/${S.vid}/targets`, { action, track_ids: ids, effect });
-    S.versions.push({ key: `edit_${j.op_id}_${Date.now()}`, text, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    pushVersion({ key: `edit_${j.op_id}_${Date.now()}`, text, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
     await refreshState();
     notice(`${text}. Undo reverts it.`);
   } catch (e) { notice(`That edit failed: ${errText(e)}`, true); }
@@ -806,7 +893,7 @@ async function moveTarget(id, frame, box) {
   try {
     const j = await post(`api/videos/${S.vid}/targets`, { action: 'move', track_ids: [id], frame, box });
     const nid = j.track.track_id;
-    S.versions.push({ key: `move_${j.op_ids.join('_')}_${Date.now()}`, text: `Moved ${name} at frame ${frame}`, at: Date.now(),
+    pushVersion({ key: `move_${j.op_ids.join('_')}_${Date.now()}`, text: `Moved ${name} at frame ${frame}`, at: Date.now(),
       opIds: j.op_ids, n: j.summary.n_targets, undone: false });
     if (S.desc[id]) S.desc[nid] = S.desc[id];
     S.selected = nid; tid(nid);
@@ -817,8 +904,21 @@ async function moveTarget(id, frame, box) {
 }
 function select(id) {
   S.selected = id && S.selected === id ? null : id;
-  if (S.selected) tid(S.selected);
+  if (S.selected && !isGroup(S.selected)) tid(S.selected);
   renderAgent(); renderTimeline(); drawAll();
+}
+// Select a row of the list or timeline and bring the playhead inside its time, if it isn't already
+function pickRow(r) {
+  if (r.group && !r.open && S.selected !== r.id) S.open.add(r.key);
+  select(r.id);
+  const sp = span(r);
+  if (S.selected && sp) seek(Math.max(sp[0], Math.min(sp[1] - 1 / S.info.fps, P.t)));
+}
+function useAsRef(id) {
+  S.ref = { track_id: id };
+  renderRequest(); drawAll();
+  notice(`${tid(id)} is "this" in your next request, e.g. "blur everyone except this person".`);
+  $('text').focus();
 }
 function checkSpot() {
   const sp = spots(); if (!sp.length) return;
@@ -847,9 +947,58 @@ function renderRequest() {
   $('genBtn').disabled = !S.vid || !!S.busy;
   if (running) $('genLabel').textContent = `Working · ${((Date.now() - S.reqStart) / 1000).toFixed(0)} s`;
   $('drawBtn').disabled = !S.vid || !!S.busy;
-  $('drawBtn').classList.toggle('on', !!S.drawMode);
+  $('drawBtn').classList.toggle('on', S.drawMode === 'mask');
+  renderRef();
   $('playBtn').disabled = !S.vid;
   for (const b of $('examples').children) b.disabled = !S.vid || running;
+}
+const CROSSHAIR = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
+// "this": who the next request means, picked from the targets or drawn on Source
+function renderRef() {
+  const rr = $('refRow'), r = S.ref, busy = !!S.busy;
+  if (r && S.info) {
+    const id = r.track_id || r.guess, tr = id && (S.trackList || []).find(t => t.track_id === id);
+    const what = id ? `${tid(id)} · ${tname(id, tr ? tr.label : '')}${r.track_id ? '' : ' (from your box)'}` : `Your box on ${fmtF(r.frame / S.info.fps)}`;
+    rr.replaceChildren(el('div', { class: 'refChip' }, el('b', {}, 'THIS'),
+      el('button', { class: 'what', title: 'Show it on the video', onclick: showRef }, what),
+      el('button', { class: 'x', title: 'Clear: the next request has no "this"', 'aria-label': 'Clear the reference', disabled: busy ? '' : null,
+        onclick: () => { S.ref = null; renderRequest(); drawAll(); } }, '×')));
+    return;
+  }
+  const on = S.drawMode === 'ref', b = el('button', { class: `refBtn${on ? ' on' : ''}`, disabled: !S.vid || busy ? '' : null,
+    title: 'Drag a box around someone on Source, then ask e.g. "blur everyone except this person". Or select a target and use it as "this".',
+    onclick: () => toggleDraw(on ? false : 'ref') }, on ? 'Drag a box around them on Source · Esc cancels' : 'Point at who "this" means');
+  b.insertAdjacentHTML('afterbegin', CROSSHAIR);
+  rr.replaceChildren(b);
+}
+function showRef() {
+  const r = S.ref; if (!r) return;
+  const id = r.track_id || r.guess, tr = id && (S.trackList || []).find(t => t.track_id === id);
+  if (r.box) seek((r.frame + 0.5) / S.info.fps);
+  else if (tr && !trackBox(tr, P.frame)) seek((tr.keyframes[0].f + 0.5) / S.info.fps);
+  $('player').pause();
+}
+// The reference box at frame f: the target's box, or the drawn box on its own frame
+function refBox(f) {
+  const r = S.ref; if (!r || !S.info) return null;
+  if (r.box && f === r.frame) return r.box;
+  const id = r.track_id || r.guess, tr = id && (S.trackList || []).find(t => t.track_id === id);
+  const k = tr && trackBox(tr, f);
+  return k ? k.box : null;
+}
+const iou = (a, b) => {
+  const ix = Math.max(0, Math.min(a[2], b[2]) - Math.max(a[0], b[0])), iy = Math.max(0, Math.min(a[3], b[3]) - Math.max(a[1], b[1]));
+  const u = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - ix * iy;
+  return u > 0 ? ix * iy / u : 0;
+};
+// A drawn reference: remember the box, and the detection it most likely means (the server decides for real)
+function setRef(frame, box) {
+  let guess = null, best = 0.3;
+  for (const t of S.trackList || []) { const k = trackBox(t, frame), v = k ? iou(k.box, box) : 0; if (v >= best) { best = v; guess = t.track_id; } }
+  S.ref = { frame, box, guess };
+  toggleDraw(false);
+  notice(`Got it${guess ? `: that's ${tid(guess)}` : ''}. Now say what to do about them, e.g. "blur everyone except this person".`);
+  $('text').focus();
 }
 function renderExport() {
   const n = S.timeline ? Object.keys(S.timeline.targets).length : 0, p = $('expPanel');
@@ -877,6 +1026,10 @@ function renderAgentHead() {
     : `v${vNum(cur)}${S.lastMs !== null && cur && cur.key !== 'upload' ? ` · ${(S.lastMs / 1000).toFixed(1)} s` : ''}`;
   $('undoBtn').hidden = !S.vid || S.busy === 'request' || !S.versions.some(v => !v.undone && v.opIds.length);
   $('undoBtn').disabled = !!S.busy;
+  const redo = S.versions.find(v => v.key === S.redo[S.redo.length - 1]);
+  $('redoBtn').hidden = !S.vid || S.busy === 'request' || !redo || !S.nRedo;
+  $('redoBtn').disabled = !!S.busy;
+  if (redo) $('redoBtn').title = `Put back v${vNum(redo)} ("${redo.text}") (⇧⌘Z / Ctrl+Y)`;
 }
 function renderAgent() {
   renderAgentHead();
@@ -907,12 +1060,17 @@ function renderAgent() {
   const { rows, grouped, ts } = rowsModel();
   const busy = !!S.busy;
   $('tbody').replaceChildren(...(rows.length ? rows.map(r => {
-    const sp = span(r), sel = !r.group && r.id === S.selected;
-    return el('div', { class: `trow${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}`,
-      title: r.group ? 'Grouped by kind; select one on Source or step through the low-confidence spots' : `${r.chip} ${r.name}${r.effect ? ` · ${r.effect}` : ''}`,
-      onclick: r.group ? null : () => { select(r.id); if (S.selected && sp) seek(Math.max(sp[0], Math.min(sp[1], P.t))); } },
-      el('span', { class: 'id' }, r.group ? '·' : r.chip), el('span', { class: 'nm' }, r.name),
-      el('span', { class: 't' }, sp ? fmtF(sp[0]) : '–'), el('span', { class: 't' }, sp ? fmtF(sp[1]) : '–'));
+    const sp = span(r), sel = r.id === S.selected, rm = r.group ? r.ids : r.spared ? [] : [r.id];
+    const id = r.group ? el('span', { class: `chev${r.open ? ' open' : ''}`, title: r.open ? 'Collapse' : 'Show each one',
+      onclick: e => { e.stopPropagation(); toggleOpen(r.key); } }, '›') : r.chip;
+    return el('div', { class: `trow${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}${r.child ? ' child' : ''}`,
+      title: r.group ? `${r.name}: select to change or remove them all; › lists each one` : `${r.chip} ${r.name}${r.effect ? ` · ${r.effect}` : ''}`,
+      onclick: () => pickRow(r), onmouseenter: () => hoverRow(r) },
+      el('span', { class: 'id' }, id), el('span', { class: 'nm' }, r.name),
+      el('span', { class: 't' }, sp ? fmtF(sp[0]) : '–'), el('span', { class: 't' }, sp ? fmtF(sp[1]) : '–'),
+      rm.length ? el('button', { class: 'xb', disabled: busy ? '' : null, title: rm.length > 1 ? `Remove all ${rm.length} masks` : 'Remove this mask (Delete)',
+        'aria-label': rm.length > 1 ? `Remove all ${rm.length} masks` : `Remove ${r.chip}`,
+        onclick: e => { e.stopPropagation(); editTargets('remove', rm); } }, '×') : el('span'));
   }) : [el('div', { class: 'tempty' }, S.vid ? 'Nothing masked yet.' : 'No clip loaded.')]));
   // Low-confidence spots
   const sp = spots();
@@ -926,28 +1084,49 @@ function renderAgent() {
   }
   // Selected target
   const sp2 = $('selPanel'), id = S.selected;
+  const fxs = [['blur', 'Blur'], ['pixelate', 'Pixelate'], ['box', 'Box']];
+  if (isGroup(id)) {
+    const g = rows.find(r => r.id === id);
+    if (g) {
+      const range = span(g), one = g.effect && !g.effect.includes('/') ? g.effect : null;
+      const head = el('div', { class: 'selHead' }, el('span', { class: 'sid' }, '·'), el('span', { class: 'snm' }, g.name),
+        el('span', { class: 'stm' }, range ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
+      sp2.replaceChildren(head, g.ids.length
+        ? el('div', { class: 'selRow' }, el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect for all of them' }, fxs.map(([fx, nm]) =>
+            el('button', { class: fx === one ? 'on' : '', 'aria-pressed': String(fx === one), disabled: busy ? '' : null,
+              onclick: () => fx !== one && editTargets('effect', g.ids, fx) }, nm))),
+            el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking all of them (Delete key)', onclick: () => editTargets('remove', g.ids) }, 'Remove all'))
+        : el('div', { class: 'selRow' }, el('span', { class: 'mute' }, 'Mask them all with'), el('div', { class: 'seg' }, fxs.map(([fx, nm]) =>
+            el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', g.all, fx) }, nm)))),
+        el('span', { class: 'selHint' }, `Edits apply to all ${g.n}. Open the group with › to pick one, or click one on the video.`));
+      return;
+    }
+  }
   const t = id && ts.find(x => x.id === id), tr = id && (S.trackList || []).find(x => x.track_id === id);
   if (!id || (!t && !tr)) {
-    sp2.replaceChildren(el('span', { class: 'selHint' }, S.vid ? 'Select a target on Source, in the list or in the timeline to change its effect or remove it.' : ''));
+    sp2.replaceChildren(el('span', { class: 'selHint' }, S.vid ? 'Select a target on the video, in the list or in the timeline to change its effect, move it or remove it.' : ''));
     return;
   }
+  const refBtn = el('button', { class: 'refUse', disabled: busy || (S.ref && S.ref.track_id === id) ? '' : null,
+    title: 'Make it "this" in your next request: "blur everyone except this person"', onclick: () => useAsRef(id) },
+    S.ref && S.ref.track_id === id ? 'It\'s "this" in your next request' : 'Use as "this" in a request');
   const label = (t || tr).label, masked = t && !t.spared;
   const range = t ? span(t) : (tr.keyframes.length ? [tr.keyframes[0].f / S.info.fps, (tr.keyframes[tr.keyframes.length - 1].f + 1) / S.info.fps] : null);
   const head = el('div', { class: 'selHead' }, el('span', { class: 'sid' }, tid(id)), el('span', { class: 'snm' }, t ? t.name : tname(id, label)),
     el('span', { class: 'stm' }, range ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
-  const fxs = [['blur', 'Blur'], ['pixelate', 'Pixelate'], ['box', 'Box']];
   if (masked) {
     const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect' }, fxs.map(([fx, nm]) =>
       el('button', { class: fx === t.effect ? 'on' : '', 'aria-pressed': String(fx === t.effect), disabled: busy ? '' : null,
         onclick: () => fx !== t.effect && editTargets('effect', [id], fx) }, nm)));
     sp2.replaceChildren(head, el('div', { class: 'selRow' }, seg,
       el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Remove')),
-      el('span', { class: 'selHint' }, 'In the wrong place? Drag the box or a corner on Source; from that frame on, a new track follows it.'));
+      el('span', { class: 'selHint' }, 'In the wrong place? Drag the box or a corner on the video; from that frame on, a new track follows it. × on the video removes it.'),
+      refBtn);
   } else {
     const ans = S.vlm[id];
     sp2.replaceChildren(head, el('span', { class: 'selHint' }, t && t.spared ? `Spared: the vision model answered ${ans.a} to "${ans.q}".` : 'Found, not masked.'),
       el('div', { class: 'selRow' }, el('span', { class: 'mute' }, 'Mask it with'), el('div', { class: 'seg' }, fxs.map(([fx, nm]) =>
-        el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, nm)))));
+        el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, nm)))), refBtn);
   }
 }
 function renderTimeline() {
@@ -955,7 +1134,8 @@ function renderTimeline() {
   if (!S.info) { g.replaceChildren(); $('tlNote').textContent = ''; return; }
   const { rows, ts } = rowsModel(), d = dur();
   const nMasked = ts.filter(t => !t.spared).length, nSpared = ts.filter(t => t.spared).length, nSpots = spots().length;
-  $('tlNote').textContent = S.busy === 'request' ? `v${S.versions.length + 1} in progress` : S.drawMode ? `drawing T${Object.keys(S.ids).length + 1} on Source`
+  $('tlNote').textContent = S.busy === 'request' ? `v${S.versions.length + 1} in progress` : S.drawMode === 'ref' ? 'pointing at "this" on Source'
+    : S.drawMode ? `drawing T${Object.keys(S.ids).length + 1} on Source`
     : [`${nMasked} masked`, nSpared ? `${nSpared} spared` : '', nSpots ? `${nSpots} low-confidence spot${nSpots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
   const step = d > 300 ? 60 : d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
   const ruler = el('div', { class: 'ruler', title: 'Click or drag to seek' });
@@ -963,15 +1143,16 @@ function renderTimeline() {
   ruler.onpointerdown = ev => scrub(ev, ruler);
   const kids = [el('div', { class: 'ruler corner' }), ruler];
   for (const r of rows) {
-    const sel = !r.group && r.id === S.selected;
-    kids.push(el('div', { class: `rl${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}`, onclick: r.group ? null : () => select(r.id) },
-      el('span', { class: 'id' }, r.group ? '' : r.chip), el('span', { class: 'nm' }, r.name), el('span', { class: 'fx' }, r.spared ? '—' : r.effect || '')));
+    const sel = r.id === S.selected;
+    kids.push(el('div', { class: `rl${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}`, onclick: () => pickRow(r),
+      onmouseenter: () => hoverRow(r), onmouseleave: () => hoverRow(null) },
+      el('span', { class: 'id' }, r.group ? '' : r.child ? `· ${r.chip}` : r.chip), el('span', { class: 'nm' }, r.name), el('span', { class: 'fx' }, r.spared ? '—' : r.effect || '')));
     const lane = el('div', { class: `lane${sel ? ' sel' : ''}`, title: r.group ? r.name : `${r.chip} ${r.name}` });
     const color = sel ? 'var(--text)' : r.effect === 'box' ? 'var(--mute)' : 'var(--seg)';
     r.ext.forEach(([a, b]) => lane.append(el('span', { class: 'x', style: `left:${pct(a)};width:${pct(b - a)}` })));
     r.segs.forEach(([a, b]) => lane.append(el('span', { class: 's', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px);background:${color}` })));
     r.unc.forEach(([a, b]) => lane.append(el('span', { class: 'u', style: `left:${pct(a)};width:${pct(b - a)}` })));
-    lane.onpointerdown = ev => scrub(ev, lane, !r.group && r.id !== S.selected ? r.id : null);
+    lane.onpointerdown = ev => scrub(ev, lane, r.id !== S.selected ? r.id : null);
     kids.push(lane);
   }
   if (!rows.length) kids.push(el('div', { class: 'tempty', style: 'grid-column:1 / -1' }, 'Nothing masked yet.'));
@@ -1001,7 +1182,7 @@ function placePlayhead() {
 // One hidden <video> decodes the source; both monitors draw from it on every frame it presents, so they can't
 // drift. Source: the frame plus one labeled box per target. Program: the frame with the masks applied the way
 // the renderer does it, or, after Export, the exported file itself (a second hidden <video> kept on the playhead).
-const P = { t: 0, frame: 0, hits: [], dragBox: null, newBox: null, src: 'source' };
+const P = { t: 0, frame: 0, hits: [], dragBox: null, newBox: null, src: 'source', btn: {}, paused: null };
 function seek(t) {
   if (!S.info) return;
   const v = $('player'); t = Math.max(0, Math.min(dur() - 1 / S.info.fps, t));
@@ -1080,8 +1261,13 @@ function drawAll(mediaTime) {
   P.frame = currentFrame(P.t);
   drawSource(); drawProgram();
   $('tc').textContent = fmtF(P.t); $('tcDur').textContent = `/ ${fmtF(dur())}`;
-  $('playBtn').replaceChildren(svg(v.paused ? 'play' : 'pause'));
-  $('playBtn').setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
+  // Only when it changes: this runs on every frame, and swapping the icon under a press ate the click (Pause
+  // did nothing while playing)
+  if (P.paused !== v.paused) {
+    P.paused = v.paused;
+    $('playBtn').replaceChildren(svg(v.paused ? 'play' : 'pause'));
+    $('playBtn').setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
+  }
   const exportLabel = P.src === 'export';
   $('progLabel').textContent = exportLabel ? 'export.mp4 · what was written' : S.busy === 'request' ? `final output · v${vNum(curVersion())}` : 'final output · what Export writes';
   const badge = $('progBadge');
@@ -1108,14 +1294,14 @@ function drawSource() {
   if (v.readyState >= 2) g.drawImage(v, 0, 0, cw, ch);
   const s = cw / S.info.width, f = P.frame;
   const maskNow = new Map(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => [m.id, m]));
-  const items = [];
+  const items = [], sel = selIds();
   // Masked targets at their exact export rectangle; spared and other detected tracks at the detector's box
-  for (const [id, m] of maskNow) items.push({ id, r: m.r, kind: id === S.selected ? 'sel' : m.effect === 'box' ? 'user' : 'mask', effect: m.effect });
+  for (const [id, m] of maskNow) items.push({ id, r: m.r, kind: sel.has(id) ? 'sel' : m.effect === 'box' ? 'user' : 'mask', effect: m.effect });
   for (const t of S.trackList || []) {
     if (maskNow.has(t.track_id)) continue;
     const k = trackBox(t, f); if (!k) continue;
     const spared = !!S.vlm[t.track_id];
-    items.push({ id: t.track_id, r: k.box, kind: t.track_id === S.selected ? 'selOpen' : spared ? 'spared' : 'found', state: k.state, label: t.label });
+    items.push({ id: t.track_id, r: k.box, kind: sel.has(t.track_id) ? 'selOpen' : spared ? 'spared' : 'found', state: k.state, label: t.label });
   }
   const label = it => {
     const tr = (S.trackList || []).find(t => t.track_id === it.id), tl = S.timeline.targets[it.id];
@@ -1154,15 +1340,14 @@ function drawSource() {
   const placed = [];
   for (const b of [...boxes].reverse()) {
     if (b.kind === 'found' && b.w < 40) continue;  // unasked, unmasked detections stay quiet unless they're big
+    if ((b.kind === 'sel' || b.kind === 'selOpen') && sel.size > 12 && !(S.hover && S.hover.has(b.id))) continue;  // a whole crowd selected
     const text = label(b), L = placeLabel(g, text, b.x, b.y, b.x + b.w, b.y + b.h, placed, cw, ch);
     const [bg, fg] = b.kind === 'sel' || b.kind === 'selOpen' ? ['#E5484D', '#fff'] : b.kind === 'spared' || b.kind === 'found' ? ['rgba(17,17,17,.85)', '#EDEDED'] : ['#EDEDED', '#111111'];
     g.fillStyle = bg; g.fillRect(L.x, L.y, L.w, L.h);
     g.fillStyle = fg; g.fillText(text, L.x + 4, L.y + L.h / 2 + .5);
   }
-  // The selected mask's corner handles (drag to fix it), the box being moved, and a box being drawn
-  const mb = !P.dragBox && !S.busy && !S.drawMode && movableBox();
-  if (mb) { g.fillStyle = '#E5484D'; const [x1, y1, x2, y2] = mb.box; for (const [cx, cy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) g.fillRect(cx * s - 3.5, cy * s - 3.5, 7, 7); }
-  if (P.dragBox) { const [x1, y1, x2, y2] = P.dragBox; g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#EDEDED'; g.strokeRect(x1 * s, y1 * s, (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]); }
+  drawMarks(g, s, cw, ch, 'src');
+  // A box being drawn
   const hint = $('drawHint');
   if (P.newBox) {
     const [x1, y1, x2, y2] = P.newBox;
@@ -1170,8 +1355,8 @@ function drawSource() {
     g.setLineDash([5, 3]); g.lineWidth = 1.5; g.strokeStyle = '#EDEDED'; g.strokeRect(x1 * s, y1 * s, (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]);
     g.fillStyle = '#EDEDED'; g.fillRect(x2 * s - 3.5, y2 * s - 3.5, 7, 7);
     hint.hidden = false;
-    hint.replaceChildren(`New box · ${Math.round(x2 - x1)} × ${Math.round(y2 - y1)} px`, el('br'),
-      el('span', {}, `Release to add T${Object.keys(S.ids).length + 1}. It's tracked through the clip.`));
+    hint.replaceChildren(`${S.drawMode === 'ref' ? 'This one' : 'New box'} · ${Math.round(x2 - x1)} × ${Math.round(y2 - y1)} px`, el('br'),
+      el('span', {}, S.drawMode === 'ref' ? 'Release: it\'s "this" in your next request.' : `Release to add T${Object.keys(S.ids).length + 1}. It's tracked through the clip.`));
     const below = y2 * s + 6 + 40 < ch;
     hint.style.left = `${Math.max(0, Math.min(cw - 200, x1 * s - 1))}px`;
     hint.style.top = below ? `${y2 * s + 6}px` : ''; hint.style.bottom = below ? '' : `${ch - y1 * s + 6}px`;
@@ -1190,9 +1375,10 @@ function drawProgram() {
     const want = v.paused ? (P.frame + 0.5) / S.info.fps : P.t;
     if (Math.abs(ex.currentTime - want) > (v.paused ? 0.25 / S.info.fps : 0.15) && !ex.seeking) ex.currentTime = want;
     if (ex.readyState >= 2) g.drawImage(ex, 0, 0, cw, ch);
+    drawMarks(g, cw / S.info.width, cw, ch, 'prog');
     return;
   }
-  const v = $('player'); if (v.readyState < 2) return;
+  const v = $('player'); if (v.readyState < 2) { drawMarks(g, cw / S.info.width, cw, ch, 'prog'); return; }
   g.drawImage(v, 0, 0, cw, ch);
   // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
   // the monitor looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and mirrored
@@ -1216,6 +1402,61 @@ function drawProgram() {
     g.drawImage(tiny, 0, 0, sw, sh, x1 * s, y1 * s, w * s, h * s);
     g.imageSmoothingEnabled = true;
   }
+  drawMarks(g, s, cw, ch, 'prog');
+}
+// What the editor draws over a monitor, never written to the export: on Program, the selected and hovered
+// targets' outlines (Source styles its own boxes); on both, who "this" is, the selected mask's corner handles,
+// its × (remove) or, for a detection that isn't masked, its + Blur, and the box being dragged.
+const RED = '#E5484D';
+function drawMarks(g, s, cw, ch, which) {
+  const f = P.frame, rects = (S.maskFrames && S.maskFrames.get(f)) || [], sel = selIds(), hov = S.hover || new Set();
+  const boxOf = id => { const m = rects.find(x => x.id === id); if (m) return m.r; const t = (S.trackList || []).find(x => x.track_id === id), k = t && trackBox(t, f); return k ? k.box : null; };
+  const chip = (text, x, y, bg, fg) => {
+    g.font = '600 9.5px "Geist Mono", ui-monospace, Menlo, monospace'; g.textBaseline = 'middle';
+    const w = Math.ceil(g.measureText(text).width) + 8, h = 13, cx = Math.max(0, Math.min(cw - w, x)), cy = Math.max(0, Math.min(ch - h, y - h - 2));
+    g.fillStyle = bg; g.fillRect(cx, cy, w, h); g.fillStyle = fg; g.fillText(text, cx + 4, cy + h / 2 + .5);
+  };
+  g.save();
+  if (which === 'prog') {
+    for (const id of sel) {
+      const r = boxOf(id); if (!r) continue;
+      g.lineWidth = 1.5; g.strokeStyle = RED; g.setLineDash(S.timeline.targets[id] ? [] : [4, 3]);
+      g.strokeRect(r[0] * s, r[1] * s, (r[2] - r[0]) * s, (r[3] - r[1]) * s);
+      if (sel.size <= 12) chip(tid(id), r[0] * s - 1, r[1] * s, RED, '#fff');
+    }
+    g.setLineDash([]);
+  }
+  for (const id of hov) {
+    if (sel.has(id) && which === 'prog') continue;
+    const r = boxOf(id); if (!r) continue;
+    g.lineWidth = 2; g.strokeStyle = '#FFFFFF'; g.strokeRect(r[0] * s - 1, r[1] * s - 1, (r[2] - r[0]) * s + 2, (r[3] - r[1]) * s + 2);
+  }
+  const rb = refBox(f);
+  if (rb) {
+    g.lineWidth = 2; g.strokeStyle = '#FFFFFF'; g.setLineDash([8, 3, 2, 3]);
+    g.strokeRect(rb[0] * s, rb[1] * s, (rb[2] - rb[0]) * s, (rb[3] - rb[1]) * s); g.setLineDash([]);
+    chip('THIS', rb[0] * s - 1, rb[3] * s + 15, '#FFFFFF', '#111111');
+  }
+  // Handles and the one-click button belong to a single selected target, when nothing else is going on
+  P.btn[which] = null;
+  const idle = !P.dragBox && !S.busy && !S.drawMode && S.selected && !isGroup(S.selected);
+  const mb = idle && movableBox();
+  if (mb) { g.fillStyle = RED; const [x1, y1, x2, y2] = mb.box; for (const [cx, cy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) g.fillRect(cx * s - 3.5, cy * s - 3.5, 7, 7); }
+  const r = idle && boxOf(S.selected);
+  if (r) {
+    const masked = !!S.timeline.targets[S.selected], text = masked ? '×' : '+ Blur';
+    g.font = '600 11px "Geist", system-ui, sans-serif'; g.textBaseline = 'middle';
+    const w = masked ? 16 : Math.ceil(g.measureText(text).width) + 12, h = 16;
+    // Beside the box's top-right corner, clear of its label (above or below) and the corner handle; left of it
+    // when the box touches the right edge
+    const x = r[2] * s + 6 + w <= cw ? r[2] * s + 6 : Math.max(0, r[0] * s - 6 - w), y = Math.max(0, Math.min(ch - h, r[1] * s + 6));
+    g.fillStyle = masked ? '#111111' : RED; g.fillRect(x, y, w, h);
+    g.strokeStyle = masked ? RED : '#FFFFFF'; g.lineWidth = 1; g.strokeRect(x + .5, y + .5, w - 1, h - 1);
+    g.fillStyle = '#FFFFFF'; g.textAlign = 'center'; g.fillText(text, x + w / 2, y + h / 2 + .5); g.textAlign = 'start';
+    P.btn[which] = { x, y, w, h, id: S.selected, masked };
+  }
+  if (P.dragBox) { const [x1, y1, x2, y2] = P.dragBox; g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#EDEDED'; g.strokeRect(x1 * s, y1 * s, (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]); }
+  g.restore();
 }
 // The decoded frame's RGBA pixels inside the box around all of this frame's masks, read once per frame shown.
 // Only that box: copying a whole 720p frame to the CPU and reading it back cost 12 ms of the 15 ms per frame.
@@ -1313,108 +1554,137 @@ function gaussian(img, w, h, ks) {
   v.addEventListener('ended', () => ex.pause());
 })();
 
-// ---------- pointer on Source: select, move a mask, or draw a new box ----------
-function srcPoint(ev) {
-  const r = $('srcCv').getBoundingClientRect(), s = r.width / S.info.width;
-  return { x: Math.max(0, Math.min(S.info.width, (ev.clientX - r.left) / s)), y: Math.max(0, Math.min(S.info.height, (ev.clientY - r.top) / s)), s };
+// ---------- pointer on a monitor: select, move or remove a mask, mask a detection, or draw a box ----------
+// Both monitors take the same gestures: they show the same frame at the same size.
+function srcPoint(ev, cv) {
+  const r = cv.getBoundingClientRect(), s = r.width / S.info.width;
+  return { x: Math.max(0, Math.min(S.info.width, (ev.clientX - r.left) / s)), y: Math.max(0, Math.min(S.info.height, (ev.clientY - r.top) / s)), s,
+    cx: ev.clientX - r.left, cy: ev.clientY - r.top };
 }
-// The box under a point at the frame shown, smallest first (a face inside a person wins)
-function boxAtPoint(ev) {
-  const { x, y, s } = srcPoint(ev), slop = 4 / s;
+// The box under a point at the frame shown, smallest first (a face inside a person wins); masked ones only if asked
+function boxAtPoint(ev, cv, maskedOnly = false) {
+  const { x, y, s } = srcPoint(ev, cv), slop = 4 / s;
   let best = null, area = Infinity;
   for (const h of P.hits) {
+    if (maskedOnly && !S.timeline.targets[h.id]) continue;
     const [x1, y1, x2, y2] = h.r;
     if (x < x1 - slop || x > x2 + slop || y < y1 - slop || y > y2 + slop) continue;
     const a = (x2 - x1) * (y2 - y1); if (a < area) { area = a; best = h.id; }
   }
   return best;
 }
-// The selected target's masked box at the frame shown, if it can be moved there
-function movableBox() {
-  const id = S.selected, t = id && S.timeline && S.timeline.targets[id];
+// A target's masked box at the frame shown, if it can be moved there (the selected one by default)
+function movableBox(id = S.selected) {
+  const t = id && !isGroup(id) && S.timeline && S.timeline.targets[id];
   if (!t) return null;
   const k = trackBox({ keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }, P.frame);
   return k ? { id, box: k.box } : null;
 }
-function grabAt(ev) {
-  const mb = movableBox(); if (!mb) return null;
-  const { x, y, s } = srcPoint(ev), [x1, y1, x2, y2] = mb.box, near = 9 / s;
-  const cx = Math.abs(x - x1) <= near ? 'w' : Math.abs(x - x2) <= near ? 'e' : '';
-  const cy = Math.abs(y - y1) <= near ? 'n' : Math.abs(y - y2) <= near ? 's' : '';
-  if (cx && cy) return { ...mb, handle: cy + cx };
-  if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return { ...mb, handle: 'move' };
-  return null;
+// What a press grabs: the selected mask's corner or body, else any mask under the pointer, moved whole
+function grabAt(ev, cv) {
+  const { x, y, s } = srcPoint(ev, cv), mb = movableBox();
+  if (mb) {
+    const [x1, y1, x2, y2] = mb.box, near = 9 / s;
+    const cx = Math.abs(x - x1) <= near ? 'w' : Math.abs(x - x2) <= near ? 'e' : '';
+    const cy = Math.abs(y - y1) <= near ? 'n' : Math.abs(y - y2) <= near ? 's' : '';
+    if (cx && cy) return { ...mb, handle: cy + cx };
+    if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return { ...mb, handle: 'move' };
+  }
+  const id = boxAtPoint(ev, cv, true), other = id && movableBox(id);
+  return other ? { ...other, handle: 'move' } : null;
 }
+const btnAt = (ev, cv, which) => {
+  const b = P.btn[which]; if (!b || S.busy) return null;
+  const { cx, cy } = srcPoint(ev, cv);
+  return cx >= b.x - 3 && cx <= b.x + b.w + 3 && cy >= b.y - 3 && cy <= b.y + b.h + 3 ? b : null;
+};
 let drag = null;
-const srcCv = $('srcCv');
-srcCv.onpointerdown = ev => {
-  if (!S.info || ev.button !== 0) return;
-  const p = srcPoint(ev);
-  if (S.drawMode) {
-    if (S.busy) return;
-    $('player').pause(); srcCv.setPointerCapture(ev.pointerId);
-    drag = { draw: true, a: [p.x, p.y], frame: P.frame }; return;
-  }
-  const g = !S.busy && grabAt(ev);
-  drag = { x0: ev.clientX, y0: ev.clientY, grab: g || null, start: p, frame: P.frame };
-  if (g) { $('player').pause(); srcCv.setPointerCapture(ev.pointerId); }
-};
-srcCv.onpointermove = ev => {
-  if (!S.info) return;
-  if (drag && drag.draw) {
-    const p = srcPoint(ev), [ax, ay] = drag.a;
-    P.newBox = [Math.min(ax, p.x), Math.min(ay, p.y), Math.max(ax, p.x), Math.max(ay, p.y)];
-    drawSource(); return;
-  }
-  if (drag && drag.grab) {
-    const p = srcPoint(ev), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
-    let b = h === 'move' ? [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
-      : [h.includes('w') ? x1 + dx : x1, h.includes('n') ? y1 + dy : y1, h.includes('e') ? x2 + dx : x2, h.includes('s') ? y2 + dy : y2];
-    b = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])];
-    P.dragBox = [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(S.info.width, b[2]), Math.min(S.info.height, b[3])];
-    drawSource(); return;
-  }
-  if (S.drawMode) { srcCv.style.cursor = ''; srcCv.title = 'Drag around what to hide'; return; }
-  const g = !S.busy && grabAt(ev), id = g ? g.id : boxAtPoint(ev);
-  srcCv.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
-  srcCv.title = g ? 'Drag to move this mask, or a corner to resize it, from this frame on' : id ? `${tid(id)}: click to select` : '';
-};
-srcCv.onpointerup = ev => {
-  const d = drag; drag = null; if (!d) return;
-  if (d.draw) {
-    const b = P.newBox; P.newBox = null; drawSource();
-    if (b && b[2] - b[0] >= 8 && b[3] - b[1] >= 8) sendBox(d.frame, b.map(Math.round));
-    return;
-  }
-  const moved = Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 3;
-  if (d.grab && moved && P.dragBox) {
-    const box = P.dragBox.map(Math.round); P.dragBox = null;
-    if (box[2] - box[0] >= 4 && box[3] - box[1] >= 4) moveTarget(d.grab.id, d.frame, box); else drawSource();
-    return;
-  }
-  P.dragBox = null;
-  if (moved) return;
-  const id = boxAtPoint(ev);
-  if (id) { if (id !== S.selected) select(id); return; }
-  const v = $('player'); v.paused ? v.play() : v.pause();  // like clicking the video itself
-};
-srcCv.onpointercancel = () => { drag = null; P.newBox = null; P.dragBox = null; drawSource(); };
+function editableMonitor(cv, which) {
+  cv.onpointerdown = ev => {
+    if (!S.info || ev.button !== 0) return;
+    const p = srcPoint(ev, cv);
+    if (S.drawMode) {
+      if (S.busy || which !== 'src') return;
+      $('player').pause(); cv.setPointerCapture(ev.pointerId);
+      drag = { cv, draw: true, a: [p.x, p.y], frame: P.frame }; return;
+    }
+    const b = btnAt(ev, cv, which);
+    if (b) { drag = null; b.masked ? editTargets('remove', [b.id]) : editTargets('add', [b.id], 'blur'); return; }
+    const g = !S.busy && grabAt(ev, cv);
+    drag = { cv, x0: ev.clientX, y0: ev.clientY, grab: g || null, start: p, frame: P.frame };
+    if (g) { $('player').pause(); cv.setPointerCapture(ev.pointerId); }
+  };
+  cv.onpointermove = ev => {
+    if (!S.info) return;
+    if (drag && drag.cv === cv && drag.draw) {
+      const p = srcPoint(ev, cv), [ax, ay] = drag.a;
+      P.newBox = [Math.min(ax, p.x), Math.min(ay, p.y), Math.max(ax, p.x), Math.max(ay, p.y)];
+      drawSource(); return;
+    }
+    if (drag && drag.cv === cv && drag.grab) {
+      const p = srcPoint(ev, cv), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
+      if (!P.dragBox && Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) <= 3) return;  // a click, so far
+      let bx = h === 'move' ? [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
+        : [h.includes('w') ? x1 + dx : x1, h.includes('n') ? y1 + dy : y1, h.includes('e') ? x2 + dx : x2, h.includes('s') ? y2 + dy : y2];
+      bx = [Math.min(bx[0], bx[2]), Math.min(bx[1], bx[3]), Math.max(bx[0], bx[2]), Math.max(bx[1], bx[3])];
+      P.dragBox = [Math.max(0, bx[0]), Math.max(0, bx[1]), Math.min(S.info.width, bx[2]), Math.min(S.info.height, bx[3])];
+      drawAll(); return;
+    }
+    if (S.drawMode) { cv.style.cursor = which === 'src' ? '' : 'not-allowed'; cv.title = which !== 'src' ? 'Draw on Source' : S.drawMode === 'ref' ? 'Drag around who "this" means' : 'Drag around what to hide'; return; }
+    const b = btnAt(ev, cv, which);
+    if (b) { cv.style.cursor = 'pointer'; cv.title = b.masked ? `Remove ${tid(b.id)}'s mask` : `Blur ${tid(b.id)}: add it to the masks`; return; }
+    const g = !S.busy && grabAt(ev, cv), id = g ? g.id : boxAtPoint(ev, cv);
+    cv.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
+    cv.title = g ? `${tid(g.id)}: click to select; drag to move this mask${g.id === S.selected ? ', or a corner to resize it,' : ''} from this frame on`
+      : id ? `${tid(id)}: click to select${S.timeline.targets[id] ? '' : ', then + Blur to mask it'}` : '';
+  };
+  cv.onpointerup = ev => {
+    const d = drag; drag = null; if (!d || d.cv !== cv) return;
+    if (d.draw) {
+      const b = P.newBox; P.newBox = null; drawSource();
+      if (b && b[2] - b[0] >= 8 && b[3] - b[1] >= 8) S.drawMode === 'ref' ? setRef(d.frame, b.map(Math.round)) : sendBox(d.frame, b.map(Math.round));
+      return;
+    }
+    const moved = Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 3;
+    if (d.grab && moved && P.dragBox) {
+      const box = P.dragBox.map(Math.round); P.dragBox = null;
+      if (box[2] - box[0] >= 4 && box[3] - box[1] >= 4) moveTarget(d.grab.id, d.frame, box); else drawAll();
+      return;
+    }
+    P.dragBox = null;
+    if (moved) return;
+    const id = boxAtPoint(ev, cv);
+    if (id) { if (id !== S.selected) select(id); return; }
+    const v = $('player'); v.paused ? v.play() : v.pause();  // like clicking the video itself
+  };
+  cv.onpointercancel = () => { drag = null; P.newBox = null; P.dragBox = null; drawAll(); };
+}
+editableMonitor($('srcCv'), 'src');
+editableMonitor($('progCv'), 'prog');
 
 // ---------- request panel, transport, keys ----------
-const EXAMPLES = ['blur the woman', 'blur everyone except the guy in the red hoodie', "pixelate all faces but mine, I'm the one in the black t-shirt"];
-$('examples').append(...EXAMPLES.map(t => el('button', { type: 'button', onclick: () => { if (!S.vid) return; $('text').value = t; $('text').focus(); } }, t)));
+const EXAMPLES = ['blur everyone except this person', 'blur the woman', 'blur everyone except the guy in the red hoodie', "pixelate all faces but mine, I'm the one in the black t-shirt"];
+$('examples').append(...EXAMPLES.map(t => el('button', { type: 'button', onclick: () => {
+  if (!S.vid) return;
+  $('text').value = t; $('text').focus();
+  if (/\bthis\b/.test(t) && !S.ref) toggleDraw('ref');  // it needs a "this": point at them first
+} }, t)));
 $('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendRequest($('text').value); } };
 $('genBtn').onclick = () => sendRequest($('text').value);
-function toggleDraw(on = !S.drawMode) {
-  if (on && (!S.vid || S.busy)) return;
-  S.drawMode = on; P.newBox = null;
-  if (on) { $('player').pause(); S.picker = false; renderPicker(); }
-  $('srcScreen').classList.toggle('drawing', on);
+// mode: 'mask' draws a box to hide, 'ref' a box that says who "this" is; false ends drawing
+function toggleDraw(mode) {
+  if (mode && (!S.vid || S.busy)) return;
+  S.drawMode = mode || false; P.newBox = null;
+  if (mode) { $('player').pause(); S.picker = false; renderPicker(); }
+  $('srcScreen').classList.toggle('drawing', !!mode);
   layoutMonitors();
   renderRequest(); renderTimeline(); drawSource();
-  if (on) notice('Draw mode: drag on Source around what to hide. Esc to cancel.'); else if ($('notice').textContent.startsWith('Draw mode')) notice('');
+  if (mode) notice(mode === 'ref' ? 'Drag a box on Source around who "this" means. Esc to cancel.' : 'Draw mode: drag on Source around what to hide. Esc to cancel.');
+  else if (/^(Draw mode|Drag a box)/.test($('notice').textContent)) notice('');
 }
-$('drawBtn').onclick = () => toggleDraw();
+$('drawBtn').onclick = () => toggleDraw(S.drawMode === 'mask' ? false : 'mask');
+$('redoBtn').onclick = redoLast;
+$('tbody').onmouseleave = () => hoverRow(null);
 $('srcSwitch').onclick = () => setSrcOff(!S.srcOff);
 $('undoBtn').onclick = undoLast;
 $('openBtn').onclick = () => { $('player').pause(); S.picker = true; renderPicker(); };
@@ -1424,8 +1694,13 @@ document.addEventListener('keydown', e => {
   const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
   if (e.key === 'Escape') { if (S.drawMode) toggleDraw(false); else if (S.picker && S.vid) $('homeBack').click(); return; }
   if (homeShown()) return;
-  if (typing || !S.vid) return;
-  if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && S.timeline.targets[S.selected]) { e.preventDefault(); editTargets('remove', [S.selected]); return; }
+  // Undo / redo the masks, except in a field with text in it, where they undo the typing
+  const hist = (e.metaKey || e.ctrlKey) && !e.altKey && ['z', 'y'].includes(e.key.toLowerCase());
+  if ((typing && !(hist && !document.activeElement.value)) || !S.vid) return;
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
+    e.preventDefault(); e.key.toLowerCase() === 'y' || e.shiftKey ? redoLast() : undoLast(); return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && maskedSel().length) { e.preventDefault(); editTargets('remove', maskedSel()); return; }
   if (document.activeElement.tagName === 'BUTTON') return;
   if (e.key === ' ') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }

@@ -23,6 +23,7 @@ from censor.vision import vlm as vlm_mod
 
 EFFECTS = ("blur", "pixelate", "box")
 RULE_CATEGORIES = ("license plate", "face", "person", "screen", "text")
+REF_MIN_IOU = 0.3  # a drawn reference box this close to a detected track means that track
 COMPOUND_QUERY = re.compile(r"\b(wearing|with|in|holding|who|that|which|near|on|at|carrying|has|having)\b")
 
 
@@ -238,12 +239,57 @@ class Session:
             by_label[t.label] = by_label.get(t.label, 0) + 1
             uncertain += sum(1 for k in t.keyframes if k.state == "uncertain")
         return {"n_targets": len(tl.targets), "by_label": by_label, "uncertain_keyframes": uncertain,
-                "n_ops": len(self.log.ops)}
+                "n_ops": len(self.log.ops), "n_redo": len(self.log.undone)}
 
     def undo(self) -> Optional[str]:
         op = self.log.undo()
         self.save()
         return op.op_id if op else None
+
+    def redo(self) -> Optional[str]:
+        """Not offered to the LLM: the UI's Redo, after its Undo."""
+        with self.lock:
+            op = self.log.redo()
+            self.save()
+        return op.op_id if op else None
+
+    def resolve_ref(self, frame: Optional[int] = None, box: Optional[list[float]] = None,
+                    track_id: Optional[str] = None, prefer: Optional[list[str]] = None) -> dict:
+        """The track a request's reference means: the one the user picked, or the detected track that best fills
+        the box they drew on `frame` (scanning `prefer`, or people and faces, first so there is something to match).
+        Among good matches, a track of a preferred kind wins. A box that matches nothing is tracked by itself.
+        Not offered to the LLM: the UI sends the reference with the request."""
+        if track_id is not None:
+            self._check_ids([track_id])
+            t = self.tracks.get(track_id)
+            return {"track_id": track_id, "label": t.label, "how": "picked"}
+        if frame is None or box is None or len(box) != 4 or box[2] <= box[0] or box[3] <= box[1]:
+            raise ToolError("a reference is a track id, or a frame and a box [x1, y1, x2, y2]")
+        if not 0 <= frame < self.info.n_frames:
+            raise ToolError(f"frame {frame} is outside the video (0-{self.info.n_frames - 1})")
+        prefer = [q for q in (prefer or ["person", "face"]) if q != "user box"]
+        for q in prefer:
+            self._ensure_scanned(q)
+        near = max(1, round(self.info.fps / 4))  # detector keyframes can skip frames: take the nearest within ~1/4 s
+        with self.lock:
+            tracks = list(self.tracks.tracks.values())
+        scored = []
+        for t in tracks:
+            k = min(t.keyframes, key=lambda k: abs(k.f - frame), default=None)
+            if k is not None and abs(k.f - frame) <= near and (iou := _iou(k.box, box)) >= REF_MIN_IOU:
+                scored.append((t.label in prefer, iou, t))
+        if scored:
+            _, iou, t = max(scored, key=lambda x: x[:2])
+            return {"track_id": t.track_id, "label": t.label, "how": "matched", "iou": round(iou, 2)}
+        t = self.track_box(frame, box)
+        return {"track_id": t["track_id"], "label": "user box", "how": "tracked"}
+
+
+def _iou(a, b) -> float:
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - ix * iy
+    return ix * iy / union if union > 0 else 0.0
 
 
 def _face_in_person(face, person) -> float:
