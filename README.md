@@ -42,7 +42,10 @@ Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 
 `setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
 
-**Frontend hosted on its own** (e.g. a static host, with the backend on AUP): the AUP proxy URL needs the hub login, so the backend needs a public URL of its own, e.g. `cloudflared tunnel --url http://localhost:8000` on the server (Cloudflare cuts requests at 100 s). Start the app with `CENSOR_CORS_ORIGINS=https://<frontend origin>` (comma-separated for several), and set `<meta name="censor-api" content="https://<tunnel>/">` in the copy of `web/index.html` you host. Left empty, the page talks to whichever server served it, as before.
+**Frontend hosted on its own** (https://blurr.photo, with the backend on AUP): the AUP proxy URL needs the hub login, so the backend gets a public URL of its own through a named Cloudflare tunnel, https://api.blurr.photo (Cloudflare cuts requests at 100 s).
+- **Page:** Cloudflare Pages builds it from `main` with build command `bash scripts/build_pages.sh` and output directory `dist`. The script copies `web/index.html` with its `censor-api` meta tag set to `https://api.blurr.photo/` (`CENSOR_API` overrides it). The repo copy keeps the tag empty, so the page still talks to whichever server served it.
+- **Tunnel, once per home directory** (credentials land in `~/.cloudflared/`): `cloudflared tunnel login` (open the printed URL on a laptop and pick blurr.photo), `cloudflared tunnel create blurr`, `cloudflared tunnel route dns blurr api.blurr.photo`. Then on every start: `cloudflared tunnel run --url http://localhost:8000 blurr`.
+- **App:** start it with `CENSOR_CORS_ORIGINS=https://blurr.photo ./run.sh` (comma-separated for several origins, e.g. adding `http://localhost:5500` to test a local copy). Check with `https://api.blurr.photo/api/config`.
 
 **Laptop, no GPU (stub detector, no models):**
 ```bash
