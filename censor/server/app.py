@@ -7,6 +7,8 @@
   GET  /api/videos/{id}/source          original video
   POST /api/videos/{id}/request         {"text": str}  -> agent result
   POST /api/videos/{id}/box             {"frame": int, "box": [x1,y1,x2,y2], "effect": "blur"} -> track + op
+  POST /api/videos/{id}/targets         {"action": "add"|"remove"|"effect", "track_ids": [...], "effect": "blur"}
+                                        mask, unmask or restyle chosen tracks by hand -> {op_id, summary}
   POST /api/videos/{id}/undo            -> {undone, summary}
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
@@ -32,6 +34,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -114,6 +117,12 @@ def session(vid: str) -> Session:
 
 class RequestIn(BaseModel):
     text: str
+
+
+class TargetsIn(BaseModel):
+    action: Literal["add", "remove", "effect"]
+    track_ids: list[str]
+    effect: str = "blur"
 
 
 class BoxIn(BaseModel):
@@ -217,6 +226,24 @@ def box(vid: str, body: BoxIn):
     except ToolError as e:
         raise HTTPException(400, str(e))
     return {"track": t, "op_id": op, "summary": s.summarize()}
+
+
+@app.post("/api/videos/{vid}/targets")
+def targets(vid: str, body: TargetsIn):
+    """Hand edits from the UI on tracks the user picked: mask a detected track that wasn't (add), unmask one
+    (remove), or change its effect. Same toolbox calls as the agent, so each is one op that Undo reverts."""
+    s = session(vid)
+    try:
+        with turn(vid, f"a hand edit ({body.action})"):
+            if body.action == "add":
+                op = s.add_masks(body.track_ids, effect=body.effect, request_id="ui_edit")
+            elif body.action == "remove":
+                op = s.remove_masks(body.track_ids, request_id="ui_edit")
+            else:
+                op = s.set_effect(body.track_ids, body.effect, request_id="ui_edit")
+    except ToolError as e:
+        raise HTTPException(400, str(e))
+    return {"op_id": op, "summary": s.summarize()}
 
 
 @app.post("/api/videos/{vid}/undo")
