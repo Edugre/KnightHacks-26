@@ -60,6 +60,7 @@
   .wm { font:700 22px/1 var(--font); letter-spacing:-.045em; color:var(--ink); white-space:nowrap; flex:none; user-select:none; }
   .wm .r1 { filter:blur(.018em); }
   .wm .r2 { filter:blur(.055em); color:var(--acc); }
+  a.wm { text-decoration:none; }
 
   /* ---- the grid: 1px gaps on the rule color read as rules between panels ---- */
   #app { height:100%; display:grid; gap:1px; grid-template-rows:52px minmax(0,1fr) 184px; grid-template-columns:300px minmax(0,1fr) 360px;
@@ -427,7 +428,7 @@
 </main>
 <div id="app">
   <header>
-    <span class="wm" role="img" aria-label="Blurr">Blu<span class="r1">r</span><span class="r2">r</span></span>
+    <a class="wm" id="logoHome" href="./" title="Home" aria-label="Blurr, home">Blu<span class="r1">r</span><span class="r2">r</span></a>
     <span class="vrule"></span>
     <span id="fileName">No clip</span><span id="fileMeta"></span>
     <div class="head-right">
@@ -2074,6 +2075,8 @@ $('srcSwitch').onclick = () => setSrcOff(!S.srcOff);
 for (const b of document.querySelectorAll('.expBtn')) b.onclick = () => setExpanded(S.expanded === b.dataset.mon ? null : b.dataset.mon);
 $('undoBtn').onclick = undoLast;
 $('openBtn').onclick = () => { $('player').pause(); S.picker = true; renderPicker(); };
+// The logo goes home like Open file, keeping the clip so "Back to" returns to it; a modified click opens a new tab
+$('logoHome').onclick = e => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; e.preventDefault(); $('openBtn').click(); };
 $('playBtn').onclick = () => { const v = $('player'); v.paused ? v.play() : v.pause(); };
 const step = n => { const v = $('player'); v.pause(); if (S.info) seek((P.frame + n + 0.5) / S.info.fps); };
 document.addEventListener('keydown', e => {
