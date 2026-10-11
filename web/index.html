@@ -74,32 +74,6 @@
   #netStatus i { width:6px; height:6px; background:var(--acc); flex:none; }
   .head-right button { font:500 12px/1.2 var(--font); color:#CFCFCF; padding:5px 10px; }
 
-  /* Detector readiness is independent of network/privacy status and of the current file. */
-  .detectorStatus { --det-color:#BDBDBD; position:relative; min-width:0; font:400 12px/1.4 var(--font); }
-  .detectorStatus[data-state="ready"] { --det-color:#A7D6AE; }
-  .detectorStatus[data-state="degraded"], .detectorStatus[data-state="stub"] { --det-color:#F0C17B; }
-  .detectorStatus[data-state="unavailable"] { --det-color:var(--err); }
-  .detectorStatus summary { display:flex; align-items:center; gap:8px; cursor:pointer; list-style:none; padding:6px 9px;
-    border:1px solid var(--divider); border-radius:6px; color:var(--text); }
-  .detectorStatus summary::-webkit-details-marker { display:none; }
-  .detectorStatus summary::before { content:""; width:6px; height:6px; background:var(--det-color); flex:none; }
-  .detectorToggle { margin-left:auto; color:var(--mute); font:500 15px/1 var(--mono); }
-  .detectorToggle::before { content:"+"; }
-  .detectorStatus[open] .detectorToggle::before { content:"−"; }
-  .detectorSummary { color:var(--det-color); }
-  .detectorBody { padding:12px; border:1px solid var(--divider); background:var(--panel); color:var(--text); }
-  .detectorBody > p { margin:0 0 10px; line-height:1.5; }
-  .detectorBody > p:last-child { margin-bottom:0; }
-  .detectorBody dl { margin:0; display:flex; flex-direction:column; gap:10px; }
-  .detectorRow { border-top:1px solid var(--divider); padding-top:9px; }
-  .detectorRow dt { display:flex; align-items:baseline; justify-content:space-between; gap:12px; font-weight:600; }
-  .detectorRow dt span:last-child { font-size:11px; text-align:right; }
-  .detectorRow dd { margin:3px 0 0; color:#BDBDBD; line-height:1.5; overflow-wrap:anywhere; }
-  .detectorRow .detectorModel { font:400 10.5px/1.4 var(--mono); color:var(--mute); }
-  #workspaceDetectors { flex:none; max-width:260px; }
-  #workspaceDetectors .detectorBody { position:absolute; right:0; top:calc(100% + 8px); z-index:25;
-    width:min(350px, calc(100vw - 24px)); max-height:70vh; overflow:auto; border-radius:6px; box-shadow:0 10px 30px #0008; }
-
   /* ---- collapsible side panels (design_handoff_collapsible_panels, option 1a "Icon rail"): each side column
      collapses to a 44px rail. The panel keeps its full width inside the column, anchored to the edge next to the
      video, so it slides out under the rail instead of reflowing, and fades out ---- */
@@ -371,25 +345,10 @@
   .hEmpty { font-size:12px; color:var(--h-n400); padding:12px 0; }
   #homeStub { align-self:flex-start; margin-top:12px; position:relative; overflow:hidden; }
   #homeStub input { position:absolute; inset:0; opacity:0; cursor:pointer; }
-  #homeDetectors { flex:none; }
-  #homeDetectors summary { border-color:var(--h-n700); padding:9px 12px; }
-  #homeDetectors .detectorBody { border-color:var(--h-n700); border-top:0; background:var(--h-n900); }
-  #homeDetectors .detectorRow { border-color:var(--h-n700); }
   @media (max-width:1100px) {
     .homeGrid { grid-template-columns:minmax(0,1fr); }
     .statement { min-height:360px; }
     .statement h1 { font-size:64px; }
-  }
-  @media (max-width:600px) {
-    #app { grid-template-rows:auto auto 70vh auto 260px; }
-    body[data-kind="image"] #app { grid-template-rows:auto auto 70vh auto; }
-    header { flex-wrap:wrap; gap:10px; padding:12px; }
-    header .vrule { display:none; }
-    #fileName { flex:1; }
-    .head-right { width:100%; gap:10px; justify-content:space-between; }
-    #workspaceDetectors { flex:1; max-width:none; }
-    #workspaceDetectors .detectorBody { right:auto; left:0; }
-    .select { padding:24px; }
   }
 </style>
 </head>
@@ -404,10 +363,6 @@
     </section>
     <section class="select">
       <div class="hStatus"><button class="hLink" id="homeBack" hidden></button><span id="homeMsg" role="status"><i></i><span id="homeMsgText"></span></span></div>
-      <details class="detectorStatus" id="homeDetectors" data-state="checking">
-        <summary aria-label="Detector status · Checking…"><span class="detectorSummary" role="status" aria-live="polite" aria-atomic="true">Detector status · Checking…</span><span class="detectorToggle" aria-hidden="true"></span></summary>
-        <div class="detectorBody"><p class="detectorMessage">Checking which detectors are available on the server.</p><dl hidden></dl></div>
-      </details>
       <div class="hKind video">
         <div class="th"><b>Video</b></div>
         <label class="drop" id="drop">
@@ -443,10 +398,6 @@
     <div class="head-right">
       <span id="hdrNote"></span>
       <span id="netStatus" title="Detection, tracking and rendering all run on this machine"><i></i><span id="netLabel">on-device</span></span>
-      <details class="detectorStatus" id="workspaceDetectors" data-state="checking">
-        <summary aria-label="Detector status · Checking…"><span class="detectorSummary" role="status" aria-live="polite" aria-atomic="true">Detector status · Checking…</span><span class="detectorToggle" aria-hidden="true"></span></summary>
-        <div class="detectorBody"><p class="detectorMessage">Checking which detectors are available on the server.</p><dl hidden></dl></div>
-      </details>
       <button id="openBtn" hidden title="Back to the home screen: pick another clip or photo, or upload one">Open file</button>
     </div>
   </header>
@@ -587,78 +538,6 @@ const ICON = {
   download: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
 };
 const svg = name => { const t = document.createElement('template'); t.innerHTML = ICON[name]; return t.content.firstChild; };
-
-// ---------- detector readiness ----------
-// Update only text inside these persistent details elements: polling must not close them or move focus.
-const detectorPanels = [$('homeDetectors'), $('workspaceDetectors')];
-const DETECTOR_STATES = { ready: 'Ready', loading: 'Loading', not_loaded: 'Not loaded', fallback: 'Fallback in use', unavailable: 'Unavailable' };
-const DETECTOR_OVERALL = { ready: 'Ready', loading: 'Loading', not_loaded: 'Not loaded', degraded: 'Limited detection', unavailable: 'Unavailable' };
-const detectorPoll = { timer: null, controller: null, running: false, stopped: false };
-const detectorText = (node, value) => { if (node.textContent !== value) node.textContent = value; };
-function showDetectors(data, error = '') {
-  const stub = data && data.mode === 'stub', fallback = data && data.detectors.some(d => d.status === 'fallback');
-  const state = !data ? 'unavailable' : stub ? 'stub' : fallback ? 'degraded' : data.status;
-  const summary = !data ? 'Detector status · Unavailable' : stub ? 'Stub demo · No actual detection'
-    : `Real detection · ${DETECTOR_OVERALL[data.status]}${fallback ? ' · Fallback in use' : ''}`;
-  const message = !data ? `${error} Retrying automatically.` : data.message
-    || (stub ? 'Demo tracks come from sidecar files; no actual detection is running.' : 'Detector status checked on the server.');
-  for (const panel of detectorPanels) {
-    panel.dataset.state = state;
-    panel.querySelector('summary').setAttribute('aria-label', summary);
-    detectorText(panel.querySelector('.detectorSummary'), summary);
-    detectorText(panel.querySelector('.detectorMessage'), message);
-    const list = panel.querySelector('dl');
-    list.hidden = !data;  // Never leave old Ready rows visible after a failed status check.
-    if (!data) continue;
-    for (const detector of data.detectors) {
-      let row = list.querySelector(`[data-detector="${detector.id}"]`);
-      if (!row) {
-        row = el('div', { class: 'detectorRow', 'data-detector': detector.id },
-          el('dt', {}, el('span'), el('span')), el('dd', { class: 'detectorModel' }), el('dd', { class: 'detectorDetail' }));
-        list.append(row);
-      }
-      detectorText(row.querySelector('dt span:first-child'), detector.label);
-      detectorText(row.querySelector('dt span:last-child'), DETECTOR_STATES[detector.status]);
-      detectorText(row.querySelector('.detectorModel'), detector.model);
-      detectorText(row.querySelector('.detectorDetail'), detector.message);
-    }
-  }
-}
-function validDetectors(data) {
-  return data && ['real', 'stub'].includes(data.mode) && Object.hasOwn(DETECTOR_OVERALL, data.status)
-    && typeof data.message === 'string' && Array.isArray(data.detectors) && data.detectors.length === 3
-    && ['objects', 'face', 'plate'].every(id => data.detectors.filter(d => d && d.id === id).length === 1)
-    && data.detectors.every(d => Object.hasOwn(DETECTOR_STATES, d.status)
-      && ['label', 'model', 'message'].every(key => typeof d[key] === 'string'));
-}
-async function pollDetectors() {
-  if (detectorPoll.running || detectorPoll.stopped) return;
-  clearTimeout(detectorPoll.timer);
-  detectorPoll.running = true;
-  const controller = new AbortController(); detectorPoll.controller = controller;
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const data = await api('api/detectors', { cache: 'no-store', signal: controller.signal });
-    if (!validDetectors(data)) throw new Error('Invalid detector status response');
-    if (!detectorPoll.stopped) showDetectors(data);
-  } catch (e) {
-    if (!detectorPoll.stopped) showDetectors(null, controller.signal.aborted
-      ? 'The detector status check timed out.' : 'Could not verify detector status on the server.');
-  } finally {
-    clearTimeout(timeout); detectorPoll.running = false; detectorPoll.controller = null;
-    if (!detectorPoll.stopped) detectorPoll.timer = setTimeout(pollDetectors, 5000);
-  }
-}
-window.addEventListener('pagehide', () => {
-  detectorPoll.stopped = true; clearTimeout(detectorPoll.timer);
-  if (detectorPoll.controller) detectorPoll.controller.abort();
-});
-window.addEventListener('pageshow', e => {
-  if (!e.persisted) return;
-  detectorPoll.stopped = false;
-  showDetectors(null, 'Refreshing detector status.');
-  pollDetectors();
-});
 
 // Per-viewer memory (request wording, target names) so a reopened video keeps its history. Optional: the page
 // works the same without it.
@@ -2025,7 +1904,7 @@ document.addEventListener('keydown', e => {
     if (e.key === '[' || e.key === ']') { e.preventDefault(); togglePanel(e.key === '[' ? 'l' : 'r'); return; }
     if (e.key === '/') { e.preventDefault(); togglePanel('l', true); $('text').focus(); return; }  // jump to the request field
   }
-  if (/^(BUTTON|SUMMARY)$/.test(document.activeElement.tagName) || isPhoto()) return;
+  if (document.activeElement.tagName === 'BUTTON' || isPhoto()) return;
   if (e.key === ' ') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
@@ -2034,7 +1913,6 @@ window.addEventListener('resize', () => renderTimeline());
 
 // ---------- start ----------
 renderAll();
-pollDetectors();
 // Hosted elsewhere, the server can't put its flags on <body> (index() in app.py), so ask for them
 if (API) api('api/config').then(c => {
   if (c.offline) document.body.dataset.offline = '1';

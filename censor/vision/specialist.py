@@ -24,7 +24,6 @@ import numpy as np
 
 from censor.core.tracks import Keyframe, Track, TrackStore
 from censor.core.video import frames, is_image, read_frame
-from censor.vision import readiness
 
 EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets" / "egoblur"))
 # Which model file each category uses. Gen2 files (ego_blur_face_gen2.jit, ego_blur_lp_gen2.jit) load too; see
@@ -359,11 +358,7 @@ class EgoBlurDetector:
 
     def run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         with self._lock:
-            categories = {ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
-            ids = ["plate" if cat == "license plate" else cat for cat in categories]
-            verified: set[str] = set()
-            with readiness.operation(ids, "run", verified):
-                return self._run(video, queries, store, verified)
+            return self._run(video, queries, store)
 
     def warm_up(self, sizes=WARM_SIZES) -> None:
         """Load the models and run each twice per frame size on noise. A freshly loaded TorchScript model is
@@ -371,16 +366,13 @@ class EgoBlurDetector:
         would otherwise pay for. Scans wait for this to finish."""
         rng = np.random.default_rng(0)
         with self._lock:
-            verified: set[str] = set()
-            with readiness.operation(("face", "plate"), "warm-up", verified):
-                for h, w in sizes:
-                    img = rng.integers(0, 256, (h, w, 3), dtype=np.uint8)
-                    for cat, fn in self.infer.items():
-                        fn(img)
-                        fn(img)
-                        verified.add("plate" if cat == "license plate" else cat)
+            for h, w in sizes:
+                img = rng.integers(0, 256, (h, w, 3), dtype=np.uint8)
+                for fn in self.infer.values():
+                    fn(img)
+                    fn(img)
 
-    def _run(self, video: str, queries: list[str], store: TrackStore, verified: set[str]) -> list[Track]:
+    def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         wanted = {q: ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
         per_cat: dict[str, list[tuple[int, list[tuple[Box, float]]]]] = {c: [] for c in set(wanted.values())}
         frame_h = frame_w = 0
@@ -388,7 +380,6 @@ class EgoBlurDetector:
             frame_h, frame_w = img.shape[:2]
             for cat in per_cat:
                 dets = [(b, s) for b, s in self.infer[cat](img) if s >= self.conf]
-                verified.add("plate" if cat == "license plate" else cat)
                 if cat == "face":
                     dets = [(_expand(b, FACE_EXPAND), s) for b, s in dets]
                 per_cat[cat].append((f, dets))
@@ -448,9 +439,7 @@ class RoutedDetector:
 def routed_or(general) -> object:
     """Wrap `general` with EgoBlur when its model files are present; otherwise say so and use `general` alone."""
     if egoblur_available():
-        readiness.select_real(specialist=True)
         return RoutedDetector(general, EgoBlurDetector())
-    readiness.select_real(specialist=False)
     print(f"[detect] EgoBlur models not found in {EGOBLUR_DIR}; faces and plates use YOLOE "
           "(0% face recall on PP4AV)", file=sys.stderr)
     return general
