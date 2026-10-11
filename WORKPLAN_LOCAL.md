@@ -59,7 +59,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 **Files:** `censor/agent/intents.py`, `censor/agent/agent.py`, `censor/agent/planner.py`, `censor/server/app.py` (logging only), `tests/test_core.py`, `tests/test_planner.py`.
 **Needs:** no GPU.
 
-### Worker 3: labels and the 20 benchmark requests (bench)
+### Worker 3: labels and the 20 benchmark requests (bench) — `street_walk` faces and people done (Pablo); read IMPLEMENTATION.md open item 3 before labeling more faces: draw face boxes, not head boxes
 
 **Problem:** the request success rate (target: at least 15 of 20) can't be measured: `bench/requests.yaml` has 7 requests, all on the synthetic clip, and the real clips only have plate labels (`bench/labels/street_plates.plate.json`, `street_walk.plate.json`).
 
