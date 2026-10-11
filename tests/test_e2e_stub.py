@@ -103,7 +103,9 @@ def test_sample_clips_load_without_a_file_picker(clip, client, tmp_path, monkeyp
     shutil.copyfile(clip, samples / "street.mp4")
     shutil.copyfile(str(clip) + ".tracks.json", samples / "street.mp4.tracks.json")
     monkeypatch.setattr(app_mod, "SAMPLES_DIR", samples)
-    assert [s["id"] for s in c.get("/api/samples").json()] == ["street"]
+    listed = c.get("/api/samples").json()
+    assert [s["id"] for s in listed] == ["street"]
+    assert listed[0]["sidecar"] is True and listed[0]["duration"] > 0 and listed[0]["height"] > 0  # the home screen's row
     vid = c.post("/api/samples/street").json()["video_id"]
     r = c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates"}).json()
     assert r["summary"]["by_label"] == {"license plate": 1}  # the sidecar came along, so the stub finds the plate

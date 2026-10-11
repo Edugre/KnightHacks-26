@@ -47,7 +47,7 @@ from censor import netguard
 from censor.agent.agent import Agent
 from censor.agent.tools import Session, ToolError
 from censor.core.timeline import Timeline
-from censor.core.video import read_frame
+from censor.core.video import probe, read_frame
 from censor.render.render import FrameMasker, _padded, render_video
 
 netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
@@ -143,8 +143,10 @@ def index():
     if not page.exists():
         return "<p>censor agent API. See /docs</p>"
     html = page.read_text(encoding="utf-8")
-    # The header says "network off" only when netguard is actually refusing outbound connections
-    return html.replace("<body>", '<body data-offline="1">', 1) if netguard.active() else html
+    # The header says "network off" only when netguard is actually refusing outbound connections; the home screen
+    # offers "Attach .tracks.json" only in stub mode, the one place a sidecar does anything
+    flags = (' data-offline="1"' if netguard.active() else '') + (' data-stub="1"' if os.environ.get("CENSOR_STUB") == "1" else '')
+    return html.replace("<body>", f"<body{flags}>", 1) if flags else html
 
 
 @app.post("/api/videos")
@@ -158,8 +160,18 @@ async def upload(file: UploadFile = File(...)):
 
 @app.get("/api/samples")
 def samples():
-    """Clips already on the server (bench/clips), so a demo needs no file picker."""
-    return [{"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1)} for p in sorted(SAMPLES_DIR.glob("*.mp4"))]
+    """Clips already on the server (bench/clips), so a demo needs no file picker. Length and size for the home
+    screen's list, and whether a stub-mode sidecar (ground-truth tracks) comes along."""
+    out = []
+    for p in sorted(SAMPLES_DIR.glob("*.mp4")):
+        c = {"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1), "sidecar": Path(f"{p}.tracks.json").exists()}
+        try:
+            v = probe(str(p))
+            c.update(duration=round(v.n_frames / v.fps, 1), width=v.width, height=v.height)
+        except IOError:  # unreadable: still listed, by size only
+            pass
+        out.append(c)
+    return out
 
 
 @app.post("/api/samples/{name}")

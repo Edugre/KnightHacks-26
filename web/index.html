@@ -8,7 +8,7 @@
 <title>Blurr</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CclipPath id='l'%3E%3Crect width='16' height='32'/%3E%3C/clipPath%3E%3CclipPath id='r'%3E%3Crect x='16' width='16' height='32'/%3E%3C/clipPath%3E%3Cfilter id='b' x='-50%' y='-50%' width='200%' height='200%'%3E%3CfeGaussianBlur stdDeviation='.84'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='%23111111'/%3E%3Cg font-family='Geist,Helvetica,Arial,sans-serif' font-weight='700' font-size='24' text-anchor='middle'%3E%3Ctext x='16' y='24.5' fill='%23FFFFFF' clip-path='url(%23l)'%3EB%3C/text%3E%3Cg clip-path='url(%23r)'%3E%3Ctext x='16' y='24.5' fill='%23E5484D' filter='url(%23b)'%3EB%3C/text%3E%3C/g%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&family=Archivo:wght@400;800&display=swap" rel="stylesheet">
 <style>
   :root {
     --acc:#E5484D; --acc-down:#CC3A3F; --acc-hi:#FF6369; --acc-tint:rgba(229,72,77,.14);
@@ -129,17 +129,6 @@
   #srcSwitch .trk.on { background:var(--primary-bg); } #srcSwitch .trk.on i { left:13px; background:var(--ink-dark); }
 
   /* picker (no clip yet, or Open clip) */
-  #picker { position:absolute; inset:0; background:var(--well); display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto; z-index:5; }
-  .pick { max-width:560px; display:flex; flex-direction:column; gap:14px; }
-  .pick h1 { margin:0; font:600 26px/1.15 var(--font); letter-spacing:-.02em; color:var(--ink); }
-  .pick p { margin:0; color:var(--mute); line-height:1.5; }
-  .samples { display:flex; gap:8px; flex-wrap:wrap; }
-  .samples button { font:500 14px/1.2 var(--font); padding:9px 14px; }
-  .samples small { color:var(--meta); font:400 12px/1 var(--mono); margin-left:6px; }
-  .uploads { display:flex; gap:12px; flex-wrap:wrap; align-items:center; font-size:12px; color:var(--mute); }
-  .filebtn { position:relative; overflow:hidden; display:inline-block; border:1px solid var(--divider); border-radius:6px; padding:6px 12px; cursor:pointer; color:var(--text); font:500 13px/1.2 var(--font); }
-  .filebtn:hover { background:rgba(237,237,237,.07); }
-  .filebtn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 
   /* ---- agent ---- */
   #agent { grid-row:2; grid-column:3; display:flex; flex-direction:column; gap:12px; min-height:0; overflow:hidden; }
@@ -237,9 +226,80 @@
     #tlGrid { grid-template-columns:140px minmax(0,1fr); }
     #fileMeta, #hdrNote, #netStatus { display:none; }
   }
+  /* ---- home: pick a clip (design_handoff_home_clip_picker, option 3c). Its own Modernist look: Archivo, square,
+     near-black and red, as the handoff specifies; the workspace keeps Geist ---- */
+  #home { --h-bg:#f3f2f2; --h-ink:#201e1d; --h-n900:#2d2b2b; --h-n700:#605d5d; --h-n600:#7d7979; --h-n400:#bab6b6;
+    --h-acc:#ec3013; --h-acc400:#ff9783; --h-acc900:#4d170e; --h-font:"Archivo", system-ui, sans-serif;
+    position:fixed; inset:0; overflow:auto; z-index:30; background:var(--h-ink); color:var(--h-bg); font:400 15px/1.55 var(--h-font); }
+  #home * { border-radius:0; }
+  #home :focus-visible { outline:2px solid var(--h-acc); outline-offset:2px; }
+  .homeGrid { min-height:max(100%, 640px); display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); }
+  .statement { background:var(--h-n900); display:flex; flex-direction:column; padding:28px 40px 40px; }
+  .statement .wm { font:800 28px/1 var(--h-font); letter-spacing:-.045em; color:var(--h-bg); }
+  .statement .wm .r2 { color:var(--h-acc); }
+  .statement h1 { margin:auto 0 0; font:800 104px/.92 var(--h-font); letter-spacing:-.045em; color:var(--h-bg); }
+  .statement h1 .hide { filter:blur(.04em); color:var(--h-acc); }
+  .statement .rule { height:2px; background:var(--h-n700); margin:32px 0 16px; }
+  .statement p { margin:0; font-size:18px; line-height:1.45; max-width:440px; color:var(--h-n400); }
+  .select { background:var(--h-ink); display:flex; flex-direction:column; gap:24px; padding:28px 40px 40px; min-width:0; }
+  .hStatus { display:flex; align-items:center; gap:8px; font-size:12px; height:28px; }
+  .hStatus #homeMsg { margin-left:auto; display:flex; align-items:center; gap:8px; text-align:right; }
+  .hStatus #homeMsg i { width:8px; height:8px; background:var(--h-acc); flex:none; }
+  .hStatus #homeMsg.err { color:var(--h-acc400); }
+  .hLink { background:none; border:0; padding:8px 4px; font:800 14px/1.2 var(--h-font); color:var(--h-acc400); cursor:pointer; border-radius:0; }
+  .hLink:hover:not(:disabled) { background:color-mix(in srgb, var(--h-acc) 18%, transparent); }
+  #homeBack { padding:4px; margin-left:-4px; }
+  .drop { flex:1; min-height:220px; position:relative; display:flex; flex-direction:column; justify-content:flex-end; gap:12px; padding:32px;
+    border:2px dashed var(--h-n600); cursor:pointer; }
+  .drop:hover, .drop.over { border-color:var(--h-acc400); background:var(--h-acc900); }
+  .drop:focus-within { outline:2px solid var(--h-acc); outline-offset:2px; }
+  .drop svg { color:var(--h-acc); }
+  .drop .title { font:800 32px/1.05 var(--h-font); letter-spacing:-.02em; }
+  .drop .sub { font-size:14px; color:var(--h-n400); }
+  .drop .sub u { color:var(--h-acc400); text-underline-offset:3px; }
+  .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .hSamples { display:flex; flex-direction:column; }
+  .hSamples .th { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); padding-bottom:8px; border-bottom:2px solid var(--h-n700); }
+  .hRow { display:grid; grid-template-columns:minmax(0,1fr) 120px 20px; align-items:center; gap:12px; padding:12px 0; width:100%;
+    border:0; border-bottom:1px solid var(--h-n700); background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; border-radius:0; }
+  .hRow:hover:not(:disabled) { color:var(--h-acc400); background:none; }
+  .hRow .id { font:800 17px/1.2 var(--h-font); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hRow .meta { font-size:12px; color:var(--h-n400); }
+  .hEmpty { font-size:12px; color:var(--h-n400); padding:12px 0; }
+  #homeStub { align-self:flex-start; margin-top:12px; position:relative; overflow:hidden; }
+  #homeStub input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  @media (max-width:1100px) {
+    .homeGrid { grid-template-columns:minmax(0,1fr); }
+    .statement { min-height:360px; }
+    .statement h1 { font-size:64px; }
+  }
 </style>
 </head>
 <body>
+<main id="home" hidden>
+  <div class="homeGrid">
+    <section class="statement">
+      <span class="wm" role="img" aria-label="Blurr">Blu<span class="r1">r</span><span class="r2">r</span></span>
+      <h1>Say what to <span class="hide">hide.</span></h1>
+      <div class="rule"></div>
+      <p>"blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". Everything runs on this machine.</p>
+    </section>
+    <section class="select">
+      <div class="hStatus"><button class="hLink" id="homeBack" hidden></button><span id="homeMsg" role="status"><i></i><span id="homeMsgText"></span></span></div>
+      <label class="drop" id="drop">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+        <span class="title">Drop a video</span>
+        <span class="sub">or <u>browse files</u>. Landscape MP4 works best.</span>
+        <input type="file" accept="video/*" id="dropInput" aria-label="Choose a video">
+      </label>
+      <div class="hSamples">
+        <div class="th">Or start from a sample</div>
+        <div id="homeRows"><div class="hEmpty">Looking for sample clips…</div></div>
+        <label class="hLink" id="homeStub" hidden title="Stub mode: ground-truth tracks from scripts/make_test_clip.py"><span id="homeStubText">Attach .tracks.json</span><input type="file" accept=".json" id="stubInput"></label>
+      </div>
+    </section>
+  </div>
+</main>
 <div id="app">
   <header>
     <span class="wm" role="img" aria-label="Blurr">Blu<span class="r1">r</span><span class="r2">r</span></span>
@@ -248,7 +308,7 @@
     <div class="head-right">
       <span id="hdrNote"></span>
       <span id="netStatus" title="Detection, tracking and rendering all run on this machine"><i></i><span id="netLabel">on-device</span></span>
-      <button id="openBtn" hidden title="Pick another clip, upload one, or attach a .tracks.json">Open clip</button>
+      <button id="openBtn" hidden title="Back to the home screen: pick another clip or upload one">Open clip</button>
     </div>
   </header>
 
@@ -278,7 +338,6 @@
         <div class="monHead"><b>PROGRAM</b><span class="mute" id="progLabel">final output · what Export writes</span></div>
         <div class="screen" id="progScreen"><canvas id="progCv"></canvas><span id="progBadge" hidden></span></div>
       </div>
-      <div id="picker" hidden></div>
     </div>
     <div id="transport">
       <button id="playBtn" title="Play / pause (Space)" aria-label="Play" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
@@ -489,45 +548,85 @@ async function openVideo(j, name) {
   $('text').focus();
 }
 async function loadSample(id) {
-  notice(`Loading ${id}…`);
-  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); }
-  catch (e) { notice(`Couldn't load ${id}: ${errText(e)}`, true); }
+  homeMsg(`Loading ${id}…`);
+  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); homeMsg(''); }
+  catch (e) { homeMsg(`Couldn't load ${id}: ${errText(e)}`, true); }
 }
 async function uploadFile(file) {
-  notice(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+  homeMsg(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
   const fd = new FormData(); fd.append('file', file);
-  try { await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); }
-  catch (e) { notice(`Upload failed: ${errText(e)}`, true); }
+  try {
+    await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); homeMsg('');
+    if (S.pendingSidecar) { const sc = S.pendingSidecar; S.pendingSidecar = null; await uploadSidecar(sc); }
+  } catch (e) { homeMsg(`Upload failed: ${errText(e)}`, true); }
 }
 async function uploadSidecar(file) {
-  if (!S.vid) return notice('Load the video first, then its .tracks.json.', true);
+  if (!S.vid) { S.pendingSidecar = file; return renderPicker(); }
   const fd = new FormData(); fd.append('file', file);
   try { await api(`api/videos/${S.vid}/tracks-sidecar`, { method: 'POST', body: fd }); S.picker = false; renderPicker(); notice(`Attached ground-truth tracks from ${file.name} (stub mode).`); }
   catch (e) { notice(`Sidecar upload failed: ${errText(e)}`, true); }
 }
 function notice(msg, err = false) { $('notice').textContent = msg || ''; $('notice').classList.toggle('err', !!err); }
 
+// ---------- home: pick a clip ----------
+// Shows when no clip is open, or after Open clip; ?video=<id> skips it. Picking a sample or uploading opens the
+// workspace on that clip.
+const homeShown = () => !S.vid || S.picker;
+const ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+let samplesListed = false;
 function renderPicker() {
-  const show = !S.vid || S.picker;
-  $('picker').hidden = !show; $('openBtn').hidden = !S.vid;
-  $('openBtn').textContent = S.picker ? 'Back to the clip' : 'Open clip';
-  if (!show) return;
-  const list = el('div', { class: 'samples' }, el('span', { class: 'mute' }, 'Looking for sample clips…'));
-  $('picker').replaceChildren(el('div', { class: 'pick' },
-    el('div', { class: 'h' }, 'Clip'),
-    el('h1', {}, 'Hide people, faces and plates by asking.'),
-    el('p', {}, 'Pick a clip, then type what to hide: "blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". Everything runs on this machine.'),
-    list,
-    el('div', { class: 'uploads' },
-      el('label', { class: 'filebtn' }, 'Upload a video…', el('input', { type: 'file', accept: 'video/*', onchange: e => e.target.files[0] && uploadFile(e.target.files[0]) })),
-      el('label', { class: 'filebtn', title: 'Stub mode only: ground-truth tracks from scripts/make_test_clip.py' },
-        'Attach .tracks.json', el('input', { type: 'file', accept: '.json', onchange: e => e.target.files[0] && uploadSidecar(e.target.files[0]) })),
-      el('span', {}, 'In stub mode pick synthetic: its ground truth comes along.'))));
-  api('api/samples').then(cl => {
-    list.replaceChildren(...(cl.length ? cl.map(c => el('button', { onclick: () => loadSample(c.id) }, c.id, el('small', {}, `${c.mb} MB`)))
-      : [el('span', { class: 'mute' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
-  }).catch(e => list.replaceChildren(el('span', { class: 'mute' }, `Couldn't list samples: ${errText(e)}`)));
+  const show = homeShown();
+  $('home').hidden = !show; $('app').hidden = show;
+  $('openBtn').hidden = !S.vid;
+  $('homeBack').hidden = !S.vid;
+  if (S.vid) $('homeBack').textContent = `← Back to ${S.name}`;
+  // Stub mode only: a sidecar does nothing with real detectors. Attaches to the open clip, else to the next upload.
+  $('homeStub').hidden = document.body.dataset.stub !== '1';
+  $('homeStubText').textContent = S.pendingSidecar ? `${S.pendingSidecar.name} attaches to the next upload` : 'Attach .tracks.json';
+  if (show && !$('homeMsg').classList.contains('busy')) homeMsg('');
+  if (show && !samplesListed) listSamples();
 }
+// The status slot: where the clip runs, or what's loading, or what went wrong
+function homeMsg(msg, err = false) {
+  const m = $('homeMsg');
+  m.classList.toggle('err', !!err); m.classList.toggle('busy', !!msg && !err);
+  $('homeMsgText').textContent = msg || (document.body.dataset.offline === '1' ? 'on-device · nothing leaves this machine' : 'on-device');
+}
+function listSamples() {
+  samplesListed = true;
+  const rows = $('homeRows');
+  api('api/samples').then(cl => {
+    rows.replaceChildren(...(cl.length ? cl.map(c => {
+      const meta = c.duration ? `${c.duration.toFixed(1)} s · ${c.sidecar ? 'stub' : `${c.height}p`}` : `${c.mb} MB`;
+      const b = el('button', { class: 'hRow', title: `Open ${c.id}`, onclick: () => loadSample(c.id) },
+        el('span', { class: 'id' }, c.id), el('span', { class: 'meta' }, meta));
+      b.insertAdjacentHTML('beforeend', ARROW);
+      return b;
+    }) : [el('div', { class: 'hEmpty' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
+  }).catch(e => { samplesListed = false; rows.replaceChildren(el('div', { class: 'hEmpty' }, `Couldn't list samples: ${errText(e)}`)); });
+}
+$('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f); };
+$('stubInput').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (S.vid) uploadSidecar(f); else { S.pendingSidecar = f; renderPicker(); }
+};
+$('homeBack').onclick = () => { S.picker = false; renderPicker(); layoutMonitors(); };
+// Drag a file anywhere on the home screen; the drop area lights up while one is over the page
+(function dropTarget() {
+  let depth = 0;
+  const over = on => $('drop').classList.toggle('over', on);
+  const files = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  window.addEventListener('dragenter', e => { if (!homeShown() || !files(e)) return; depth++; over(true); });
+  window.addEventListener('dragleave', () => { if (depth && !--depth) over(false); });
+  window.addEventListener('dragover', e => { if (files(e)) e.preventDefault(); });  // else the browser opens the file
+  window.addEventListener('drop', e => {
+    if (!files(e)) return;
+    e.preventDefault(); depth = 0; over(false);
+    const f = [...e.dataTransfer.files].find(x => x.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(x.name));
+    if (!homeShown()) return;
+    if (f) uploadFile(f); else homeMsg('That isn\'t a video file.', true);
+  });
+})();
 
 // ---------- the agent's steps, in plain words ----------
 function describe(calls, path) {
@@ -1318,12 +1417,13 @@ function toggleDraw(on = !S.drawMode) {
 $('drawBtn').onclick = () => toggleDraw();
 $('srcSwitch').onclick = () => setSrcOff(!S.srcOff);
 $('undoBtn').onclick = undoLast;
-$('openBtn').onclick = () => { S.picker = !S.picker; renderPicker(); };
+$('openBtn').onclick = () => { $('player').pause(); S.picker = true; renderPicker(); };
 $('playBtn').onclick = () => { const v = $('player'); v.paused ? v.play() : v.pause(); };
 const step = n => { const v = $('player'); v.pause(); if (S.info) seek((P.frame + n + 0.5) / S.info.fps); };
 document.addEventListener('keydown', e => {
   const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
-  if (e.key === 'Escape') { if (S.drawMode) toggleDraw(false); else if (S.picker && S.vid) { S.picker = false; renderPicker(); } return; }
+  if (e.key === 'Escape') { if (S.drawMode) toggleDraw(false); else if (S.picker && S.vid) $('homeBack').click(); return; }
+  if (homeShown()) return;
   if (typing || !S.vid) return;
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && S.timeline.targets[S.selected]) { e.preventDefault(); editTargets('remove', [S.selected]); return; }
   if (document.activeElement.tagName === 'BUTTON') return;

@@ -62,6 +62,11 @@ clips:
       Labeled (every 10th frame): 6 plates, and only the 13 largest, clearest faces (not every crowd face),
       so face recall here counts those only. Persons are not labeled: person recall and over-blur on this
       clip mean nothing.
+      Corrected Sun Oct 11 08:15 UTC, each box checked by eye on the frame: 24 face boxes slid sideways
+      onto the face they describe (face_1, 2, 4, 6, 7, 9; most were drawn 20-60 px right of the face,
+      frames 30-320), license_plate_5 removed at frame 240 (the plate has left the frame) and face_6 removed
+      at frames 70-90 (seen from behind, no face visible). Left as drawn because the frame doesn't say which
+      person is meant, or the label was right and the detector missed: face_8, 10, 11, 12.
 
 # Template for a real clip. Copy it, fill it in, then label every 10th frame in bench/labels/<id>.json.
 #  - id: street_01

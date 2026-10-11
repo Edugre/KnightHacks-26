@@ -2,7 +2,7 @@
 
 Live through the AUP proxy, with `street_walk` as the main clip and `street_plates` as the speed shot.
 
-**Demo hardware: Strix Halo** (Radeon 8060S, gfx1151, 64 GB, on the San Jose hub). Every number below names the GPU and resolution it was measured on. Strix Halo figures (docs/STACK.md) exist only for detection speed, offline speed on `street_walk` at 1280x720 and GPU memory; everything else is an **R9700 (Dublin)** number (Radeon AI PRO R9700, gfx1201, 32 GB; IMPLEMENTATION.md, "Where we are"), measured before the Dublin hub went down, so say so when you quote it. Strix Halo plate recall, over-blur and request success: TODO. Don't quote laptop timings.
+**Demo hardware: Strix Halo** (Radeon 8060S, gfx1151, 64 GB, on the San Jose hub). Every number below names the GPU and resolution it was measured on. Strix Halo figures (docs/STACK.md) exist only for detection speed, offline speed on `street_walk` at 1280x720, GPU memory, request success, labeled-box recall and plate masking; everything else is an **R9700 (Dublin)** number (Radeon AI PRO R9700, gfx1201, 32 GB; IMPLEMENTATION.md, "Where we are"), measured before the Dublin hub went down, so say so when you quote it. Don't quote laptop timings.
 
 ## Before you go on (10 minutes ahead)
 
@@ -26,7 +26,7 @@ Live through the AUP proxy, with `street_walk` as the main clip and `street_plat
 | 1:55 | Click **Undo** once, show the version marked undone on the right. | "Every change is a version, and undo is one click." |
 | 2:05 | Click **Export**. The Preview switches to **Exact export**; play a few seconds. | "The renderer is plain code applying that timeline. This is the file you'd share." |
 | 2:20 | Switch to the terminal tab: empty `logs/egress.log`, `/health` with `"offline": true`. | "Every outbound connection is refused and logged during inference. The log is empty." |
-| 2:35 | Back to the app, or a slide with the numbers. | "On our labeled clips, measured on the R9700, 100% and 94.6% of plate frames are masked, with 3% over-blur. Detection, the 8B vision-language model and the planner all share this one Strix Halo, at 18.9 GB peak." (Plate numbers: R9700, 1080p and 720p clips; Strix Halo: TODO. Memory: Strix Halo, `./run.sh bench`.) |
+| 2:35 | Back to the app, or a slide with the numbers. | "On our labeled clips, on this Strix Halo, 100% and 93.7% of plate frames are masked, with 2.5% over-blur. Detection, the 8B vision-language model and the planner all share this one Strix Halo, at 19.3 GB peak." (Plate numbers: Strix Halo, `bench.review`, `street_plates` 1080p and `street_walk` 720p; the R9700 had 100% / 94.6%. Memory: Strix Halo, `./run.sh bench`.) |
 | 2:50 | Close. | "Redaction you ask for in plain language, check frame by frame, and run without a cloud." |
 
 **If there's time left, the speed shot:** pick `street_plates`, type **blur all faces and plates**, then Export. On the R9700 that was about 15 s from upload to finished export (1080p; not measured on the Strix Halo).
@@ -37,7 +37,7 @@ Live through the AUP proxy, with `street_walk` as the main clip and `street_plat
 - **Fail closed:** unsure answers stay masked; low-confidence moments show as the bright marks on the strip and are masked anyway, with extra padding (**Check N low-confidence spots** steps through them). On a crowd like `street_plates` the strip groups targets into one bar per kind, so the frame stays in view.
 - **Fix by hand (if a judge asks, or a mask is wrong live):** click the box in the Preview, then **Unmask**, another effect, or drag it / a corner to where it should be (re-tracked from that frame on). Each fix is one Undo.
 - **Offline:** the empty egress log and `"offline": true`.
-- **AMD numbers, Strix Halo** (docs/STACK.md, `./run.sh bench`): detection 45.4 ms/frame and 0.8x real time offline on `street_walk` (1280x720); 18.9 GB peak with every model loaded; model server loads in 8 s. Plate recall, over-blur and request success: TODO.
+- **AMD numbers, Strix Halo** (docs/STACK.md, `./run.sh bench`): face + plate + person detection 105 ms/frame and 0.4x real time offline on `street_walk` (1280x720); 19.3 GB peak with every model loaded; model server loads in 8 s. **14 / 20** real-clip requests pass (keyword baseline 7 / 20; 13 / 20 before correcting 28 verified label errors on `street_plates`); labeled faces / plates / people at least 90% masked: 0.95 / 0.98 / 0.99 (face labels are head boxes, so this undercounts faces). A live stream could be detected every 5th frame at 720p behind a delay of under 0.8 s (`bench.live_speed`). Plates masked 100% / 93.7% (`street_plates` / `street_walk`), 2.5% over-blur.
 - **AMD numbers, R9700 (Dublin)** (IMPLEMENTATION.md): upload scan 0.76x real time at 1080p (24x the CPU); EgoBlur fp16 cut the per-frame cost 3x with the same boxes (1080p); export of `street_plates` (1080p) in 2.8 s; planner call about 1.8 s; requests 2-7 s; 18 GB peak with every model loaded.
 
 ## If live fails
