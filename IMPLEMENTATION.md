@@ -313,6 +313,8 @@ Owner: D, with everyone helping.
 
 **Exit:** someone who didn't write the setup script follows only the README and gets the demo running.
 
+**Fresh clone on the Strix Halo: works (Sun 09:45 UTC, commit a41e119).** `git clone` into a new folder, `./run.sh test` (150 passed), `scripts/fetch_clips.sh` (all three clips), `setup.sh`'s model download (YOLOE and MobileCLIP into the clone's `weights/`; its OpenCV reinstall was skipped because the demo app was running on the same Python), `PORT=8002 ./run.sh` (detectors ready in 17.0 s), then `street_walk` + "blur all faces and plates" in 10.5 s and an export of 221 frames, none failed. Before the download step, the warm-up tried to fetch the YOLOE weights from GitHub and the egress guard refused it: run `setup.sh` first, as the README says.
+
 ### M6 (stretch): Live replay
 Owner: C. Starts only after M4 passes.
 - Replay a recorded clip through `live.py` with a delay buffer (default 2 s) and one standing rule ("blur any plate").
