@@ -20,6 +20,7 @@ from typing import Protocol
 from censor.core.tracks import Keyframe, Track, TrackStore
 from censor.core.video import is_image, read_image
 from censor.vision import stitch as stitch_mod
+from censor.vision import readiness
 
 DETECT_IMGSZ = int(os.environ.get("CENSOR_IMGSZ", "1280"))
 MIN_CONF = float(os.environ.get("CENSOR_MIN_CONF", "0.15"))
@@ -63,7 +64,9 @@ class YoloeDetector:
 
     def run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         with self._lock:
-            return self._run(video, queries, store)
+            verified: set[str] = set()
+            with readiness.operation(("objects",), "run", verified):
+                return self._run(video, queries, store, verified)
 
     def _model(self):
         model = self._models.get(self.weights)
@@ -75,22 +78,24 @@ class YoloeDetector:
         """Load YOLOE and its text encoder and run one frame, so the first scan doesn't pay for it."""
         import numpy as np
         with self._lock:
-            model = self._model()
-            model.set_classes(["person"], model.get_text_pe(["person"]))
-            model.predict(np.zeros((720, 1280, 3), np.uint8), device=self.device, imgsz=DETECT_IMGSZ, verbose=False)
+            with readiness.operation(("objects",), "warm-up"):
+                model = self._model()
+                model.set_classes(["person"], model.get_text_pe(["person"]))
+                model.predict(np.zeros((720, 1280, 3), np.uint8), device=self.device, imgsz=DETECT_IMGSZ, verbose=False)
 
-    def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+    def _run(self, video: str, queries: list[str], store: TrackStore, verified: set[str]) -> list[Track]:
         model = self._model()
         model.predictor = None  # new predictor, so tracker state from the last video can't leak in
         model.set_classes(queries, model.get_text_pe(queries))
         if is_image(video):
-            return self._run_image(model, video, queries, store)
+            return self._run_image(model, video, queries, store, verified)
         by_key: dict[tuple[int, int], list[Keyframe]] = {}
         hists: dict[tuple[int, int], list] = {}  # colors at each track's first and last few boxes, for stitching
         untracked: list[tuple[int, Keyframe]] = []
         results = model.track(source=str(video), stream=True, persist=True, device=self.device,
                               imgsz=DETECT_IMGSZ, conf=MIN_CONF, verbose=False, tracker="botsort.yaml")
         for f, r in enumerate(results):
+            verified.add("objects")
             if r.boxes is None or len(r.boxes) == 0:
                 continue
             ids = r.boxes.id.tolist() if r.boxes.id is not None else [None] * len(r.boxes)
@@ -125,11 +130,12 @@ class YoloeDetector:
             found.append(t)
         return found
 
-    def _run_image(self, model, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+    def _run_image(self, model, video: str, queries: list[str], store: TrackStore, verified: set[str]) -> list[Track]:
         """A photo: one detection pass, each box its own one-keyframe track. Nothing to track or stitch. The decoded
         pixels, not the path, so YOLOE sees the photo rotated as the boxes are drawn (read_image applies EXIF)."""
         found = []
         for r in model.predict(source=read_image(video), device=self.device, imgsz=DETECT_IMGSZ, conf=MIN_CONF, verbose=False):
+            verified.add("objects")
             if r.boxes is None:
                 continue
             for box, conf, cls in zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist(), r.boxes.cls.tolist()):
@@ -148,13 +154,18 @@ def _mean(hs: list):
 
 def get_detector() -> Detector:
     if os.environ.get("CENSOR_STUB") == "1":
+        readiness.select_stub("Stub mode was selected.", explicit=True)
         return StubDetector()
     try:
         from censor.vision.specialist import routed_or
         return routed_or(YoloeDetector())  # faces and plates -> EgoBlur when its models are present
-    except ImportError:
+    except ImportError as exc:
         print("[detect] ultralytics not installed; using StubDetector", file=sys.stderr)
+        readiness.select_stub(f"A detector dependency could not be imported ({type(exc).__name__}: {exc}); using the stub fallback.")
         return StubDetector()
+    except Exception as exc:
+        readiness.failed(("objects", "face", "plate"), "initialization", exc)
+        raise
 
 
 if __name__ == "__main__":
