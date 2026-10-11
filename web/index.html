@@ -678,6 +678,11 @@ function selIds() {
 }
 const maskedSel = () => [...selIds()].filter(i => S.timeline.targets[i]);
 function hoverRow(r) { S.hover = r ? new Set(r.group ? r.all : [r.id]) : null; drawAll(); }
+// The box under the pointer on a monitor, lit like a hovered row; redraws only when it changes
+function hoverBox(id) {
+  if ((S.hover ? [...S.hover].join() : '') === (id || '')) return;
+  S.hover = id ? new Set([id]) : null; drawAll();
+}
 function toggleOpen(key) { S.open.has(key) ? S.open.delete(key) : S.open.add(key); renderAgent(); renderTimeline(); }
 // Low-confidence spots: runs of uncertain keyframes, each masked anyway with extra padding
 const spots = () => targetList().flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
@@ -1828,8 +1833,9 @@ function drawMarks(g, s, cw, ch, which) {
     g.setLineDash([]);
   }
   for (const id of hov) {
-    if (sel.has(id) && which === 'prog') continue;
     const r = boxOf(id); if (!r) continue;
+    g.fillStyle = 'rgba(255,255,255,.14)'; g.fillRect(r[0] * s, r[1] * s, (r[2] - r[0]) * s, (r[3] - r[1]) * s);
+    if (sel.has(id) && which === 'prog') continue;  // keeps its red outline
     g.lineWidth = 2; g.strokeStyle = '#FFFFFF'; g.strokeRect(r[0] * s - 1, r[1] * s - 1, (r[2] - r[0]) * s + 2, (r[3] - r[1]) * s + 2);
   }
   const rb = refBox(f);
@@ -2020,7 +2026,7 @@ function editableMonitor(cv, which) {
     if (drag && drag.cv === cv && drag.draw) {
       const p = srcPoint(ev, cv), [ax, ay] = drag.a;
       P.newBox = [Math.min(ax, p.x), Math.min(ay, p.y), Math.max(ax, p.x), Math.max(ay, p.y)];
-      drawSource(); return;
+      hoverBox(null); drawSource(); return;
     }
     if (drag && drag.cv === cv && drag.grab) {
       const p = srcPoint(ev, cv), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
@@ -2031,10 +2037,11 @@ function editableMonitor(cv, which) {
       P.dragBox = [Math.max(0, bx[0]), Math.max(0, bx[1]), Math.min(S.info.width, bx[2]), Math.min(S.info.height, bx[3])];
       drawAll(); return;
     }
-    if (S.drawMode) { cv.style.cursor = which === 'src' ? '' : 'not-allowed'; cv.title = which !== 'src' ? 'Draw on Source' : S.drawMode === 'ref' ? 'Drag around who "this" means' : 'Drag around what to hide'; return; }
+    if (S.drawMode) { hoverBox(null); cv.style.cursor = which === 'src' ? '' : 'not-allowed'; cv.title = which !== 'src' ? 'Draw on Source' : S.drawMode === 'ref' ? 'Drag around who "this" means' : 'Drag around what to hide'; return; }
     const b = btnAt(ev, cv, which);
-    if (b) { cv.style.cursor = 'pointer'; cv.title = b.masked ? `Remove ${tid(b.id)}'s mask` : `Blur ${tid(b.id)}: add it to the masks`; return; }
+    if (b) { hoverBox(b.id); cv.style.cursor = 'pointer'; cv.title = b.masked ? `Remove ${tid(b.id)}'s mask` : `Blur ${tid(b.id)}: add it to the masks`; return; }
     const g = !S.busy && grabAt(ev, cv), id = g ? g.id : boxAtPoint(ev, cv);
+    hoverBox(id);
     cv.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
     cv.title = g ? `${tid(g.id)}: click to select; drag to move this mask${g.id === S.selected ? ', or a corner to resize it,' : ''} from this frame on`
       : id ? `${tid(id)}: click to select${S.timeline.targets[id] ? '' : ', then + Blur to mask it'}` : '';
@@ -2059,6 +2066,7 @@ function editableMonitor(cv, which) {
     if (isPhoto()) return;
     const v = $('player'); v.paused ? v.play() : v.pause();  // like clicking the video itself
   };
+  cv.onpointerleave = () => { if (!drag) hoverBox(null); };
   cv.onpointercancel = () => { drag = null; P.newBox = null; P.dragBox = null; drawAll(); };
 }
 editableMonitor($('srcCv'), 'src');
