@@ -1,126 +1,1276 @@
 <!doctype html>
-<!-- Minimal test UI for M1 (role D replaces this with the React app in web/). Talks to censor/server/app.py. -->
+<!-- Censor editor, layout 4a "conversation-first" (design_handoff_conversation_editor/README.md). Plain HTML and JS,
+     no build step: censor/server/app.py serves this file as is. Talks only to the /api routes in that file. -->
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Censor Agent</title>
+<title>Censor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#111; --fg:#eee; --muted:#999; --line:#333; --accent:#e5484d; }
-  body { margin:0; font:14px system-ui, sans-serif; background:var(--bg); color:var(--fg); }
-  main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:12px; grid-template-columns:1fr 340px; }
-  @media (max-width:800px){ main { grid-template-columns:1fr; } }
-  .panel { border:1px solid var(--line); border-radius:8px; padding:12px; }
-  video, #stage { width:100%; border-radius:6px; background:#000; display:block; }
-  #wrap { position:relative; } #draw { position:absolute; inset:0; width:100%; height:100%; cursor:crosshair; }
-  input[type=text] { width:100%; box-sizing:border-box; padding:8px; background:#1b1b1b; color:var(--fg); border:1px solid var(--line); border-radius:6px; }
-  button { padding:7px 12px; background:#222; color:var(--fg); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
-  button.primary { background:var(--accent); border-color:var(--accent); }
-  #log { max-height:360px; overflow:auto; font:12px ui-monospace, monospace; white-space:pre-wrap; color:var(--muted); }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
-  h1 { font-size:16px; margin:0 0 8px; }
+  :root {
+    --bg:#12141a; --well:#0b0d12; --panel:#171a21; --field:#20242d; --bubble:#2a2f3a;
+    --ink:#eef1f6; --ink-2:#d9dee8; --muted:#9aa2b1; --faint:#737b8a;
+    --line:rgba(238,241,246,.22); --line-2:rgba(238,241,246,.11); --line-3:rgba(238,241,246,.07);
+    --accent:#4d6bff; --accent-down:#3d56d6; --on-accent:#fff; --accent-text:#9fb0ff; --accent-edge:#b5c2ff;
+    --accent-tint:rgba(77,107,255,.10); --seg:#4a505d; --seg-edge:#a9b0bd; --frame-line:#eef1f6;
+    --frame-label:#9aa2b1; --blur-fill:rgba(18,20,26,.35); --scrim:rgba(11,13,18,.86);
+    --stripe-a:#252933; --stripe-b:#1d2029; --danger:#ff8f8f;
+    --mono:ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; border-radius:0; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:400 15px Archivo, system-ui, sans-serif; overflow:hidden; }
+  button, input, textarea, select { font:inherit; color:inherit; }
+  button { cursor:pointer; background:none; border:1px solid var(--line); padding:7px 12px; font-size:13px; }
+  button:hover:not(:disabled) { background:var(--accent-tint); }
+  button:disabled, .disabled { opacity:.45; cursor:default; }
+  button:focus-visible, textarea:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:800; }
+  button.primary:hover:not(:disabled) { background:#5e7aff; }
+  button.primary:active:not(:disabled) { background:var(--accent-down); }
+  a { color:var(--accent-text); } a:hover { color:var(--accent); }
+  .mono { font-family:var(--mono); }
+  .label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  [hidden] { display:none !important; }
+
+  /* ---- shell ---- */
+  #app { height:100%; display:grid; grid-template-rows:52px minmax(0,1fr); }
+  header { display:flex; align-items:center; gap:20px; padding:0 20px; border-bottom:2px solid var(--line); min-width:0; }
+  .wordmark { font-weight:800; font-size:17px; }
+  .vrule { width:2px; height:20px; background:var(--line); flex:none; }
+  #fileName { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  #fileMeta { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .head-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+  #exportBtn { height:36px; padding:0 14px; min-width:120px; text-align:left; font-size:14px; }
+  #dl { font-size:13px; white-space:nowrap; }
+  .rail-toggle { display:none; }
+  #body { display:grid; grid-template-columns:240px minmax(0,1fr) 260px; min-height:0; position:relative; }
+  aside { background:var(--panel); padding:20px 16px; overflow:auto; min-height:0; }
+  #targetsRail { border-right:2px solid var(--line); display:flex; flex-direction:column; gap:4px; }
+  #versionsRail { border-left:2px solid var(--line); }
+  @media (max-width:1199px) {
+    #body { grid-template-columns:240px minmax(0,1fr); }
+    #versionsRail { position:absolute; right:0; top:0; bottom:0; width:260px; z-index:20; display:none; }
+    #versionsRail.open { display:block; }
+    #versionsToggle { display:inline-block; }
+  }
+  @media (max-width:860px) {
+    #body { grid-template-columns:minmax(0,1fr); }
+    #targetsRail { position:absolute; left:0; top:0; bottom:0; width:240px; z-index:20; display:none; }
+    #targetsRail.open { display:flex; }
+    #targetsToggle { display:inline-block; }
+    header { gap:12px; padding:0 16px; } #fileMeta { display:none; }
+  }
+
+  /* ---- targets rail ---- */
+  .target { display:flex; align-items:center; gap:10px; padding:8px; cursor:pointer; border:0; width:100%; text-align:left; font-size:13px; }
+  .target:hover { background:var(--accent-tint); }
+  .chip { font:600 11px var(--mono); padding:2px 5px; background:var(--seg); color:#fff; flex:none; }
+  .target.sel { background:var(--accent-tint); } .target.sel .chip { background:var(--accent); }
+  .target .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .target .fx { font-size:11px; color:var(--faint); }
+  .rail-empty { font-size:13px; color:var(--faint); line-height:1.5; padding:0 8px; }
+
+  /* ---- versions rail ---- */
+  .version { display:grid; grid-template-columns:32px 1fr; gap:4px 10px; padding:12px 0; border-top:1px solid var(--line-2); cursor:pointer; }
+  .version .vid { font:600 11px var(--mono); color:var(--muted); }
+  .version.cur .vid { color:var(--accent-text); } .version.undone .vid { color:var(--faint); }
+  .version.undone .vtext { text-decoration:line-through; color:var(--faint); }
+  .vtext { font-size:13px; line-height:1.4; color:var(--ink-2); overflow-wrap:anywhere; }
+  .vmeta { font-size:11px; color:var(--faint); }
+
+  /* ---- conversation ---- */
+  #center { position:relative; min-height:0; display:flex; flex-direction:column; align-items:center; }
+  #thread { width:100%; flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; }
+  #threadInner { width:100%; max-width:820px; padding:28px 24px 8px; display:flex; flex-direction:column; gap:18px; }
+  @media (max-width:860px) { #threadInner { padding:20px 16px 8px; } }
+  .user { align-self:flex-end; max-width:70%; padding:10px 12px; background:var(--bubble); overflow-wrap:anywhere; }
+  .agent { display:flex; flex-direction:column; gap:12px; }
+  .agent .text { line-height:1.5; color:var(--ink-2); }
+  .agent.error .text { color:var(--danger); }
+  .agent.note .text { color:var(--muted); font-size:13px; }
+  .steps { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--muted); line-height:1.45; }
+  .steps li { padding-left:16px; position:relative; }
+  .steps li::before { content:""; position:absolute; left:2px; top:.6em; width:6px; height:2px; background:var(--seg-edge); }
+  .steps li.err { color:var(--danger); }
+  .steps b { color:var(--ink-2); font-weight:600; }
+  .tally { font:11px var(--mono); padding:1px 5px; border:1px solid var(--line); margin-left:4px; white-space:nowrap; }
+  .tally.yes { color:#9fe0b0; } .tally.no { color:var(--muted); } .tally.unsure { color:#ffd27a; }
+  details.raw summary { cursor:pointer; font-size:12px; color:var(--faint); }
+  details.raw pre { font:12px/1.5 var(--mono); color:var(--ink-2); background:var(--well); border:1px solid var(--line-2); padding:10px; margin:6px 0 0; overflow:auto; max-height:260px; white-space:pre-wrap; }
+  .pending { font:12px/1.6 var(--mono); color:var(--ink-2); }
+  .pending .sub { color:var(--faint); }
+  .dots::after { content:""; animation:dots 1.2s steps(4) infinite; }
+  @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} }
+
+  /* result card */
+  .card { border:2px solid var(--line); background:var(--well); }
+  .frame { position:relative; aspect-ratio:16/9; overflow:hidden; background:repeating-linear-gradient(135deg,var(--stripe-a) 0 10px,var(--stripe-b) 10px 20px); }
+  .frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
+  .frame canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .frame.drawing canvas { cursor:crosshair; }
+  .frame .tc { position:absolute; left:12px; top:10px; font:11px var(--mono); color:var(--frame-label); background:var(--scrim); padding:2px 6px; }
+  .frame .drawhint { position:absolute; right:12px; top:10px; font:11px var(--mono); background:var(--accent); color:#fff; padding:2px 6px; }
+  .frame.loading img { opacity:.6; }
+  .card.stale .frame::after { content:"older version"; position:absolute; right:12px; bottom:10px; font:11px var(--mono); color:var(--faint); background:var(--scrim); padding:2px 6px; }
+  .strip { position:relative; padding:10px 12px; display:flex; flex-direction:column; gap:3px; background:var(--panel); cursor:pointer; }
+  .card.stale .strip { cursor:default; }
+  .bar { position:relative; height:5px; background:var(--line-3); }
+  .bar .seg { position:absolute; top:0; bottom:0; background:var(--seg-edge); }
+  .bar.sel .seg { background:var(--accent-edge); }
+  .bar .unc { position:absolute; top:-2px; bottom:-2px; background:var(--accent); }
+  .strip .head { position:absolute; top:6px; bottom:6px; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
+  .card .legend { padding:0 12px 8px; background:var(--panel); font-size:11px; color:var(--faint); }
+  .card .legend:empty { display:none; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* empty state */
+  .welcome { display:flex; flex-direction:column; gap:16px; padding-top:6vh; }
+  .welcome h1 { font-size:28px; font-weight:800; margin:0; letter-spacing:-.01em; }
+  .welcome p { margin:0; color:var(--muted); line-height:1.5; max-width:60ch; }
+  .samples { display:flex; gap:8px; flex-wrap:wrap; }
+  .samples button { font-size:14px; padding:10px 14px; text-align:left; }
+  .samples .mb { color:var(--faint); font-size:12px; margin-left:6px; }
+  .uploads { display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:13px; color:var(--muted); }
+  .filebtn { position:relative; overflow:hidden; display:inline-block; border:1px solid var(--line); padding:7px 12px; cursor:pointer; color:var(--ink); }
+  .filebtn:hover { background:var(--accent-tint); }
+  .filebtn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+  /* composer */
+  #composerWrap { width:100%; max-width:820px; padding:16px 24px 24px; position:relative; }
+  @media (max-width:860px) { #composerWrap { padding:12px 16px 16px; } }
+  #composer { display:flex; align-items:center; gap:12px; padding:14px 16px; border:2px solid var(--line); background:var(--field); }
+  #composer:focus-within { border-color:var(--accent); }
+  #text { flex:1; min-width:0; resize:none; border:0; outline:0; background:transparent; font-size:15px; line-height:1.4; height:21px; max-height:120px; padding:0; }
+  #text::placeholder { color:var(--faint); }
+  .cbtn { font-size:12px; padding:4px 8px; color:var(--muted); flex:none; }
+  .cbtn.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #status { font-size:12px; color:var(--faint); margin-top:8px; min-height:16px; }
+  #status.err { color:var(--danger); }
+  #hints { position:absolute; left:24px; right:24px; bottom:100%; background:var(--panel); border:2px solid var(--line); padding:16px; display:flex; flex-direction:column; gap:10px; z-index:10; }
+  #hints .ex { display:flex; flex-wrap:wrap; gap:8px; }
+  #hints .ex button { font-size:13px; text-align:left; }
+  #hints .ex button small { color:var(--faint); margin-left:6px; }
+  #hints p { margin:0; font-size:12px; color:var(--faint); line-height:1.5; }
+
+  /* preview stage: the video with stackable layers (boxes, masks) drawn on a canvas over it, and the timeline */
+  #stage { width:100%; background:var(--panel); border-bottom:2px solid var(--line); display:flex; flex-direction:column; flex:none; max-height:72%; }
+  .stage-head { display:flex; align-items:center; gap:10px; padding:10px 20px; border-bottom:1px solid var(--line-2); flex-wrap:wrap; }
+  .seg-ctl { display:flex; } .seg-ctl button { font-size:12px; padding:4px 10px; }
+  .seg-ctl button + button { border-left:0; }
+  .seg-ctl button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .kinds { display:flex; gap:6px; flex-wrap:wrap; }
+  .kinds button { font-size:11px; padding:3px 8px; display:flex; align-items:center; gap:6px; }
+  .kinds button i { width:8px; height:8px; display:inline-block; }
+  .kinds button:not(.on) { opacity:.45; }
+  .stage-body { overflow:auto; padding:12px 20px 14px; display:flex; flex-direction:column; gap:10px; }
+  #playerWrap { position:relative; background:#000; width:100%; height:min(32vh, 460px); }
+  #player { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+  #layers { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .layer-note { font-size:11px; color:var(--faint); }
+  #hit { position:absolute; inset:0; }  /* clicks pick a box, or play/pause like the video itself */
+  .pctl { display:flex; align-items:center; gap:8px; font:12px var(--mono); color:var(--muted); }
+  .pctl button { font:12px var(--mono); padding:3px 8px; min-width:34px; }
+  .pctl input[type=range] { flex:1; min-width:80px; accent-color:var(--accent); }
+  #hit.over { cursor:pointer; }
+  .edit { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; }
+  .edit .what { color:var(--ink-2); } .edit .what small { color:var(--faint); font-size:11px; margin-left:4px; }
+  .edit button { font-size:12px; padding:4px 10px; }
+  .edit .danger { color:var(--danger); border-color:rgba(255,143,143,.45); }
+  .edit .hint { color:var(--faint); font-size:11px; }
+  #targets .edit { padding:4px 8px 10px; background:var(--accent-tint); }
+  #selBar:empty { display:none; }
+  #tlWrap { max-height:120px; overflow:auto; }
+  .tl { display:grid; grid-template-columns:200px minmax(0,1fr); gap:0 12px; font-size:13px; }
+  @media (max-width:860px) { .tl { grid-template-columns:120px minmax(0,1fr); } }
+  .tl .axis { position:relative; height:18px; font:10px var(--mono); color:var(--faint); }
+  .tl .axis span { position:absolute; transform:translateX(-50%); top:2px; }
+  .tl .rowlabel { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; min-width:0; }
+  .tl .rowlabel .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tl .rowlabel .fx { color:var(--faint); font-size:11px; margin-left:auto; }
+  .tl .lane { position:relative; height:30px; border-top:1px solid var(--line-2); cursor:pointer; }
+  .tl .lane .seg { position:absolute; top:9px; height:12px; background:var(--seg-edge); }
+  .tl .lane.sel .seg { background:var(--accent-edge); }
+  .tl .lane .unc { position:absolute; top:7px; height:16px; background:var(--accent); }
+  .tl .lanes { position:relative; }
+  .tl .ph { position:absolute; top:0; bottom:0; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
+  .tl .lane:hover { background:var(--line-3); }
 </style>
 </head>
 <body>
-<main>
-  <section class="panel">
-    <h1>Censor Agent</h1>
-    <div class="row"><select id="sample"><option value="">Load a sample clip…</option></select>
-      <input type="file" id="file" accept="video/*"><input type="file" id="sidecar" accept=".json" title="stub mode: ground-truth tracks"></div>
-    <video id="player" controls></video>
-    <div class="row"><span id="time">frame 0</span><button id="prev">Preview masked frame</button><small>Drag on the preview to draw a box.</small></div>
-    <div id="wrap"><img id="stage" alt=""><canvas id="draw"></canvas></div>
-  </section>
-  <aside class="panel">
-    <form id="ask"><input type="text" id="text" placeholder='e.g. "blur all plates and the person in the red shirt"'></form>
-    <div class="row"><button id="undo">Undo</button><button id="export" class="primary">Export</button><a id="dl" hidden>Download</a></div>
-    <div id="status" style="margin:6px 0;font-weight:600"></div>
-    <div id="summary"></div>
-    <div id="log"></div>
-  </aside>
-</main>
+<div id="app">
+  <header>
+    <button class="rail-toggle cbtn" id="targetsToggle" aria-controls="targetsRail">Targets</button>
+    <div class="wordmark">CENSOR</div><div class="vrule"></div>
+    <div id="fileName">No video</div><div id="fileMeta"></div>
+    <div class="head-right">
+      <button class="cbtn" id="timelineBtn" disabled>Preview</button>
+      <button class="rail-toggle cbtn" id="versionsToggle" aria-controls="versionsRail">Versions</button>
+      <a id="dl" hidden download="export.mp4">Download</a>
+      <button class="primary" id="exportBtn" disabled>Export</button>
+    </div>
+  </header>
+  <div id="body">
+    <aside id="targetsRail"><div class="label" style="margin-bottom:8px">Targets</div><div id="targets"></div></aside>
+    <section id="center">
+      <div id="stage" hidden>
+        <div class="stage-head">
+          <div class="label">Preview</div>
+          <div class="seg-ctl" id="layerCtl" title="Layers drawn over the video; they stack">
+            <button data-layer="boxes" class="on" title="Every detected object, masked or not, with the vision model's answer when it was asked">Boxes</button>
+            <button data-layer="masks" class="on" title="Where the export will blur, from the renderer's own rectangles">Masks</button>
+          </div>
+          <div class="kinds" id="kinds"></div>
+          <div class="seg-ctl" id="srcCtl" style="margin-left:auto">
+            <button data-src="source" class="on" title="The original video with the layers drawn live">Live layers</button>
+            <button data-src="export" disabled title="The rendered export: the exact pixels that will be shared">Exact export</button>
+          </div>
+          <span id="stageTime" class="mono" style="font-size:12px;color:var(--muted)"></span>
+          <button class="cbtn" id="stageClose">Hide</button>
+        </div>
+        <div class="stage-body">
+          <div id="playerWrap"><video id="player" preload="auto" playsinline></video><canvas id="layers"></canvas><div id="hit" title=""></div></div>
+          <div class="pctl">
+            <button id="playBtn" title="Play / pause (Space)">▶</button>
+            <button id="stepBack" title="Previous frame (←)">‹</button><button id="stepFwd" title="Next frame (→)">›</button>
+            <input type="range" id="scrub" min="0" max="1" step="0.001" value="0" aria-label="Seek">
+            <span id="pctlTime">0:00 / 0:00</span>
+          </div>
+          <div id="selBar"></div>
+          <div class="layer-note" id="layerNote"></div>
+          <div id="tlWrap"><div class="tl" id="tl"></div></div>
+        </div>
+      </div>
+      <div id="thread"><div id="threadInner"></div></div>
+      <div id="composerWrap">
+        <div id="hints" hidden>
+          <div class="label">What can I ask?</div>
+          <div class="ex" id="examples"></div>
+          <p>Plain requests are understood instantly. Exceptions ("everyone except…") and unusual wording go to the
+            on-device language model. Questions about people ("the woman") are answered by the vision model; if it
+            can't tell, the person stays blurred. Drag on a frame with <b>Draw box</b> to track anything by hand.</p>
+        </div>
+        <form id="composer" autocomplete="off">
+          <textarea id="text" rows="1" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea>
+          <button type="button" class="cbtn" id="hintBtn" title="Example requests" aria-expanded="false">?</button>
+          <button type="button" class="cbtn" id="drawBtn" disabled title="Drag a box on the latest frame to track it">Draw box</button>
+        </form>
+        <div id="status" role="status"></div>
+      </div>
+    </section>
+    <aside id="versionsRail"><div class="label" style="margin-bottom:12px">Versions</div><div id="versions"></div></aside>
+  </div>
+</div>
 <script>
-let vid = null, info = null;
+// ---------- state ----------
+const S = {
+  vid: null, info: null, name: '', timeline: null, ops: [],
+  ids: {},          // track_id -> "T1"... (stable for this video)
+  desc: {},         // track_id -> what the VLM said yes to ("woman")
+  vlm: {},          // track_id -> the VLM's latest answer about it: {q, a, p}
+  trackList: null, maskFrames: null,  // the preview layers' data (GET /tracks, GET /masks)
+  versions: [],     // {key, text, at, opIds, n, undone, card}
+  selected: null, busy: false, exportUrl: null, cards: [],
+};
 const $ = id => document.getElementById(id);
-const log = x => { $('log').textContent = (typeof x === 'string' ? x : JSON.stringify(x, null, 1)) + '\n\n' + $('log').textContent; };
-const frameNow = () => info ? Math.min(info.n_frames - 1, Math.round($('player').currentTime * info.fps)) : 0;
-const api = async (path, opts) => { const r = await fetch(path, opts); const j = await r.json(); if (!r.ok) throw j; return j; };
-const showSummary = s => $('summary').textContent = s ? `${s.n_targets} targets · ${JSON.stringify(s.by_label)} · ${s.n_ops} ops` : '';
-
-$('file').onchange = async e => {
-  const fd = new FormData(); fd.append('file', e.target.files[0]);
-  const j = await api('api/videos', { method: 'POST', body: fd });
-  vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j);
-};
-// ?video=<id> reopens a video uploaded earlier (or through the API), with its masks so far
-const reopen = new URLSearchParams(location.search).get('video');
-if (reopen) api(`api/videos/${reopen}`).then(j => {
-  vid = reopen; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(j.summary); refresh();
-}).catch(log);
-// Sample clips already on the server: no file picker needed (the in-app browser and demos can't always open one)
-api('api/samples').then(list => list.forEach(c => $('sample').add(new Option(`${c.id} (${c.mb} MB)`, c.id)))).catch(log);
-$('sample').onchange = async e => {
-  if (!e.target.value) return;
-  const j = await api(`api/samples/${e.target.value}`, { method: 'POST' });
-  vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(null); refresh();
-};
-$('sidecar').onchange = async e => {
-  if (!vid) return log('upload a video first');
-  const fd = new FormData(); fd.append('file', e.target.files[0]);
-  log(await api(`api/videos/${vid}/tracks-sidecar`, { method: 'POST', body: fd }));
-};
-$('player').ontimeupdate = () => $('time').textContent = `frame ${frameNow()}`;
-const refresh = () => { if (vid) $('stage').src = `api/videos/${vid}/preview/${frameNow()}.jpg?t=${Date.now()}`; };
-$('prev').onclick = refresh;
-// One thing at a time, with a visible status: an Export started while a request was still waiting on the
-// detector used to render the video with no masks at all.
-const busy = (msg) => { $('status').textContent = msg || ''; ['text', 'undo', 'export', 'sample'].forEach(id => $(id).disabled = !!msg); };
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-$('ask').onsubmit = async e => {
-  e.preventDefault(); if (!vid) return log('pick a sample clip or upload a video first');
-  busy('Working on: ' + $('text').value + ' (the first request on a new video waits for its scan)');
-  try {
-    const j = await api(`api/videos/${vid}/request`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text: $('text').value }) });
-    log(j); showSummary(j.summary); refresh();
-    busy(); $('status').textContent = j.message + ' Click Export to render it.';
-  } catch (err) {
-    log(err);
-    if (err && err.detail !== undefined) { busy(); $('status').textContent = 'Request failed, see the log below.'; return; }
-    // Not an answer from the app: AUP's proxy gives up after about 100 s (the LLM path can take longer) while
-    // the server keeps working. Wait for it to finish, so Export doesn't run before the masks exist.
-    $('status').textContent = 'The connection dropped, but the server is still working on it. Waiting…';
-    try {
-      let j; do { await sleep(3000); j = await api(`api/videos/${vid}`); } while (j.busy);
-      showSummary(j.summary); refresh();
-      busy(); $('status').textContent = `The server finished: ${j.summary.n_targets} targets now. Check the preview, then click Export.`;
-    } catch (e2) { busy(); $('status').textContent = 'Request failed, see the log below.'; log(e2); }
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== undefined && v !== null) e.setAttribute(k, v);
   }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
 };
-$('undo').onclick = async () => { const j = await api(`api/videos/${vid}/undo`, { method: 'POST' }); log(j); showSummary(j.summary); refresh(); };
-$('export').onclick = async () => {
-  if (!vid) return log('pick a sample clip or upload a video first');
-  // An export with no masks is just the original video: say so instead of producing one that looks censored
-  const cur = await api(`api/videos/${vid}`).catch(() => null);
-  if (cur && !cur.busy && cur.summary.n_targets === 0) { $('status').textContent = 'No masks yet: send a request first.'; return; }
-  busy('Rendering the blurred video… (waits for a request that is still running)');
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  let j; try { j = await r.json(); } catch { j = { detail: `${r.status} ${r.statusText}` }; }
+  if (!r.ok) throw Object.assign(j || {}, { status: r.status });
+  return j;
+};
+const post = (path, body) => api(path, body === undefined ? { method: 'POST' } :
+  { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const errText = e => (e && (typeof e.detail === 'string' ? e.detail : e.detail && JSON.stringify(e.detail))) || (e && e.message) || 'something went wrong';
+const fmt = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(0).padStart(2, '0')}`; };
+const fmtF = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
+const dur = () => S.info ? S.info.n_frames / S.info.fps : 1;
+const pct = s => `${Math.max(0, Math.min(100, s / dur() * 100))}%`;
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+
+// Per-viewer memory (request wording, target names) so a reopened video keeps its history. Optional: the page
+// works the same without it.
+const store = {
+  key: () => `censor:${S.vid}`,
+  load() { try { return JSON.parse(localStorage.getItem(this.key()) || 'null'); } catch { return null; } },
+  save() {
+    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc, vlm: S.vlm,
+      versions: S.versions.map(({ card, ...v }) => v) })); } catch {}
+  },
+};
+
+// ---------- names, segments ----------
+const LABELS = { 'license plate': 'Plate', 'face': 'Face', 'person': 'Person', 'user box': 'Drawn box' };
+const MAX_BARS = 8;  // coverage bars per result card before they're grouped by kind
+// Merge [start, end] spans that overlap or touch (within a frame)
+function union(spans) {
+  const out = [];
+  for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + 1 / S.info.fps) last[1] = Math.max(last[1], b); else out.push([a, b]);
+  }
+  return out;
+}
+const plural = { 'license plate': 'license plates', 'face': 'faces', 'person': 'people', 'user box': 'drawn boxes' };
+const tid = id => S.ids[id] || (S.ids[id] = `T${Object.keys(S.ids).length + 1}`);
+const tname = (id, label) => {
+  const base = LABELS[label] || (label ? label[0].toUpperCase() + label.slice(1) : id);
+  return S.desc[id] ? `${base} · ${S.desc[id]}` : base;
+};
+// Contiguous runs of keyframes (a gap of over half a second starts a new run), in seconds
+function runs(kfs, pick = () => true) {
+  const fps = S.info.fps, gap = Math.max(2, Math.round(fps / 2)), out = [];
+  let a = null, b = null;
+  for (const k of [...kfs].sort((x, y) => x.f - y.f)) {
+    if (!pick(k)) continue;
+    if (a !== null && k.f - b <= gap) { b = k.f; continue; }
+    if (a !== null) out.push([a / fps, (b + 1) / fps]);
+    a = b = k.f;
+  }
+  if (a !== null) out.push([a / fps, (b + 1) / fps]);
+  return out;
+}
+function targetList(tl = S.timeline) {
+  if (!tl) return [];
+  return Object.entries(tl.targets).map(([id, t]) => ({
+    id, chip: tid(id), label: t.label, name: tname(id, t.label), effect: t.effect, padding: t.padding, keyframes: t.keyframes,
+    segs: runs(t.keyframes), unc: runs(t.keyframes, k => k.state === 'uncertain'),
+  })).sort((a, b) => +a.chip.slice(1) - +b.chip.slice(1));
+}
+// The masked area of a target at frame f: the nearest keyframe within a few frames, padded the way
+// censor/render/render.py pads it (uncertain boxes get double padding, at least 3 px a side)
+function boxAt(t, f) {
+  let best = null, d = 1e9;
+  for (const k of t.keyframes) { const dd = Math.abs(k.f - f); if (dd < d) { d = dd; best = k; } }
+  if (!best || d > 3) return null;
+  const [x1, y1, x2, y2] = best.box, pad = (t.padding || 0) * (best.state === 'uncertain' ? 2 : 1);
+  const px = Math.max((x2 - x1) * pad, 3), py = Math.max((y2 - y1) * pad, 3);
+  return [Math.max(0, x1 - px), Math.max(0, y1 - py), Math.min(S.info.width, x2 + px), Math.min(S.info.height, y2 + py)];
+}
+
+// ---------- loading a video ----------
+async function refreshState() {
+  const [v, tl, tracks, masks] = await Promise.all([api(`api/videos/${S.vid}`), api(`api/videos/${S.vid}/timeline`),
+    api(`api/videos/${S.vid}/tracks`), api(`api/videos/${S.vid}/masks`)]);
+  S.info = v.info; S.ops = v.ops; S.timeline = tl; S.queries = tracks.queries || [];
+  indexLayers(tracks, masks);
+  // An edit since the last export makes it out of date: back to the live layers until the next Export
+  const stale = S.exportUrl && S.exportSig !== S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
+  const exBtn = $('srcCtl').querySelector('[data-src=export]');
+  exBtn.disabled = !S.exportUrl || stale;
+  exBtn.title = stale ? 'Changed since the last export: Export again to see the exact pixels' : 'The rendered export: the exact pixels that will be shared';
+  if (stale && P.src === 'export') setSrc('source');
+  const present = new Set(S.ops.map(o => o.op_id));
+  // A version whose ops left the log was undone. Sticky: op ids are reused after an undo.
+  for (const ver of S.versions) if (ver.opIds.length && !ver.undone && ver.opIds.some(o => !present.has(o))) ver.undone = true;
+  targetList(); store.save();
+  renderTargets(); renderVersions(); renderTimeline(); renderKinds(); renderSelBar();
+  S.cards.forEach(c => c.update());
+  return v;
+}
+// The upload scan finishes in the background: refresh the boxes layer when its tracks land
+async function watchScan(vid, queries) {
+  for (let i = 0; i < 60 && queries.length; i++) {
+    await sleep(4000);
+    if (S.vid !== vid) return;
+    if (S.busy) continue;
+    try {
+      const tracks = await api(`api/videos/${vid}/tracks`);
+      if ((tracks.queries || []).length !== (S.queries || []).length) {
+        S.queries = tracks.queries || [];
+        indexLayers(tracks, { targets: {} }); await refreshState();
+      }
+      if (queries.every(q => S.queries.includes(q))) return;
+    } catch { return; }
+  }
+}
+async function openVideo(j, name) {
+  S.vid = j.video_id; S.info = j.info; S.name = name; S.ids = {}; S.desc = {}; S.vlm = {}; S.versions = []; S.cards = [];
+  S.selected = null; S.exportUrl = null;
+  const saved = store.load();
+  if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {}, versions: saved.versions || [] });
+  if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
+  history.replaceState(null, '', `?video=${S.vid}`);
+  $('threadInner').replaceChildren();
+  $('fileName').textContent = S.name; $('dl').hidden = true; setSrc('source');
+  $('player').src = `api/videos/${S.vid}/source`;
+  ['timelineBtn', 'exportBtn', 'drawBtn', 'text'].forEach(id => $(id).disabled = false);
+  $('text').placeholder = 'Ask for a change…';
+  const v = await refreshState();
+  openStage(0);
+  watchScan(S.vid, j.prescan || []);
+  if (saved && S.versions.length > 1) {
+    note(`Reopened ${S.name}: ${v.summary.n_targets} target(s) masked so far. Earlier messages aren't kept, but the versions are on the right.`);
+    if (v.summary.n_targets) addCard(note(''), null);
+  } else {
+    note(`Loaded ${S.name} (${fmt(dur())}, ${S.info.width}×${S.info.height}, ${S.info.fps} fps). ` +
+      (j.prescan && j.prescan.length ? `Scanning for ${j.prescan.join(', ')} in the background, so the first request is quick.` :
+        'Ask for what to hide, or press ? for examples.'));
+  }
+  $('text').focus();
+}
+async function loadSample(id) {
+  status(`Loading ${id}…`);
+  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); status(''); }
+  catch (e) { status(`Couldn't load ${id}: ${errText(e)}`, true); }
+}
+async function uploadFile(file) {
+  status(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+  const fd = new FormData(); fd.append('file', file);
+  try { await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); status(''); }
+  catch (e) { status(`Upload failed: ${errText(e)}`, true); }
+}
+async function uploadSidecar(file) {
+  if (!S.vid) return status('Load the video first, then its .tracks.json.', true);
+  const fd = new FormData(); fd.append('file', file);
+  try { await api(`api/videos/${S.vid}/tracks-sidecar`, { method: 'POST', body: fd }); note(`Attached ground-truth tracks from ${file.name} (stub mode).`); }
+  catch (e) { status(`Sidecar upload failed: ${errText(e)}`, true); }
+}
+
+// ---------- thread ----------
+const thread = () => $('threadInner');
+const scrollDown = () => { const t = $('thread'); requestAnimationFrame(() => t.scrollTop = t.scrollHeight); };
+function userMsg(text) { const e = el('div', { class: 'user' }, text); thread().append(e); scrollDown(); return e; }
+function note(text) { const e = el('div', { class: 'agent note' }, text ? el('div', { class: 'text' }, text) : null); thread().append(e); scrollDown(); return e; }
+function status(msg, err = false) { $('status').textContent = msg || ''; $('status').classList.toggle('err', !!err); }
+
+function welcome() {
+  const list = el('div', { class: 'samples' }, el('span', { class: 'rail-empty', style: 'padding:0' }, 'Looking for sample clips…'));
+  const w = el('div', { class: 'welcome' },
+    el('div', { class: 'label' }, 'Start'),
+    el('h1', {}, 'Hide people, faces and plates by asking.'),
+    el('p', {}, 'Pick a clip, then type what to hide: "blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". ' +
+      'Everything runs on this machine; nothing leaves it.'),
+    list,
+    el('div', { class: 'uploads' },
+      el('label', { class: 'filebtn' }, 'Upload a video…', el('input', { type: 'file', accept: 'video/*', onchange: e => e.target.files[0] && uploadFile(e.target.files[0]) })),
+      el('label', { class: 'filebtn', title: 'Stub mode only: ground-truth tracks from scripts/make_test_clip.py' },
+        'Attach .tracks.json', el('input', { type: 'file', accept: '.json', onchange: e => e.target.files[0] && uploadSidecar(e.target.files[0]) })),
+      el('span', {}, 'Tip: in stub mode pick synthetic: its ground truth comes along.')));
+  thread().replaceChildren(w);
+  api('api/samples').then(cl => {
+    list.replaceChildren(...(cl.length ? cl.map(c => el('button', { onclick: () => loadSample(c.id) }, c.id, el('span', { class: 'mb' }, `${c.mb} MB`)))
+      : [el('span', { class: 'rail-empty', style: 'padding:0' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
+  }).catch(e => list.replaceChildren(el('span', { class: 'rail-empty', style: 'padding:0' }, `Couldn't list samples: ${errText(e)}`)));
+}
+
+// Plain words for each tool call in a request response
+function describe(calls, path) {
+  const items = [];
+  // A crowd's 113 faces read as a count, not 113 ids
+  const names = ids => { const t = ids.map(i => tid(i)); return t.length <= 6 ? t.join(', ') : `${t.slice(0, 3).join(', ')} and ${t.length - 3} more`; };
+  if (path === 'template') items.push(el('li', {}, 'Understood the request directly, no language model needed.'));
+  for (const c of calls) {
+    const a = c.args || {}, r = c.result, ms = c.ms !== undefined ? ` (${c.ms < 1000 ? c.ms + ' ms' : (c.ms / 1000).toFixed(1) + ' s'})` : '';
+    if (c.error) {
+      items.push(el('li', { class: 'err' }, c.tool === '_plan' ? `The language model couldn't plan it: ${c.error}` : `${c.tool} failed: ${c.error}`));
+      continue;
+    }
+    switch (c.tool) {
+      case '_plan': {
+        const p = c.plan || {}, ts = (p.targets || []).map(t => [t.object, t.only && t.only.length ? `only "${t.only.join('", "')}"` : '',
+          t.exclude && t.exclude.length ? `except "${t.exclude.join('", "')}"` : '', t.time ? `at ${Array.isArray(t.time) ? t.time.map(fmt).join('–') : t.time}` : '']
+          .filter(Boolean).join(' '));
+        items.push(el('li', {}, 'Planned with the on-device language model', ms, ': ', el('b', {}, `${p.action || 'mask'}${p.action === 'mask' || !p.action ? ' (' + (p.effect || 'blur') + ')' : ''}`),
+          ts.length ? ` ${ts.join('; ')}.` : '.'));
+        break;
+      }
+      case 'resolve_time': items.push(el('li', {}, `Read "${a.phrase}" as `, el('b', {}, `${fmt(r[0])}–${fmt(r[1])}`), '.')); break;
+      case 'find_objects': {
+        const n = r.length, what = plural[a.query] || a.query;
+        items.push(el('li', {}, `Looked for ${what}${a.time_range ? ` between ${fmt(a.time_range[0])} and ${fmt(a.time_range[1])}` : ''}: `,
+          el('b', {}, n ? `${n} found` : 'none found'), n ? ` (${names(r.map(o => o.track_id))})` : '', ms, '.'));
+        break;
+      }
+      case 'check_attribute': {
+        const t = { yes: 0, no: 0, unknown: 0 };
+        r.forEach(x => { t[x.answer] = (t[x.answer] || 0) + 1; });
+        const m = /^is (?:this|it) (?:a |an |the )?(.+?)\?*$/i.exec(a.question || '');
+        if (m) r.forEach(x => { if (x.answer === 'yes') S.desc[x.track_id] = m[1]; });
+        r.forEach(x => { S.vlm[x.track_id] = { q: a.question || '', a: x.answer, p: x.p_yes }; });
+        items.push(el('li', {}, `Asked "${a.question}" about ${r.length} track${r.length === 1 ? '' : 's'}`, ms, ':',
+          el('span', { class: 'tally yes' }, `${t.yes} yes`), el('span', { class: 'tally no' }, `${t.no} no`),
+          el('span', { class: 'tally unsure' }, `${t.unknown} unsure`),
+          t.unknown ? el('span', {}, ' (unsure stays masked)') : null));
+        break;
+      }
+      case 'person_for': items.push(el('li', {}, 'Matched each face to the person it belongs to.')); break;
+      case 'add_masks': {
+        const ids = [...(a.track_ids || [])];
+        items.push(el('li', {}, `${{ blur: 'Blurred', pixelate: 'Pixelated', box: 'Covered' }[a.effect || 'blur'] || a.effect} `,
+          el('b', {}, ids.length ? names(ids) : (a.labels || []).join(', ')),
+          a.time_range ? ` from ${fmt(a.time_range[0])} to ${fmt(a.time_range[1])}` : '', '.'));
+        break;
+      }
+      case 'remove_masks': items.push(el('li', {}, 'Removed the mask from ', el('b', {}, names(a.track_ids || [])), '.')); break;
+      case 'set_effect': items.push(el('li', {}, `Switched `, el('b', {}, names(a.track_ids || [])), ` to ${a.effect}.`)); break;
+      case 'add_rule': items.push(el('li', {}, `Added a rule: ${a.effect || 'blur'} every ${a.category}.`)); break;
+      case 'undo': items.push(el('li', {}, r ? `Undid ${r}.` : 'There was nothing to undo.')); break;
+      case 'track_box': items.push(el('li', {}, 'Tracked the drawn box from ', el('b', {}, `${fmt(r.start)} to ${fmt(r.end)}`), '.')); break;
+      default: items.push(el('li', {}, `${c.tool}${ms}`));
+    }
+  }
+  return el('ul', { class: 'steps' }, items);
+}
+const opIdsOf = calls => calls.filter(c => !c.error && ['add_masks', 'remove_masks', 'set_effect', 'add_rule'].includes(c.tool) && typeof c.result === 'string').map(c => c.result);
+
+// A result card: the masked frame (scrubbable), one coverage bar per target, and the actions
+function addCard(host, focusIds) {
+  const img = el('img', { alt: 'masked video frame' }), cv = el('canvas'), tc = el('div', { class: 'tc' });
+  const drawHint = el('div', { class: 'drawhint', hidden: '' }, 'drag to draw a box');
+  const frame = el('div', { class: 'frame loading' }, img, cv, tc, drawHint);
+  const strip = el('div', { class: 'strip', title: 'Click to see that moment' });
+  const legend = el('div', { class: 'legend' });
+  const reviewBtn = el('button', { class: 'primary', hidden: '' });
+  const undoBtn = el('button', { onclick: () => undoLast() }, 'Undo');
+  const card = el('div', { class: 'card' }, frame, strip, legend);
+  const actions = el('div', { class: 'actions' }, reviewBtn, el('button', { onclick: () => openStage(c.t), title: 'Play the video from this moment, with the boxes and masks drawn over it' }, 'Play here'), undoBtn);
+  host.append(card, actions);
+  const c = { t: 0, live: true, targets: [], unc: [], uncIdx: -1, frame, cv, img, undoBtn, card };
+  // Start on the first thing this request masked, else the middle of the clip
+  const first = focusIds && targetList().filter(t => focusIds.includes(t.id) && t.segs.length)[0];
+  c.t = first ? (first.segs[0][0] + first.segs[0][1]) / 2 : dur() / 2;
+  let loadTimer = null, wanted = '';
+  c.seek = (t, now = false) => {
+    c.t = Math.max(0, Math.min(dur() - 1 / S.info.fps, t));
+    const f = Math.round(c.t * S.info.fps);
+    tc.textContent = `video frame ${String(f).padStart(4, '0')} · ${fmtF(c.t)}`;
+    drawStrip(); overlay();
+    if (!c.live) return;
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      wanted = `api/videos/${S.vid}/preview/${f}.jpg?t=${Date.now()}`;
+      frame.classList.add('loading'); img.src = wanted;
+    }, now ? 0 : 120);
+  };
+  img.onload = () => { if (img.src.endsWith(wanted.split('/').pop())) frame.classList.remove('loading'); overlay(); };
+  img.onerror = () => frame.classList.remove('loading');
+  const head = el('div', { class: 'head' });
+  // One bar per target while that's readable; for a crowd (127 targets on street_plates pushed the frame off
+  // screen), one bar per kind (all faces, all plates) plus the selected target's own bar, with a legend
+  function rows() {
+    const one = t => ({ ...t, title: `${t.chip} ${t.name} (${t.effect})` });
+    if (c.targets.length <= MAX_BARS) return { rows: c.targets.map(one), grouped: false };
+    const kinds = new Map();
+    for (const t of c.targets) {
+      const k = kinds.get(t.label) || { id: `kind:${t.label}`, label: t.label, n: 0, segs: [], unc: [] };
+      k.n++; k.segs.push(...t.segs); k.unc.push(...t.unc); kinds.set(t.label, k);
+    }
+    const out = [...kinds.values()].map(k => ({ ...k, segs: union(k.segs), unc: union(k.unc),
+      title: `${k.n} ${k.n === 1 ? (LABELS[k.label] || k.label).toLowerCase() : plural[k.label] || k.label}` }));
+    const sel = c.targets.find(t => t.id === S.selected);
+    if (sel) out.push(one(sel));
+    return { rows: out, grouped: true };
+  }
+  function drawStrip() {
+    const { rows: rs, grouped } = rows();
+    legend.textContent = !c.targets.length ? '' : (grouped ? `Bars, top to bottom: ${rs.map(r => r.title).join(' · ')}. ` : '') +
+      (c.targets.some(t => t.unc.length) ? 'Bright marks: the detector was less sure there; those moments are masked anyway, with extra padding.' : '');
+    const kids = rs.map(t => {
+      const bar = el('div', { class: `bar${t.id === S.selected ? ' sel' : ''}`, title: t.title });
+      t.segs.forEach(([a, b]) => bar.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
+      t.unc.forEach(([a, b]) => bar.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
+      return bar;
+    });
+    if (!kids.length) kids.push(el('div', { style: 'font-size:12px;color:var(--faint)' }, 'Nothing masked.'));
+    head.style.left = `calc(12px + (100% - 24px) * ${c.t / dur()})`;
+    strip.replaceChildren(...kids, head);
+  }
+  // Outline of the selected target (and the box being drawn) over the image, in its letterboxed area
+  let drag = null;
+  function overlay() {
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
+    const g = cv.getContext('2d'); g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    const fit = fitRect(r);
+    const f = Math.round(c.t * S.info.fps);
+    for (const t of c.targets) {
+      if (t.id !== S.selected) continue;
+      const b = boxAt(t, f); if (!b) continue;
+      g.strokeStyle = '#4d6bff'; g.lineWidth = 2;
+      g.strokeRect(fit.x + b[0] * fit.s, fit.y + b[1] * fit.s, (b[2] - b[0]) * fit.s, (b[3] - b[1]) * fit.s);
+      g.fillStyle = '#4d6bff'; g.font = '600 11px ui-monospace, Menlo, monospace';
+      const lbl = t.chip, w = g.measureText(lbl).width + 10;
+      g.fillRect(fit.x + b[0] * fit.s - 1, fit.y + b[1] * fit.s - 17, w, 16);
+      g.fillStyle = '#fff'; g.fillText(lbl, fit.x + b[0] * fit.s + 4, fit.y + b[1] * fit.s - 5);
+    }
+    if (drag && drag.b) {
+      const [x1, y1, x2, y2] = drag.b; g.setLineDash([6, 4]); g.strokeStyle = '#fff'; g.lineWidth = 2;
+      g.strokeRect(fit.x + x1 * fit.s, fit.y + y1 * fit.s, (x2 - x1) * fit.s, (y2 - y1) * fit.s);
+    }
+  }
+  const fitRect = r => { const s = Math.min(r.width / S.info.width, r.height / S.info.height);
+    return { s, x: (r.width - S.info.width * s) / 2, y: (r.height - S.info.height * s) / 2 }; };
+  const toVideo = ev => { const r = cv.getBoundingClientRect(), fit = fitRect(r);
+    return [Math.max(0, Math.min(S.info.width, (ev.clientX - r.left - fit.x) / fit.s)), Math.max(0, Math.min(S.info.height, (ev.clientY - r.top - fit.y) / fit.s))]; };
+  cv.onpointerdown = ev => { if (!S.drawMode || !c.live || S.busy) return; cv.setPointerCapture(ev.pointerId); drag = { a: toVideo(ev), b: null }; };
+  cv.onpointermove = ev => { if (!drag) return; const p = toVideo(ev);
+    drag.b = [Math.min(drag.a[0], p[0]), Math.min(drag.a[1], p[1]), Math.max(drag.a[0], p[0]), Math.max(drag.a[1], p[1])]; overlay(); };
+  cv.onpointerup = () => { if (!drag) return; const b = drag.b; drag = null; overlay();
+    if (b && b[2] - b[0] >= 8 && b[3] - b[1] >= 8) sendBox(Math.round(c.t * S.info.fps), b.map(Math.round)); };
+  strip.onclick = ev => {
+    if (!c.live) return;
+    const r = strip.getBoundingClientRect();
+    c.seek((ev.clientX - r.left - 12) / (r.width - 24) * dur(), true);
+  };
+  reviewBtn.onclick = () => {
+    if (!c.unc.length) return;
+    c.uncIdx = (c.uncIdx + 1) % c.unc.length;
+    const u = c.unc[c.uncIdx]; S.selected = u.id; renderTargets(); S.cards.forEach(x => x.paint());
+    c.seek((u.a + u.b) / 2, true);
+    status(`Low-confidence spot ${c.uncIdx + 1} of ${c.unc.length}: ${u.chip} ${fmt(u.a)}–${fmt(u.b)}. The detector saw it but wasn't sure, ` +
+      `so it's masked with extra padding to be safe. Nothing to fix unless it isn't something you want hidden.`);
+  };
+  c.paint = () => { drawStrip(); overlay(); };
+  c.update = () => {
+    if (!c.live) return;
+    c.targets = targetList();
+    c.unc = c.targets.flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
+    reviewBtn.hidden = !c.unc.length;
+    const nt = new Set(c.unc.map(u => u.id)).size;
+    reviewBtn.textContent = `Check ${c.unc.length} low-confidence spot${c.unc.length === 1 ? '' : 's'}`;
+    reviewBtn.title = `Moments where the detector saw something but wasn't sure (${nt} target${nt === 1 ? '' : 's'}). ` +
+      `They're masked anyway, with extra padding. Click to step through them.`;
+    c.seek(c.t, true);
+  };
+  c.freeze = () => { c.live = false; card.classList.add('stale'); undoBtn.hidden = true; reviewBtn.hidden = true; drawHint.hidden = true; frame.classList.remove('drawing'); };
+  c.setDraw = on => { drawHint.hidden = !on; frame.classList.toggle('drawing', on); };
+  new ResizeObserver(overlay).observe(cv);
+  S.cards.forEach(x => x.freeze());
+  S.cards.push(c);
+  c.update();
+  c.setDraw(!!S.drawMode);
+  scrollDown();
+  return c;
+}
+
+// ---------- actions ----------
+function setBusy(msg) {
+  S.busy = !!msg;
+  ['text', 'drawBtn', 'exportBtn'].forEach(id => $(id).disabled = !!msg || !S.vid);
+  document.querySelectorAll('#threadInner .actions button').forEach(b => b.disabled = !!msg);
+  if (S.vid && S.selected) { renderSelBar(); renderTargets(); }  // the edit buttons follow the busy state too
+  status(msg || '');
+}
+function pending(host, first) {
+  const t0 = Date.now(), line = el('div', { class: 'pending' }), sub = el('div', { class: 'pending sub' });
+  host.append(line, sub);
+  const tick = () => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    line.replaceChildren(el('span', { class: 'dots' }, `working${s ? ` · ${s} s` : ''}`));
+    sub.textContent = first ? 'The first request on a new video waits for its scan (faces, plates, people).' :
+      s > 8 ? 'Still going: requests that need the language model or many person checks take longer.' : '';
+  };
+  tick(); const iv = setInterval(tick, 1000);
+  return () => { clearInterval(iv); line.remove(); sub.remove(); };
+}
+async function sendRequest(text) {
+  if (!S.vid || S.busy || !text.trim()) return;
+  if (/^\s*undo\s*$/i.test(text)) { $('text').value = ''; autosize(); return undoLast(); }
+  closeHints();
+  userMsg(text); $('text').value = ''; autosize();
+  const host = el('div', { class: 'agent' }); thread().append(host); scrollDown();
+  const first = S.versions.length === 1;
+  const done = pending(host, first);
+  setBusy('Working on it…');
   let j;
-  try { j = await api(`api/videos/${vid}/export`, { method: 'POST' }); }
-  catch (err) { busy(); $('status').textContent = (err && err.detail) || 'Export failed, see the log below.'; return log(err); }
-  busy(); $('status').textContent = `Done: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames. The player now shows the blurred video.`;
-  // j.url names this render (?v=...), so neither the player nor the download link can get an older, cached file
-  log(j); $('dl').href = j.url; $('dl').textContent = 'Download export.mp4'; $('dl').hidden = false;
-  $('player').src = j.url;  // play the blurred result, not the original
+  try {
+    j = await post(`api/videos/${S.vid}/request`, { text });
+  } catch (err) {
+    if (err && err.detail !== undefined) {
+      done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `That request failed: ${errText(err)}`));
+      setBusy(); return;
+    }
+    // No answer from the app: a proxy in front of it (AUP's gives up after ~100 s) dropped the connection while
+    // the server keeps working. Wait for it to finish, so nothing runs before the masks exist.
+    status('The connection dropped, but the server is still working on it. Waiting…');
+    try {
+      let v; do { await sleep(3000); v = await api(`api/videos/${S.vid}`); } while (v.busy);
+      done(); host.append(el('div', { class: 'text' }, `The server finished: ${v.summary.n_targets} target(s) masked now. The connection dropped before its answer came back, so the steps aren't shown.`));
+      S.versions.push({ key: `lost_${Date.now()}`, text, at: Date.now(), opIds: [], n: v.summary.n_targets, undone: false });
+      await refreshState(); addCard(host, null); setBusy(); return;
+    } catch (e2) { done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `That request failed: ${errText(e2)}`)); setBusy(); return; }
+  }
+  done();
+  const ops = opIdsOf(j.calls);
+  host.append(el('div', { class: 'text' }, j.message));
+  if (j.calls.length) host.append(describe(j.calls, j.path));
+  if (ops.length) S.versions.push({ key: j.request_id, text, at: Date.now(), opIds: ops, n: j.summary.n_targets, undone: false });
+  await refreshState();
+  if (ops.length || j.calls.some(c => c.tool === 'undo' && c.result)) {
+    const added = j.calls.filter(c => c.tool === 'add_masks' && !c.error).flatMap(c => c.args.track_ids || []);
+    addCard(host, added);
+  } else if (j.path === 'clarify') {
+    host.append(el('div', { class: 'actions' }, el('button', { onclick: showHints }, 'See example requests')));
+  }
+  host.append(el('details', { class: 'raw' }, el('summary', {}, `Tool calls (${j.calls.length}) · ${j.path}`), el('pre', {}, JSON.stringify(j.calls, null, 1))));
+  setBusy(); scrollDown(); $('text').focus();
+}
+async function sendBox(frame, box) {
+  if (S.busy) return;
+  toggleDraw(false);
+  userMsg(`Box drawn on frame ${String(frame).padStart(4, '0')}`);
+  const host = el('div', { class: 'agent' }); thread().append(host);
+  const done = pending(host, false); setBusy('Tracking the box…');
+  try {
+    const j = await post(`api/videos/${S.vid}/box`, { frame, box });
+    done();
+    S.versions.push({ key: `box_${j.op_id}_${Date.now()}`, text: `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    await refreshState();
+    host.append(el('div', { class: 'text' }, `Tracking ${tid(j.track.track_id)} from ${fmt(j.track.start)} to ${fmt(j.track.end)}; it's blurred wherever it was followed.`));
+    S.selected = j.track.track_id; renderTargets();
+    addCard(host, [j.track.track_id]);
+  } catch (e) { done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `Couldn't track that box: ${errText(e)}`)); }
+  setBusy();
+}
+// Undo the latest version: every op it added (a request can add several), not just the last op
+async function undoLast() {
+  if (S.busy || !S.vid) return;
+  const ver = [...S.versions].reverse().find(v => !v.undone && v.opIds.length);
+  if (!ver) { note('Nothing to undo.'); return; }
+  setBusy('Undoing…');
+  try {
+    for (let i = 0; i < 20; i++) {
+      const last = S.ops[S.ops.length - 1];
+      if (!last || !ver.opIds.includes(last.op_id)) break;
+      await post(`api/videos/${S.vid}/undo`);
+      S.ops = (await api(`api/videos/${S.vid}`)).ops;
+    }
+    ver.undone = true;
+    const n = S.versions.indexOf(ver) + 1;
+    await refreshState();
+    const host = note(`Undid v${n} ("${ver.text}"). ${S.timeline ? Object.keys(S.timeline.targets).length : 0} target(s) masked now.`);
+    addCard(host, null);
+  } catch (e) { status(`Undo failed: ${errText(e)}`, true); }
+  setBusy();
+}
+async function doExport() {
+  if (!S.vid || S.busy) return;
+  if (!Object.keys(S.timeline.targets).length) { status('No masks yet: send a request first, or the export would just be the original.', true); return; }
+  setBusy('Rendering the blurred video…'); $('exportBtn').textContent = 'Rendering…';
+  try {
+    const j = await post(`api/videos/${S.vid}/export`);
+    S.exportUrl = j.url; S.exportSig = S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
+    $('dl').href = j.url; $('dl').hidden = false;
+    $('srcCtl').querySelector('[data-src=export]').disabled = false;
+    const live = S.versions.filter(v => !v.undone), cur = S.versions.indexOf(live[live.length - 1]) + 1;
+    note(`Exported v${cur}: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames${j.stats.failed_frames ? `, ${j.stats.failed_frames} frames failed to decode` : ''}. Rendered on this machine.`);
+    setSrc('export'); openStage(0);
+    setBusy();
+  } catch (e) { setBusy(); status(errText(e) || 'Export failed.', true); }
+  $('exportBtn').textContent = 'Export';
+}
+
+// ---------- rails ----------
+function select(id) {
+  S.selected = S.selected === id ? null : id;
+  if (S.selected) tid(S.selected);
+  renderTargets(); renderTimeline(); renderSelBar(); S.cards.forEach(c => c.paint()); drawLayers();
+}
+function renderTargets() {
+  const ts = targetList();
+  $('targets').replaceChildren(...(ts.length ? ts.flatMap(t => [el('button', { class: `target${t.id === S.selected ? ' sel' : ''}`, title: `${t.id} · ${t.effect}`, onclick: () => select(t.id) },
+    el('span', { class: 'chip' }, t.chip), el('span', { class: 'name' }, t.name), el('span', { class: 'fx' }, t.effect)),
+    t.id === S.selected ? editControls(t.id, true) : null]).filter(Boolean)
+    : [el('div', { class: 'rail-empty' }, S.vid ? 'Nothing masked yet.' : 'Load a clip to start.')]));
+}
+
+// ---------- hand edits on one target ----------
+// Pick a box (click it in the Preview, or a row in Targets), then mask it, unmask it or change its effect.
+// Each edit is one op in the log, so it shows up in Versions and Undo reverts it.
+const EFFECTS = [['blur', 'Blur'], ['pixelate', 'Pixelate'], ['box', 'Black box']];
+function editControls(id, compact = false) {
+  const tr = (S.trackList || []).find(t => t.track_id === id), target = S.timeline && S.timeline.targets[id];
+  if (!tr && !target) return null;
+  const label = (target || tr).label, chip = tid(id), busy = S.busy;
+  const what = el('span', { class: 'what' }, compact ? null : el('span', { class: 'chip', style: 'margin-right:6px' }, chip),
+    compact ? null : tname(id, label), el('small', {}, target ? `masked · ${target.effect}` : 'found, not masked'));
+  const kids = [what];
+  if (target) {
+    for (const [fx, name] of EFFECTS) kids.push(el('button', { class: fx === target.effect ? 'primary' : '', 'aria-pressed': String(fx === target.effect),
+      disabled: busy ? '' : null, onclick: () => fx !== target.effect && editTargets('effect', [id], fx) }, name));
+    kids.push(el('button', { class: 'danger', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Unmask'));
+    if (!compact) kids.push(el('span', { class: 'hint' }, 'In the wrong place? Drag the box or a corner in the Preview.'));
+  } else {
+    kids.push(el('span', { class: 'hint' }, 'Mask it with'));
+    for (const [fx, name] of EFFECTS) kids.push(el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, name));
+  }
+  if (!compact) kids.push(el('button', { class: 'cbtn', style: 'margin-left:auto', onclick: () => select(id) }, 'Deselect'));
+  return el('div', { class: 'edit' }, kids);
+}
+function renderSelBar() {
+  const c = S.selected && editControls(S.selected);
+  $('selBar').replaceChildren(...(c ? [c] : []));
+}
+async function editTargets(action, ids, effect = 'blur') {
+  if (S.busy || !S.vid) return;
+  const names = ids.map(i => `${tid(i)} (${tname(i, (S.timeline.targets[i] || (S.trackList || []).find(t => t.track_id === i) || {}).label)})`).join(', ');
+  const text = action === 'remove' ? `Unmasked ${names}` : action === 'add' ? `Masked ${names} with ${effect}` : `Changed ${names} to ${effect}`;
+  setBusy('Saving the edit…');
+  try {
+    const j = await post(`api/videos/${S.vid}/targets`, { action, track_ids: ids, effect });
+    S.versions.push({ key: `edit_${j.op_id}_${Date.now()}`, text, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    await refreshState();
+    note(`${text}. Undo reverts it.`);
+  } catch (e) { status(`That edit failed: ${errText(e)}`, true); }
+  setBusy();
+}
+// Preview geometry: a pointer event -> video pixels, and the scale (screen px per video px)
+function previewPoint(ev) {
+  const r = $('layers').getBoundingClientRect(), W = S.info.width, H = S.info.height;
+  const s = Math.min(r.width / W, r.height / H);
+  return { x: (ev.clientX - r.left - (r.width - W * s) / 2) / s, y: (ev.clientY - r.top - (r.height - H * s) / 2) / s, s };
+}
+// The box under a point of the Preview at the frame shown, smallest first (a face inside a person wins)
+function boxAtPoint(ev) {
+  if (!P.layers.boxes || !S.trackList || !S.info) return null;
+  const { x, y, s } = previewPoint(ev);
+  let best = null, area = Infinity;
+  for (const t of S.trackList) {
+    if (P.hiddenKinds.has(t.label)) continue;
+    const k = trackBox(t, P.frame); if (!k) continue;
+    const [x1, y1, x2, y2] = k.box, slop = 4 / s;  // a few screen pixels of slack for small plates
+    if (x < x1 - slop || x > x2 + slop || y < y1 - slop || y > y2 + slop) continue;
+    const a = (x2 - x1) * (y2 - y1); if (a < area) { area = a; best = t.track_id; }
+  }
+  return best;
+}
+// The selected target's masked box at the frame shown, if it can be moved there (masked, and on screen now)
+function movableBox() {
+  const id = S.selected, t = id && S.timeline && S.timeline.targets[id];
+  if (!t || !P.layers.boxes || P.src !== 'source') return null;
+  const k = trackBox({ keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }, P.frame);
+  return k ? { id, box: k.box } : null;
+}
+// Which part of the movable box a point is on: a corner (resize), inside (move) or nothing
+function grabAt(ev) {
+  const mb = movableBox(); if (!mb) return null;
+  const { x, y, s } = previewPoint(ev), [x1, y1, x2, y2] = mb.box, near = 9 / s;
+  const cx = Math.abs(x - x1) <= near ? 'w' : Math.abs(x - x2) <= near ? 'e' : '';
+  const cy = Math.abs(y - y1) <= near ? 'n' : Math.abs(y - y2) <= near ? 's' : '';
+  if (cx && cy) return { ...mb, handle: cy + cx };
+  if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return { ...mb, handle: 'move' };
+  return null;
+}
+// Drag the selected box (or a corner) to fix where it is; letting go re-tracks from this frame on.
+// A press without a drag is a click: select the box under it, or play / pause.
+let drag = null;
+$('hit').onpointerdown = ev => {
+  if (!S.info || ev.button !== 0) return;
+  const g = !S.busy && grabAt(ev);
+  drag = { x0: ev.clientX, y0: ev.clientY, grab: g || null, start: previewPoint(ev), frame: P.frame };
+  if (g) { $('player').pause(); $('hit').setPointerCapture(ev.pointerId); }
 };
-// draw-a-box on the preview image
-const cv = $('draw'); let start = null;
-const toVideo = ev => { const r = cv.getBoundingClientRect(); return [ (ev.clientX - r.left) / r.width * info.width, (ev.clientY - r.top) / r.height * info.height ]; };
-cv.onmousedown = ev => { if (info) start = toVideo(ev); };
-cv.onmouseup = async ev => {
-  if (!start) return; const end = toVideo(ev);
-  const box = [Math.min(start[0], end[0]), Math.min(start[1], end[1]), Math.max(start[0], end[0]), Math.max(start[1], end[1])]; start = null;
-  if (box[2] - box[0] < 8 || box[3] - box[1] < 8) return;
-  try { const j = await api(`api/videos/${vid}/box`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ frame: frameNow(), box }) }); log(j); showSummary(j.summary); refresh(); }
-  catch (err) { log(err); }
+$('hit').onpointermove = ev => {
+  if (drag && drag.grab) {
+    const p = previewPoint(ev), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
+    let b = h === 'move' ? [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
+      : [h.includes('w') ? x1 + dx : x1, h.includes('n') ? y1 + dy : y1, h.includes('e') ? x2 + dx : x2, h.includes('s') ? y2 + dy : y2];
+    b = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])];
+    const W = S.info.width, H = S.info.height;
+    P.dragBox = [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(W, b[2]), Math.min(H, b[3])];
+    drawLayers(); return;
+  }
+  const g = !S.busy && grabAt(ev), id = g ? g.id : boxAtPoint(ev), hit = $('hit');
+  hit.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
+  hit.title = g ? 'Drag to move this mask, or a corner to resize it, from this frame on'
+    : id ? `${tid(id)} ${tname(id, (S.trackList.find(t => t.track_id === id) || {}).label)}: click to select` : '';
 };
+$('hit').onpointerup = ev => {
+  const d = drag; drag = null; if (!d) return;
+  const moved = Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 3;
+  if (d.grab && moved && P.dragBox) {
+    const box = P.dragBox.map(Math.round); P.dragBox = null;
+    if (box[2] - box[0] >= 4 && box[3] - box[1] >= 4) moveTarget(d.grab.id, d.frame, box); else drawLayers();
+    return;
+  }
+  P.dragBox = null;
+  if (moved) return;
+  const id = boxAtPoint(ev), v = $('player');
+  if (id) { if (id !== S.selected) select(id); return; }
+  v.paused ? v.play() : v.pause();  // like clicking the video itself
+};
+async function moveTarget(id, frame, box) {
+  if (S.busy || !S.vid) return;
+  const label = (S.timeline.targets[id] || {}).label, name = `${tid(id)} (${tname(id, label)})`;
+  setBusy(`Following ${name} from the corrected box…`);
+  try {
+    const j = await post(`api/videos/${S.vid}/targets`, { action: 'move', track_ids: [id], frame, box });
+    const nid = j.track.track_id;
+    S.versions.push({ key: `move_${j.op_ids.join('_')}_${Date.now()}`, text: `Moved ${name} at frame ${frame}`, at: Date.now(),
+      opIds: j.op_ids, n: j.summary.n_targets, undone: false });
+    if (S.desc[id]) S.desc[nid] = S.desc[id];
+    S.selected = nid; tid(nid);
+    await refreshState();
+    note(`Moved ${name}: from ${fmtF(frame / S.info.fps)} on, ${tid(nid)} follows the corrected box (until ${fmt(j.track.end)}); before that the old box stays. Undo reverts it.`);
+  } catch (e) { status(`Couldn't move it: ${errText(e)}`, true); }
+  setBusy(); drawLayers();
+}
+// Our own controls (the browser's covered the bottom of the picture, where plates often are)
+(function playerControls() {
+  const v = $('player'), sc = $('scrub');
+  const sync = () => {
+    $('playBtn').textContent = v.paused ? '▶' : '❚❚';
+    if (isFinite(v.duration)) { sc.max = v.duration; if (!sc.matches(':active')) sc.value = v.currentTime; }
+    $('pctlTime').textContent = `${fmtF(v.currentTime || 0)} / ${fmt(isFinite(v.duration) ? v.duration : 0)}`;
+  };
+  ['play', 'pause', 'timeupdate', 'seeked', 'loadedmetadata', 'durationchange'].forEach(e => v.addEventListener(e, sync));
+  $('playBtn').onclick = () => v.paused ? v.play() : v.pause();
+  sc.oninput = () => { v.currentTime = +sc.value; };
+  const step = n => { v.pause(); if (S.info) v.currentTime = Math.max(0, Math.min(dur() - 1 / S.info.fps, (P.frame + n + 0.5) / S.info.fps)); };
+  $('stepBack').onclick = () => step(-1); $('stepFwd').onclick = () => step(1);
+  document.addEventListener('keydown', e => {
+    if ($('stage').hidden || !S.vid || /^(TEXTAREA|INPUT|SELECT|BUTTON)$/.test(document.activeElement.tagName)) return;
+    if (e.key === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+  });
+})();
+function renderVersions() {
+  const live = S.versions.filter(v => !v.undone);
+  const cur = live[live.length - 1];
+  $('fileMeta').textContent = S.vid ? `${fmt(dur())} · v${S.versions.indexOf(cur) + 1}` : '';
+  $('versions').replaceChildren(...S.versions.map((v, i) => [v, i]).reverse().map(([v, i]) =>
+    el('div', { class: `version${v === cur ? ' cur' : ''}${v.undone ? ' undone' : ''}`, title: v.key },
+      el('span', { class: 'vid' }, `v${i + 1}`), el('span', { class: 'vtext' }, v.text), el('span'),
+      el('span', { class: 'vmeta' }, v.undone ? 'undone' : i === 0 ? ago(v.at) : `${ago(v.at)} · ${v.n} target${v.n === 1 ? '' : 's'}`))));
+}
+
+// ---------- preview stage ----------
+// The original video with two stackable layers drawn on a canvas over it, synced to the frame on screen:
+//  Boxes: every detected track (masked or not), labeled with the vision model's answer when it was asked;
+//  Masks: the renderer's own rectangles (GET /masks), blurred / pixelated / boxed the way the export does it.
+// "Exact export" swaps in the rendered file, so the pixels that will be shared can be checked too.
+const KIND = {
+  'face': { name: 'Faces', one: 'face', color: '#ffd27a' }, 'license plate': { name: 'Plates', one: 'plate', color: '#7fd4ff' },
+  'person': { name: 'People', one: 'person', color: '#9fe0b0' }, 'user box': { name: 'Drawn', one: 'drawn box', color: '#d4a6ff' },
+};
+const kindOf = label => KIND[label] || { name: label, one: label, color: '#eef1f6' };
+const P = { layers: { boxes: true, masks: true }, hiddenKinds: new Set(), src: 'source', frame: -1, small: null };
+
+function openStage(t) {
+  if (!S.vid) return;
+  $('stage').hidden = false; renderTimeline(); renderKinds(); drawLayers();
+  if (typeof t === 'number' && isFinite(t)) $('player').currentTime = Math.max(0, t);
+}
+function setSrc(which) {
+  P.src = which;
+  for (const b of $('srcCtl').children) b.classList.toggle('on', b.dataset.src === which);
+  const t = $('player').currentTime || 0;
+  const src = which === 'export' && S.exportUrl ? S.exportUrl : S.vid ? `api/videos/${S.vid}/source` : '';
+  if (src && !$('player').src.endsWith(src)) { $('player').src = src; $('player').currentTime = t; }
+  // The export is already blurred: drawing the masks again on top would hide what it really looks like
+  $('layerCtl').querySelector('[data-layer=masks]').disabled = which === 'export';
+  drawLayers();
+}
+// Per-frame lookups, rebuilt whenever the tracks or masks change
+function indexLayers(tracks, masks) {
+  S.trackList = Object.values(tracks.tracks || {}).map(t => ({ ...t, keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }));
+  const byFrame = new Map();
+  for (const [id, m] of Object.entries(masks.targets || {}))
+    for (const [f, x1, y1, x2, y2] of m.frames) {
+      let l = byFrame.get(f); if (!l) byFrame.set(f, l = []);
+      l.push({ id, effect: m.effect, r: [x1, y1, x2, y2] });
+    }
+  S.maskFrames = byFrame;
+}
+// A track's box at frame f: its keyframe, or interpolated between two keyframes up to 15 frames apart (the
+// renderer's MAX_GAP). No lead-in or hold: this layer shows what the detector saw, the masks layer the rest.
+function trackBox(t, f) {
+  const k = t.keyframes; let lo = 0, hi = k.length - 1;
+  if (!k.length || f < k[0].f || f > k[hi].f) return null;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (k[mid].f <= f) lo = mid; else hi = mid; }
+  const a = k[lo], b = k[hi];
+  if (a.f === f) return a; if (b.f === f) return b;
+  if (b.f - a.f > 15) return null;
+  const u = (f - a.f) / (b.f - a.f);
+  return { box: a.box.map((v, i) => v + (b.box[i] - v) * u), conf: a.conf, state: a.state === 'uncertain' || b.state === 'uncertain' ? 'uncertain' : a.state };
+}
+// The decoded frame's RGBA pixels inside the box around all of this frame's masks, read once per frame shown.
+// Only that box: copying a whole 720p frame to the CPU and reading it back cost 12 ms of the 15 ms per frame.
+function framePixels(v, f, rects) {
+  let bx1 = Infinity, by1 = Infinity, bx2 = 0, by2 = 0;
+  for (const m of rects) { bx1 = Math.min(bx1, m.r[0]); by1 = Math.min(by1, m.r[1]); bx2 = Math.max(bx2, m.r[2]); by2 = Math.max(by2, m.r[3]); }
+  const bw = Math.max(1, bx2 - bx1), bh = Math.max(1, by2 - by1);
+  // Keyed on the crop too: after an edit the same frame has other masks, and reading them from the old crop
+  // gave zeros (black masks). Not cached mid-seek, when the video may still show the previous frame.
+  const key = `${v.currentSrc}|${f}|${bx1},${by1},${bw},${bh}`;
+  if (P.px && P.pxKey === key) return P.px;
+  const c = P.full || (P.full = document.createElement('canvas'));
+  c.width = bw; c.height = bh;
+  const cg = c.getContext('2d', { willReadFrequently: true });
+  cg.drawImage(v, bx1, by1, bw, bh, 0, 0, bw, bh);
+  P.pxKey = v.seeking ? '' : key;
+  return P.px = { data: cg.getImageData(0, 0, bw, bh).data, x0: bx1, y0: by1, w: bw };
+}
+// 1-D INTER_AREA weights: output i averages source [i * n / m, (i + 1) * n / m), partial pixels weighted
+function areaWeights(n, m) {
+  const out = [], step = n / m;
+  for (let i = 0; i < m; i++) {
+    const a = i * step, b = a + step, ws = [];
+    for (let j = Math.floor(a); j < Math.ceil(b); j++) ws.push([Math.min(j, n - 1), (Math.min(b, j + 1) - Math.max(a, j)) / step]);
+    out.push(ws);
+  }
+  return out;
+}
+// Region (x, y, w, h) of an RGBA frame -> tw x th RGB floats, averaging every pixel (cv2.INTER_AREA)
+function shrinkArea(px, W, x, y, w, h, tw, th) {
+  const wx = areaWeights(w, tw), wy = areaWeights(h, th), rows = new Float32Array(h * tw * 3), out = new Float32Array(tw * th * 3);
+  for (let r = 0; r < h; r++) {
+    const base = ((y + r) * W + x) * 4;
+    for (let i = 0; i < tw; i++) {
+      let R = 0, G = 0, B = 0;
+      for (const [j, wgt] of wx[i]) { const o = base + j * 4; R += px[o] * wgt; G += px[o + 1] * wgt; B += px[o + 2] * wgt; }
+      const q = (r * tw + i) * 3; rows[q] = R; rows[q + 1] = G; rows[q + 2] = B;
+    }
+  }
+  for (let i = 0; i < th; i++)
+    for (let c = 0; c < tw; c++) {
+      let R = 0, G = 0, B = 0;
+      for (const [j, wgt] of wy[i]) { const q = (j * tw + c) * 3; R += rows[q] * wgt; G += rows[q + 1] * wgt; B += rows[q + 2] * wgt; }
+      const o = (i * tw + c) * 3; out[o] = R; out[o + 1] = G; out[o + 2] = B;
+    }
+  return out;
+}
+// Region -> tw x th RGB by bilinear sampling at the mapped pixel centers (cv2.INTER_LINEAR when shrinking)
+function shrinkLinear(px, W, x, y, w, h, tw, th) {
+  const out = new Float32Array(tw * th * 3);
+  for (let i = 0; i < th; i++) {
+    const sy = Math.min(h - 1, Math.max(0, (i + 0.5) * h / th - 0.5)), y0 = Math.floor(sy), y1 = Math.min(h - 1, y0 + 1), fy = sy - y0;
+    for (let c = 0; c < tw; c++) {
+      const sx = Math.min(w - 1, Math.max(0, (c + 0.5) * w / tw - 0.5)), x0 = Math.floor(sx), x1 = Math.min(w - 1, x0 + 1), fx = sx - x0;
+      for (let ch = 0; ch < 3; ch++) {
+        const p = (yy, xx) => px[((y + yy) * W + x + xx) * 4 + ch];
+        out[(i * tw + c) * 3 + ch] = (p(y0, x0) * (1 - fx) + p(y0, x1) * fx) * (1 - fy) + (p(y1, x0) * (1 - fx) + p(y1, x1) * fx) * fy;
+      }
+    }
+  }
+  return out;
+}
+// cv2.GaussianBlur(img, (ks, ks), 0) on a small RGB float image: OpenCV's kernel and BORDER_REFLECT_101
+function gaussian(img, w, h, ks) {
+  const sigma = 0.3 * ((ks - 1) * 0.5 - 1) + 0.8, r = (ks - 1) / 2, kern = [];
+  for (let i = 0; i < ks; i++) kern.push(Math.exp(-((i - r) ** 2) / (2 * sigma * sigma)));
+  const sum = kern.reduce((a, b) => a + b, 0); kern.forEach((v, i) => kern[i] = v / sum);
+  const refl = (i, n) => { if (n === 1) return 0; while (i < 0 || i >= n) i = i < 0 ? -i : 2 * n - 2 - i; return i; };
+  const pass = (src, horiz) => {
+    const out = new Float32Array(src.length);
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) for (let c = 0; c < 3; c++) {
+      let acc = 0;
+      for (let t = 0; t < ks; t++) {
+        const sx = horiz ? refl(xx + t - r, w) : xx, sy = horiz ? yy : refl(yy + t - r, h);
+        acc += src[(sy * w + sx) * 3 + c] * kern[t];
+      }
+      out[(yy * w + xx) * 3 + c] = acc;
+    }
+    return out;
+  };
+  return pass(pass(img, true), false);
+}
+function currentFrame(mediaTime) {
+  if (!S.info) return 0;
+  const t = mediaTime !== undefined ? mediaTime : $('player').currentTime || 0;
+  return Math.max(0, Math.min(S.info.n_frames - 1, Math.round(t * S.info.fps)));
+}
+function drawLayers(mediaTime) {
+  const cv = $('layers'), v = $('player');
+  if ($('stage').hidden || !S.info) return;
+  const r = cv.getBoundingClientRect(); if (!r.width) return;
+  const dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+  const W = S.info.width, H = S.info.height, s = Math.min(r.width / W, r.height / H), ox = (r.width - W * s) / 2, oy = (r.height - H * s) / 2;
+  const f = P.frame = currentFrame(mediaTime);
+  const X = x => ox + x * s, Y = y => oy + y * s;
+  const ready = v.readyState >= 2;
+  let nMasks = 0, nBoxes = 0;
+  if (P.layers.masks && P.src === 'source' && ready) {
+    const rects = S.maskFrames && S.maskFrames.get(f) || [];
+    nMasks = rects.length;
+    // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
+    // the preview looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and
+    // mirrored border) at that size, bilinear back up; pixelate = INTER_LINEAR shrink to 1/12, nearest back up.
+    // (The browser's own resampling skipped pixels: a plate's dark letters vanished and it stayed white.)
+    const live = rects.filter(m => m.effect !== 'box' && m.r[2] > m.r[0] && m.r[3] > m.r[1]);
+    const fp = live.length ? framePixels(v, f, live) : null;
+    for (const m of rects) {
+      const [x1, y1, x2, y2] = m.r, w = x2 - x1, h = y2 - y1; if (w <= 0 || h <= 0) continue;
+      if (m.effect === 'box') { g.fillStyle = '#000'; g.fillRect(X(x1), Y(y1), w * s, h * s); continue; }
+      const k = m.effect === 'pixelate' ? 12 : 24, sw = Math.max(1, Math.floor(w / k)), sh = Math.max(1, Math.floor(h / k));
+      const rx = x1 - fp.x0, ry = y1 - fp.y0;
+      let small = m.effect === 'pixelate' ? shrinkLinear(fp.data, fp.w, rx, ry, w, h, sw, sh) : shrinkArea(fp.data, fp.w, rx, ry, w, h, sw, sh);
+      if (m.effect === 'blur') small = gaussian(small, sw, sh, Math.max(3, Math.floor(Math.min(sw, sh) / 2) | 1));
+      const tiny = P.small || (P.small = document.createElement('canvas'));
+      tiny.width = sw; tiny.height = sh;
+      const id = new ImageData(sw, sh);
+      for (let i = 0, j = 0; i < sw * sh; i++, j += 3) { id.data[i * 4] = small[j]; id.data[i * 4 + 1] = small[j + 1]; id.data[i * 4 + 2] = small[j + 2]; id.data[i * 4 + 3] = 255; }
+      tiny.getContext('2d').putImageData(id, 0, 0);
+      g.imageSmoothingEnabled = m.effect !== 'pixelate';
+      g.drawImage(tiny, 0, 0, sw, sh, X(x1), Y(y1), w * s, h * s);
+    }
+  }
+  if (P.layers.boxes && S.trackList) {
+    // Solid only where the export masks it on this frame (a time window or a move can end a mask mid-track)
+    const masked = new Set(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => m.id));
+    g.font = '600 11px ui-monospace, Menlo, monospace'; g.textBaseline = 'bottom';
+    for (const t of S.trackList) {
+      if (P.hiddenKinds.has(t.label)) continue;
+      const k = trackBox(t, f); if (!k) continue;
+      nBoxes++;
+      const [x1, y1, x2, y2] = k.box, sel = t.track_id === S.selected, on = masked.has(t.track_id);
+      const color = sel ? '#4d6bff' : kindOf(t.label).color;
+      g.globalAlpha = on || sel ? 1 : .7;
+      g.setLineDash(on || sel ? [] : [5, 4]); g.lineWidth = sel ? 3 : on ? 2 : 1.5; g.strokeStyle = color;
+      g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s);
+      g.setLineDash([]);
+      // Label: chip, kind, and the vision model's answer if it was asked about this track
+      const ans = S.vlm[t.track_id];
+      // With an answer, the question says what it is ("T2 · woman? yes 0.97"); otherwise the kind ("T1 · plate")
+      const lbl = [S.ids[t.track_id] || '',
+        ans ? `${ans.q.replace(/^is (this|it) (an? |the )?/i, '').replace(/\?$/, '')}? ${ans.a === 'unknown' ? 'unsure' : ans.a} ${(+ans.p).toFixed(2)}` : kindOf(t.label).one,
+        k.state === 'uncertain' ? 'low conf' : ''].filter(Boolean).join(' · ');
+      if ((x2 - x1) * s >= 14 || sel || ans) {
+        const w = g.measureText(lbl).width + 8, lx = X(x1) - (sel ? 1.5 : 1), ly = Math.max(14, Y(y1));
+        g.fillStyle = color; g.fillRect(lx, ly - 14, w, 14);
+        g.fillStyle = '#0b0d12'; g.fillText(lbl, lx + 4, ly - 1);
+      }
+      g.globalAlpha = 1;
+    }
+  }
+  // The selected mask's corner handles (it can be dragged), and the box being dragged
+  const mb = !P.dragBox && !S.busy && movableBox();
+  if (mb) {
+    g.fillStyle = '#4d6bff';
+    const [x1, y1, x2, y2] = mb.box;
+    for (const [cx, cy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) g.fillRect(X(cx) - 4, Y(cy) - 4, 8, 8);
+  }
+  if (P.dragBox) {
+    const [x1, y1, x2, y2] = P.dragBox;
+    g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#fff';
+    g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]);
+  }
+  $('stageTime').textContent = `${fmtF(f / S.info.fps)} · frame ${f}`;
+  const ph = $('ph'); if (ph) ph.style.left = pct(f / S.info.fps);
+  const notes = [];
+  if (P.layers.boxes) notes.push(`${nBoxes} box${nBoxes === 1 ? '' : 'es'} on this frame (solid: masked, dashed: found but not masked)`);
+  if (P.layers.masks && P.src === 'source') notes.push(`${nMasks} mask${nMasks === 1 ? '' : 's'} (a live preview; Export renders the exact pixels)`);
+  if (P.src === 'export') notes.push('Showing the rendered export: the exact pixels that will be shared');
+  $('layerNote').textContent = notes.join(' · ');
+}
+// Redraw on every frame the browser presents (frame-accurate while playing), and on seek, pause and resize
+(function syncLayers() {
+  const v = $('player');
+  if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+    const onFrame = (_, meta) => { drawLayers(meta.mediaTime); v.requestVideoFrameCallback(onFrame); };
+    v.requestVideoFrameCallback(onFrame);
+  } else {
+    const tick = () => { if (!v.paused) drawLayers(); requestAnimationFrame(tick); }; tick();
+  }
+  ['seeked', 'pause', 'loadeddata', 'timeupdate'].forEach(e => v.addEventListener(e, () => drawLayers()));
+  new ResizeObserver(() => drawLayers()).observe($('playerWrap'));
+})();
+function renderKinds() {
+  const kinds = [...new Set((S.trackList || []).map(t => t.label))];
+  $('kinds').replaceChildren(...kinds.map(l => {
+    const n = S.trackList.filter(t => t.label === l).length;
+    return el('button', { class: P.hiddenKinds.has(l) ? '' : 'on', title: `Show or hide ${kindOf(l).name.toLowerCase()} boxes`,
+      onclick: () => { P.hiddenKinds.has(l) ? P.hiddenKinds.delete(l) : P.hiddenKinds.add(l); renderKinds(); drawLayers(); } },
+      el('i', { style: `background:${kindOf(l).color}` }), `${kindOf(l).name} ${n}`);
+  }));
+  $('kinds').hidden = !P.layers.boxes;
+}
+function renderTimeline() {
+  const tl = $('tl'); if ($('stage').hidden || !S.info) return;
+  const ts = targetList(), d = dur(), step = d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
+  const axis = el('div', { class: 'axis' });
+  for (let s = 0; s <= d + 1e-6; s += step) axis.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
+  const lanes = el('div', { class: 'lanes' });
+  const labels = [];
+  ts.forEach(t => {
+    labels.push(el('div', { class: 'rowlabel', onclick: () => select(t.id), title: t.id },
+      el('span', { class: 'chip', style: t.id === S.selected ? 'background:var(--accent)' : '' }, t.chip),
+      el('span', { class: 'name' }, t.name), el('span', { class: 'fx' }, t.effect)));
+    const lane = el('div', { class: `lane${t.id === S.selected ? ' sel' : ''}`, title: `${t.chip} ${t.name}: ${t.segs.map(([a, b]) => `${fmt(a)}–${fmt(b)}`).join(', ')}` });
+    t.segs.forEach(([a, b]) => lane.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
+    t.unc.forEach(([a, b]) => lane.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
+    lane.onclick = ev => { const r = lane.getBoundingClientRect(); $('player').currentTime = (ev.clientX - r.left) / r.width * d; };
+    lanes.append(lane);
+  });
+  const ph = el('div', { class: 'ph', id: 'ph' }); lanes.append(ph);
+  const labelCol = el('div', {}, el('div', { class: 'axis' }), ...labels);
+  if (!ts.length) labelCol.append(el('div', { class: 'rail-empty', style: 'padding:6px 0' }, 'Nothing masked yet.'));
+  tl.replaceChildren(labelCol, el('div', {}, axis, lanes));
+  drawLayers();
+}
+
+// ---------- composer ----------
+const EXAMPLES = [
+  ['blur all plates', ''], ['blur the woman', 'vision model'], ['pixelate faces', ''],
+  ['blur people in the first 5 seconds', ''], ['blur everyone except the man in red', 'language model'],
+  ['unblur the plates', ''], ['undo', ''],
+];
+function showHints() {
+  $('hints').hidden = false; $('hintBtn').classList.add('on'); $('hintBtn').setAttribute('aria-expanded', 'true');
+}
+function closeHints() { $('hints').hidden = true; $('hintBtn').classList.remove('on'); $('hintBtn').setAttribute('aria-expanded', 'false'); }
+$('examples').append(...EXAMPLES.map(([t, n]) => el('button', { type: 'button', onclick: () => {
+  closeHints(); if (!S.vid) return status('Pick a clip first.', true);
+  $('text').value = t; autosize(); $('text').focus();
+} }, t, n ? el('small', {}, n) : null)));
+$('hintBtn').onclick = () => $('hints').hidden ? showHints() : closeHints();
+function autosize() { const t = $('text'); t.style.height = '21px'; t.style.height = Math.min(120, t.scrollHeight) + 'px'; }
+$('text').oninput = autosize;
+$('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendRequest($('text').value); } };
+$('composer').onsubmit = e => { e.preventDefault(); sendRequest($('text').value); };
+function toggleDraw(on = !S.drawMode) {
+  S.drawMode = on; $('drawBtn').classList.toggle('on', on);
+  const live = S.cards.filter(c => c.live);
+  if (on && !live.length) {  // nothing to draw on yet: show the current frame first
+    const host = note('Drag a box around what to hide. It will be tracked through the clip.'); addCard(host, null);
+  }
+  S.cards.forEach(c => c.setDraw(on && c.live));
+  if (on) { const c = S.cards[S.cards.length - 1]; c.card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); status('Draw mode: drag on the latest frame. Esc to cancel.'); }
+  else if (!S.busy) status('');
+}
+$('drawBtn').onclick = () => toggleDraw();
+$('exportBtn').onclick = doExport;
+$('timelineBtn').onclick = () => $('stage').hidden ? openStage() : ($('stage').hidden = true);
+$('stageClose').onclick = () => $('stage').hidden = true;
+$('layerCtl').onclick = e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  P.layers[b.dataset.layer] = !P.layers[b.dataset.layer]; b.classList.toggle('on', P.layers[b.dataset.layer]);
+  renderKinds(); drawLayers();
+};
+$('srcCtl').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setSrc(b.dataset.src); };
+$('targetsToggle').onclick = () => $('targetsRail').classList.toggle('open');
+$('versionsToggle').onclick = () => $('versionsRail').classList.toggle('open');
+document.addEventListener('keydown', e => {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && S.timeline.targets[S.selected]
+      && !/^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName)) { e.preventDefault(); editTargets('remove', [S.selected]); return; }
+  if (e.key !== 'Escape') return;
+  if (S.drawMode) toggleDraw(false); else if (!$('hints').hidden) closeHints();
+});
+setInterval(() => S.vid && renderVersions(), 30000);
+
+// ---------- start ----------
+renderTargets(); renderVersions();
+// ?video=<id> reopens a video uploaded earlier, with its masks so far
+const reopen = new URLSearchParams(location.search).get('video');
+if (reopen) {
+  api(`api/videos/${reopen}`).then(j => openVideo({ video_id: reopen, info: j.info, prescan: [] }, `video ${reopen}`))
+    .catch(e => { welcome(); status(`Couldn't reopen video ${reopen}: ${errText(e)}`, true); history.replaceState(null, '', location.pathname); });
+} else welcome();
 </script>
 </body>
 </html>
