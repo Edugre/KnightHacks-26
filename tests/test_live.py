@@ -11,6 +11,8 @@ import threading
 import time
 from pathlib import Path
 
+import cv2
+import numpy as np
 import pytest
 
 from bench.run_bench import COVER_MIN, _clip_box, coverage
@@ -179,6 +181,113 @@ def test_a_detector_that_raises_makes_every_frame_blind_and_the_engine_keeps_emi
     assert s["detector"]["errors"] > 0 and s["detector"]["passes"] == 0
     assert emitted and all(blind and rects == [] for blind, rects in emitted)
     assert s["frames_out"] == s["blind"] == len(emitted) and s["blind_share"] == 1.0
+
+
+def sidecar_for(clip: Path):
+    return sidecar_detect(Path(str(clip) + ".tracks.json"), src_h=H, live_h=H, n_frames=90)
+
+
+def sharpness(jpeg_or_img) -> float:
+    img = cv2.imdecode(np.frombuffer(jpeg_or_img, np.uint8), cv2.IMREAD_GRAYSCALE) \
+        if isinstance(jpeg_or_img, bytes) else cv2.cvtColor(jpeg_or_img, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(img, cv2.CV_64F).var())
+
+
+def test_a_masking_error_blurs_the_whole_frame(clip, monkeypatch):
+    def boom(img, rect, effect):
+        raise RuntimeError("effect failed")
+
+    monkeypatch.setattr("censor.live.apply_effect", boom)  # full_frame_blur uses render's own name: unaffected
+    emitted = []
+    eng = LiveReplay(str(clip), sidecar_for(clip), delay_s=0.3,
+                     on_emit=lambda f, c, blind, rects: emitted.append((blind, rects)))
+    eng.start()
+    try:
+        time.sleep(1.5)
+        shown = eng.latest(-1, 1.0)
+    finally:
+        eng.stop()
+    sighted = [rects for blind, rects in emitted if not blind]
+    assert sighted, "nothing was ever vouched: the test would be vacuous"
+    assert all(rects == [(0, 0, W, H)] for rects in sighted)
+    assert eng.stats()["emit_errors"] >= len(sighted)
+    cap = cv2.VideoCapture(str(clip))
+    ok, plain = cap.read()
+    cap.release()
+    assert ok and shown is not None and sharpness(shown[1]) < sharpness(plain) / 10  # blurred, not just reported
+
+
+def test_blind_frames_after_a_detector_death_freeze_the_last_vouched_picture(clip, monkeypatch):
+    inner, t0, last_ok = sidecar_for(clip), [None], [-1]
+
+    def dies_after_a_while(clip_f, frame):
+        t0[0] = t0[0] or time.monotonic()
+        if time.monotonic() - t0[0] > 0.8:
+            raise RuntimeError("detector gone")
+        last_ok[0] = clip_f
+        return inner(clip_f, frame)
+
+    emitted = []
+    eng = LiveReplay(str(clip), dies_after_a_while, delay_s=0.3,
+                     on_emit=lambda f, c, blind, rects: emitted.append((f, blind, rects)))
+    eng.start()
+    try:
+        time.sleep(2.0)
+        newest = eng.latest(-1, 1.0)
+        following = eng.latest(newest[0], 1.0)  # the stream goes on
+        still_running = eng.running
+    finally:
+        eng.stop()
+    after = [(blind, rects) for f, blind, rects in emitted if f > last_ok[0]]
+    assert last_ok[0] > 0 and len(after) > 5, "the detector never worked, or the run was too short"
+    assert all(blind and rects == [] for blind, rects in after)
+    assert still_running and eng.stats()["detector"]["errors"] > 0  # an error is caught per pass: not a thread death
+    assert newest[0] > last_ok[0] and following[0] > newest[0]
+    assert following[1] == newest[1]  # the same frozen picture, not a fresh unmasked one
+    badge = cv2.imdecode(np.frombuffer(newest[1], np.uint8), cv2.IMREAD_COLOR)
+    assert abs(float(badge[-14:-10, 6:10].mean()) - 110) < 20  # the grey DETECTOR LATE plate, bottom left
+    thread_death_stops_the_engine(clip, monkeypatch, "_record_pass")
+
+
+def thread_death_stops_the_engine(clip, monkeypatch, name: str) -> None:
+    def die(*args, **kwargs):
+        raise RuntimeError(f"{name} died")
+
+    monkeypatch.setattr(LiveReplay, name, die)
+    eng = LiveReplay(str(clip), sidecar_for(clip), delay_s=0.2)
+    eng.start()
+    try:
+        deadline = time.monotonic() + 2.0
+        while eng.running and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert not eng.running and eng.stats()["phase"] == "idle", f"{name}: a dead thread left the engine 'running'"
+    finally:
+        eng.stop()
+
+
+@pytest.mark.parametrize("name", ["_pump", "_finish"])  # a dead source thread, a dead emitter thread
+def test_a_dead_source_or_emitter_thread_makes_running_false(clip, monkeypatch, name):
+    thread_death_stops_the_engine(clip, monkeypatch, name)
+
+
+def test_a_slow_on_emit_evicts_frames_and_counts_dropped_out(clip):
+    emitted = []
+
+    def slow_emit(f, clip_f, blind, rects):
+        emitted.append(f)
+        time.sleep(0.15)  # 4.5 frames of the 30 fps clip per emit: the ring (23 deep) must evict
+
+    eng = LiveReplay(str(clip), sidecar_for(clip), delay_s=0.2, on_emit=slow_emit)
+    eng.start()
+    try:
+        time.sleep(2.0)
+        still_running = eng.running
+    finally:
+        eng.stop()
+    s = eng.stats()
+    assert still_running and s["frames_out"] > 0 and s["dropped_out"] > 0 and s["emit_errors"] == 0
+    assert emitted == sorted(set(emitted))
+    assert s["frames_out"] + s["dropped_out"] == emitted[-1] + 1  # every frame up to the last sent is sent or dropped
 
 
 def test_stop_returns_promptly_and_wakes_a_pending_latest(clip):
