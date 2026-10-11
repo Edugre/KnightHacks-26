@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One command to run the app.
-#   ./run.sh          GPU server: starts the resident model server (if not up), then the API + test UI on :8000
-#   ./run.sh stub     laptop / no GPU: stub detector, no models, API + test UI on :8000
+#   ./run.sh          GPU server: starts the resident model server (if not up), then the API + web UI on :8000
+#   ./run.sh stub     laptop / no GPU: stub detector, no models, API + web UI on :8000
 #   ./run.sh test     run the test suite (no GPU needed)
 #   ./run.sh bench    benchmark -> bench/report.md (extra args go to bench/run_bench.py; CENSOR_STUB=1 for no GPU)
 # On AUP Learning Cloud, open the UI at  https://dub.aupcloud.io/user/<your-user>/proxy/8000/
