@@ -1,9 +1,9 @@
 {
   "meta": {
-    "generated": "2026-10-10T07:26:14+00:00",
-    "commit": "682dcb0",
+    "generated": "2026-10-11T10:51:37+00:00",
+    "commit": "5f38685",
     "dirty": false,
-    "n_clips": 1,
+    "n_clips": 3,
     "skipped": [],
     "variants": [
       "ours",
@@ -11,10 +11,10 @@
       "fail_open"
     ],
     "detectors": [
-      "StubDetector"
+      "RoutedDetector"
     ],
-    "agent": "template only (CENSOR_MODEL_URL unset)",
-    "vlm": "stub, every answer is 'unknown' (fail closed)",
+    "agent": "LLM via CENSOR_MODEL_URL, template fallback",
+    "vlm": "Qwen3-VL via the model server",
     "thresholds": {
       "cover_min": 0.9,
       "req_masked": 0.9,
@@ -23,158 +23,698 @@
   },
   "summary": {
     "boxes": {
-      "face": 18,
-      "license plate": 18,
-      "person": 36,
-      "screen": 9
+      "face": 337,
+      "person": 225,
+      "license plate": 42
     },
     "recall": {
       "ours": {
-        "face": 1.0,
-        "license plate": 1.0,
-        "person": 1.0,
-        "screen": 1.0
+        "face": 0.9465875370919882,
+        "person": 0.9911111111111112,
+        "license plate": 0.9761904761904762
       },
       "fail_open": {
-        "face": 1.0,
-        "license plate": 1.0,
-        "person": 1.0,
-        "screen": 1.0
+        "face": 0.9287833827893175,
+        "person": 0.9688888888888889,
+        "license plate": 0.9523809523809523
       }
     },
-    "recall_screen_text": 1.0,
-    "longest_miss": 0,
+    "recall_screen_text": null,
+    "longest_miss": 4,
     "over_blur": {
-      "ours": 0.05221788194444445,
-      "fail_open": 0.05221788194444445
+      "ours": 0.14875441513037754,
+      "fail_open": 0.1345338090156176
     },
     "fail_closed": {
-      "uncertain_keyframes": 0,
-      "doubled": 0,
-      "rate": null
+      "uncertain_keyframes": 627,
+      "doubled": 627,
+      "rate": 1.0
     },
     "requests": {
-      "n": 7,
+      "n": 20,
       "success": {
-        "ours": 6,
-        "keyword": 5,
-        "fail_open": 6
+        "ours": 14,
+        "keyword": 7,
+        "fail_open": 11
       }
     },
     "latency": {
-      "detect_ms_per_frame": 0.1,
-      "render_ms_per_frame": 13.972222222222221,
-      "offline_speed": 2.3687327279905253,
-      "agent_s_mean": 0.0028571428571428567,
-      "agent_s_max": 0.006
+      "detect_ms_per_frame": 92.47924528301887,
+      "render_ms_per_frame": 7.186792452830189,
+      "offline_speed": 0.4013403252371126,
+      "agent_s_mean": 6.499300000000001,
+      "agent_s_max": 30.078
     },
     "gpu": {
-      "bench_process_gb": null,
-      "model_server_gb": null,
-      "total_gb": null
+      "bench_process_gb": 1.52,
+      "model_server_gb": 17.6,
+      "total_gb": 19.12
     }
   },
   "targets": [
     {
       "metric": "Recall: faces",
       "target": ">= 0.95",
-      "value": 1.0,
-      "shown": "1.00",
-      "pass": true
+      "value": 0.9465875370919882,
+      "shown": "0.95",
+      "pass": false
     },
     {
       "metric": "Recall: plates",
       "target": ">= 0.90",
-      "value": 1.0,
-      "shown": "1.00",
+      "value": 0.9761904761904762,
+      "shown": "0.98",
       "pass": true
     },
     {
       "metric": "Recall: screens/text",
       "target": ">= 0.85",
-      "value": 1.0,
-      "shown": "1.00",
-      "pass": true
+      "value": null,
+      "shown": "n/a",
+      "pass": null
     },
     {
       "metric": "Over-blur (mean masked non-target area)",
       "target": "<= 10% of frame",
-      "value": 0.05221788194444445,
-      "shown": "5.2%",
-      "pass": true
+      "value": 0.14875441513037754,
+      "shown": "14.9%",
+      "pass": false
     },
     {
       "metric": "Request success",
       "target": ">= 15 / 20 (75%)",
-      "value": 0.8571428571428571,
-      "shown": "6 / 7 (only 7 requests so far)",
-      "pass": true
+      "value": 0.7,
+      "shown": "14 / 20",
+      "pass": false
     },
     {
       "metric": "Fail-closed rate on uncertain keyframes",
       "target": "100%",
-      "value": null,
-      "shown": "n/a",
-      "pass": null
+      "value": 1.0,
+      "shown": "100.0%",
+      "pass": true
     },
     {
       "metric": "Offline speed (target is for 1080p)",
       "target": ">= 0.5x real time",
-      "value": 2.3687327279905253,
-      "shown": "2.4x",
-      "pass": true
+      "value": 0.4013403252371126,
+      "shown": "0.4x",
+      "pass": false
     },
     {
       "metric": "Peak GPU memory, all models loaded",
       "target": "<= 28 GB",
-      "value": null,
-      "shown": "n/a",
-      "pass": null
+      "value": 19.12,
+      "shown": "19.1 GB",
+      "pass": true
     },
     {
       "metric": "Longest unmasked run of a labeled target",
       "target": "<= 1 labeled frame",
-      "value": 0,
-      "shown": "0",
-      "pass": true
+      "value": 4,
+      "shown": "4",
+      "pass": false
     }
   ],
   "clips": [
     {
-      "clip": "synthetic",
-      "file": "synthetic.mp4",
-      "resolution": "1280x720",
-      "frames": 180,
-      "duration": 6.0,
+      "clip": "street_talk",
+      "file": "street_talk.mp4",
+      "resolution": "1920x1080",
+      "frames": 514,
+      "duration": 20.56,
       "errors": [],
-      "detector": "StubDetector",
+      "detector": "RoutedDetector",
+      "coverage": {
+        "ours": {
+          "recall": {
+            "face": 1.0,
+            "person": 0.9871794871794872
+          },
+          "boxes": {
+            "face": 156,
+            "person": 156
+          },
+          "hits": {
+            "face": 156,
+            "person": 154
+          },
+          "objects": {
+            "face_1": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_2": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_3": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_1": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_2": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_3": {
+              "category": "person",
+              "covered": 0.9615384615384616,
+              "longest_miss": 1
+            }
+          },
+          "over_blur": 0.1567897061223884
+        },
+        "fail_open": {
+          "recall": {
+            "face": 1.0,
+            "person": 0.9551282051282052
+          },
+          "boxes": {
+            "face": 156,
+            "person": 156
+          },
+          "hits": {
+            "face": 156,
+            "person": 149
+          },
+          "objects": {
+            "face_1": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_2": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_3": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_1": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_2": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "person_3": {
+              "category": "person",
+              "covered": 0.8653846153846154,
+              "longest_miss": 4
+            }
+          },
+          "over_blur": 0.15664577212428774
+        }
+      },
+      "fail_closed": {
+        "ours": {
+          "uncertain_keyframes": 255,
+          "doubled": 255,
+          "rate": 1.0
+        },
+        "fail_open": {
+          "uncertain_keyframes": 255,
+          "doubled": 0,
+          "rate": 0.0
+        }
+      },
+      "latency": {
+        "detect_s": 42.328,
+        "detect_ms_per_frame": 82.34987426947816,
+        "render_s": 5.261,
+        "render_ms_per_frame": 10.236055253196783,
+        "offline_speed": 0.4320310894562409
+      },
+      "requests": [
+        {
+          "text": "blur the woman in the salmon tee",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": false,
+            "missed": [
+              "person_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_3": 0.8461538461538461,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 14.244,
+            "tool_calls": 3,
+            "message": "Applied blur to 1 track(s) for: person. 1 of 15 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [
+              "person_3"
+            ],
+            "leaked": [
+              "person_1",
+              "person_2"
+            ],
+            "covered": {
+              "person_3": 0.8461538461538461,
+              "person_1": 1.0,
+              "person_2": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "person_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_3": 0.8461538461538461,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 14.375,
+            "tool_calls": 3,
+            "message": "Applied blur to 1 track(s) for: person. 1 of 15 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur the man in the denim shirt",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": false,
+            "missed": [
+              "person_2"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_2": 0.0,
+              "person_1": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 14.849,
+            "tool_calls": 3,
+            "message": "Applied blur to 5 track(s) for: person. 5 of 15 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_1",
+              "person_3"
+            ],
+            "covered": {
+              "person_2": 1.0,
+              "person_1": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "person_2"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_2": 0.0,
+              "person_1": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 13.911,
+            "tool_calls": 3,
+            "message": "Applied blur to 3 track(s) for: person. 3 of 15 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur the man in the navy tee",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 14.491,
+            "tool_calls": 3,
+            "message": "Applied blur to 4 track(s) for: person. 4 of 15 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_2",
+              "person_3"
+            ],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 14.358,
+            "tool_calls": 3,
+            "message": "Applied blur to 4 track(s) for: person. 4 of 15 person track(s) matched."
+          }
+        },
+        {
+          "text": "pixelate everyone",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": false,
+            "missed": [
+              "person_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 2,
+            "message": "Applied pixelate to 15 track(s) for: person."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [
+              "person_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "person_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 2,
+            "message": "Applied pixelate to 15 track(s) for: person."
+          }
+        },
+        {
+          "text": "blur everyone except the woman",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.0
+            },
+            "path": "llm",
+            "seconds": 23.035,
+            "tool_calls": 4,
+            "message": "Applied blur to 14 track(s) for: person. 14 of 15 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_3"
+            ],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.0
+            },
+            "path": "llm",
+            "seconds": 29.648,
+            "tool_calls": 4,
+            "message": "Applied blur to 14 track(s) for: person. 14 of 15 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur faces in the middle",
+          "before": [],
+          "window": [
+            8.2,
+            12.3
+          ],
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 3,
+            "message": "Applied blur to 4 track(s) for: face."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 3,
+            "message": "Applied blur to 4 track(s) for: face."
+          }
+        },
+        {
+          "text": "unblur the woman",
+          "before": [
+            "blur everyone"
+          ],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 14.25,
+            "tool_calls": 3,
+            "message": "Unmasked 6 track(s) for: person. 6 of 15 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_3"
+            ],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.8461538461538461
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 13.761,
+            "tool_calls": 3,
+            "message": "Unmasked 5 track(s) for: person. 5 of 15 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur the faces in the first 5 seconds",
+          "before": [],
+          "window": [
+            0.0,
+            5.0
+          ],
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 0.9230769230769231,
+              "face_2": 1.0,
+              "face_3": 0.9230769230769231
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 3,
+            "message": "Applied blur to 5 track(s) for: face."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 0.9230769230769231,
+              "face_2": 1.0,
+              "face_3": 0.9230769230769231
+            },
+            "path": "keyword",
+            "seconds": 0.002,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "face_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 0.9230769230769231,
+              "face_2": 1.0,
+              "face_3": 0.8461538461538461
+            },
+            "path": "template",
+            "seconds": 0.002,
+            "tool_calls": 3,
+            "message": "Applied blur to 5 track(s) for: face."
+          }
+        }
+      ]
+    },
+    {
+      "clip": "street_walk",
+      "file": "street_walk.mp4",
+      "resolution": "1280x720",
+      "frames": 221,
+      "duration": 8.84,
+      "errors": [],
+      "detector": "RoutedDetector",
       "coverage": {
         "ours": {
           "recall": {
             "face": 1.0,
             "license plate": 1.0,
-            "person": 1.0,
-            "screen": 1.0
+            "person": 1.0
           },
           "boxes": {
-            "face": 18,
-            "license plate": 18,
-            "person": 36,
-            "screen": 9
+            "face": 69,
+            "license plate": 10,
+            "person": 69
           },
           "hits": {
-            "face": 18,
-            "license plate": 18,
-            "person": 36,
-            "screen": 9
+            "face": 69,
+            "license plate": 10,
+            "person": 69
           },
           "objects": {
-            "license_plate_1": {
-              "category": "license plate",
+            "face_1": {
+              "category": "face",
               "covered": 1.0,
               "longest_miss": 0
             },
-            "face_1": {
+            "face_2": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_3": {
               "category": "face",
               "covered": 1.0,
               "longest_miss": 0
@@ -189,40 +729,67 @@
               "covered": 1.0,
               "longest_miss": 0
             },
-            "screen_1": {
-              "category": "screen",
+            "person_3": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_1": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_3": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_4": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_6": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_7": {
+              "category": "license plate",
               "covered": 1.0,
               "longest_miss": 0
             }
           },
-          "over_blur": 0.05221788194444445
+          "over_blur": 0.19066260001509663
         },
         "fail_open": {
           "recall": {
             "face": 1.0,
             "license plate": 1.0,
-            "person": 1.0,
-            "screen": 1.0
+            "person": 1.0
           },
           "boxes": {
-            "face": 18,
-            "license plate": 18,
-            "person": 36,
-            "screen": 9
+            "face": 69,
+            "license plate": 10,
+            "person": 69
           },
           "hits": {
-            "face": 18,
-            "license plate": 18,
-            "person": 36,
-            "screen": 9
+            "face": 69,
+            "license plate": 10,
+            "person": 69
           },
           "objects": {
-            "license_plate_1": {
-              "category": "license plate",
+            "face_1": {
+              "category": "face",
               "covered": 1.0,
               "longest_miss": 0
             },
-            "face_1": {
+            "face_2": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_3": {
               "category": "face",
               "covered": 1.0,
               "longest_miss": 0
@@ -237,33 +804,729 @@
               "covered": 1.0,
               "longest_miss": 0
             },
-            "screen_1": {
-              "category": "screen",
+            "person_3": {
+              "category": "person",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_1": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_3": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_4": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_6": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_7": {
+              "category": "license plate",
               "covered": 1.0,
               "longest_miss": 0
             }
           },
-          "over_blur": 0.05221788194444445
+          "over_blur": 0.19021621188103865
         }
       },
       "fail_closed": {
         "ours": {
-          "uncertain_keyframes": 0,
-          "doubled": 0,
-          "rate": null
+          "uncertain_keyframes": 140,
+          "doubled": 140,
+          "rate": 1.0
         },
         "fail_open": {
-          "uncertain_keyframes": 0,
+          "uncertain_keyframes": 140,
           "doubled": 0,
-          "rate": null
+          "rate": 0.0
         }
       },
       "latency": {
-        "detect_s": 0.018,
-        "detect_ms_per_frame": 0.0984477758821514,
-        "render_s": 2.515,
-        "render_ms_per_frame": 13.97410055829419,
-        "offline_speed": 2.3686778358671963
+        "detect_s": 23.304,
+        "detect_ms_per_frame": 105.44927753255243,
+        "render_s": 0.783,
+        "render_ms_per_frame": 3.545132849146338,
+        "offline_speed": 0.3669912967088851
+      },
+      "requests": [
+        {
+          "text": "blur all faces",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "person_3": 0.0,
+              "license_plate_1": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_6": 0.0,
+              "license_plate_7": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Applied blur to 3 track(s) for: face."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "person_3": 0.0,
+              "license_plate_1": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_6": 0.0,
+              "license_plate_7": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 0.9565217391304348,
+              "face_2": 0.9565217391304348,
+              "face_3": 0.9565217391304348,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "person_3": 0.0,
+              "license_plate_1": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_6": 0.0,
+              "license_plate_7": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Applied blur to 3 track(s) for: face."
+          }
+        },
+        {
+          "text": "blur the plates",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0,
+              "license_plate_7": 1.0,
+              "face_1": 0.0,
+              "face_2": 0.0,
+              "face_3": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Applied blur to 5 track(s) for: license plate."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0,
+              "license_plate_7": 1.0,
+              "face_1": 0.0,
+              "face_2": 0.0,
+              "face_3": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "person_3": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "license_plate_1": 1.0,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0,
+              "license_plate_7": 1.0,
+              "face_1": 0.0,
+              "face_2": 0.0,
+              "face_3": 0.0,
+              "person_1": 0.0,
+              "person_2": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Applied blur to 5 track(s) for: license plate."
+          }
+        },
+        {
+          "text": "blur the guy in the red hoodie",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_3": 1.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 9.177,
+            "tool_calls": 3,
+            "message": "Applied blur to 2 track(s) for: person. 2 of 11 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_1",
+              "person_2"
+            ],
+            "covered": {
+              "person_3": 1.0,
+              "person_1": 1.0,
+              "person_2": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_3": 1.0,
+              "person_1": 0.0,
+              "person_2": 0.0
+            },
+            "path": "template",
+            "seconds": 9.606,
+            "tool_calls": 3,
+            "message": "Applied blur to 2 track(s) for: person. 2 of 11 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur the woman",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_2": 1.0,
+              "person_1": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 9.845,
+            "tool_calls": 3,
+            "message": "Applied blur to 6 track(s) for: person. 6 of 11 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_1",
+              "person_3"
+            ],
+            "covered": {
+              "person_2": 1.0,
+              "person_1": 1.0,
+              "person_3": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_2": 1.0,
+              "person_1": 0.0,
+              "person_3": 0.0
+            },
+            "path": "template",
+            "seconds": 10.72,
+            "tool_calls": 3,
+            "message": "Applied blur to 3 track(s) for: person. 3 of 11 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur everyone except the guy in the red hoodie",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.0
+            },
+            "path": "llm",
+            "seconds": 30.078,
+            "tool_calls": 4,
+            "message": "Applied blur to 10 track(s) for: person. 10 of 11 person track(s) matched."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "person_3"
+            ],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "person_1": 1.0,
+              "person_2": 1.0,
+              "person_3": 0.0
+            },
+            "path": "llm",
+            "seconds": 19.008,
+            "tool_calls": 4,
+            "message": "Applied blur to 10 track(s) for: person. 10 of 11 person track(s) matched."
+          }
+        },
+        {
+          "text": "blur faces in the first 2 seconds",
+          "before": [],
+          "window": [
+            0.0,
+            2.0
+          ],
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 3,
+            "message": "Applied blur to 3 track(s) for: face."
+          },
+          "keyword": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "face_1",
+              "face_2",
+              "face_3"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 0.8333333333333334,
+              "face_2": 0.8333333333333334,
+              "face_3": 0.8333333333333334
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 3,
+            "message": "Applied blur to 3 track(s) for: face."
+          }
+        },
+        {
+          "text": "unblur the plates",
+          "before": [
+            "blur all plates and faces"
+          ],
+          "window": null,
+          "ours": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0,
+              "license_plate_1": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_6": 0.0,
+              "license_plate_7": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Unmasked 5 track(s) for: license plate."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [],
+            "leaked": [
+              "license_plate_1",
+              "license_plate_3",
+              "license_plate_4",
+              "license_plate_6",
+              "license_plate_7"
+            ],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 1.0,
+              "license_plate_1": 1.0,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0,
+              "license_plate_7": 1.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": true,
+            "missed": [],
+            "leaked": [],
+            "covered": {
+              "face_1": 0.9565217391304348,
+              "face_2": 0.9565217391304348,
+              "face_3": 0.9565217391304348,
+              "license_plate_1": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_6": 0.0,
+              "license_plate_7": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Unmasked 5 track(s) for: license plate."
+          }
+        }
+      ]
+    },
+    {
+      "clip": "street_plates",
+      "file": "street_plates.mp4",
+      "resolution": "1920x1080",
+      "frames": 325,
+      "duration": 13.0,
+      "errors": [],
+      "detector": "RoutedDetector",
+      "coverage": {
+        "ours": {
+          "recall": {
+            "face": 0.8392857142857143,
+            "license plate": 0.96875
+          },
+          "boxes": {
+            "face": 112,
+            "license plate": 32
+          },
+          "hits": {
+            "face": 94,
+            "license plate": 31
+          },
+          "objects": {
+            "license_plate_1": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_1": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_2": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_3": {
+              "category": "face",
+              "covered": 0.75,
+              "longest_miss": 3
+            },
+            "license_plate_2": {
+              "category": "license plate",
+              "covered": 0.9090909090909091,
+              "longest_miss": 1
+            },
+            "face_4": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_5": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_6": {
+              "category": "face",
+              "covered": 0.8333333333333334,
+              "longest_miss": 1
+            },
+            "face_9": {
+              "category": "face",
+              "covered": 0.7777777777777778,
+              "longest_miss": 1
+            },
+            "face_11": {
+              "category": "face",
+              "covered": 0.5555555555555556,
+              "longest_miss": 4
+            },
+            "license_plate_3": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_12": {
+              "category": "face",
+              "covered": 0.2,
+              "longest_miss": 2
+            },
+            "face_8": {
+              "category": "face",
+              "covered": 0.2,
+              "longest_miss": 4
+            },
+            "face_7": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_10": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_5": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_6": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_4": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_13": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            }
+          },
+          "over_blur": 0.0988109392536476
+        },
+        "fail_open": {
+          "recall": {
+            "face": 0.7857142857142857,
+            "license plate": 0.9375
+          },
+          "boxes": {
+            "face": 112,
+            "license plate": 32
+          },
+          "hits": {
+            "face": 88,
+            "license plate": 30
+          },
+          "objects": {
+            "license_plate_1": {
+              "category": "license plate",
+              "covered": 0.8,
+              "longest_miss": 1
+            },
+            "face_1": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_2": {
+              "category": "face",
+              "covered": 0.8947368421052632,
+              "longest_miss": 1
+            },
+            "face_3": {
+              "category": "face",
+              "covered": 0.75,
+              "longest_miss": 3
+            },
+            "license_plate_2": {
+              "category": "license plate",
+              "covered": 0.9090909090909091,
+              "longest_miss": 1
+            },
+            "face_4": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_5": {
+              "category": "face",
+              "covered": 0.8,
+              "longest_miss": 1
+            },
+            "face_6": {
+              "category": "face",
+              "covered": 0.8333333333333334,
+              "longest_miss": 1
+            },
+            "face_9": {
+              "category": "face",
+              "covered": 0.6666666666666666,
+              "longest_miss": 2
+            },
+            "face_11": {
+              "category": "face",
+              "covered": 0.3333333333333333,
+              "longest_miss": 4
+            },
+            "license_plate_3": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_12": {
+              "category": "face",
+              "covered": 0.2,
+              "longest_miss": 2
+            },
+            "face_8": {
+              "category": "face",
+              "covered": 0.2,
+              "longest_miss": 4
+            },
+            "face_7": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_10": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_5": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_6": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "license_plate_4": {
+              "category": "license plate",
+              "covered": 1.0,
+              "longest_miss": 0
+            },
+            "face_13": {
+              "category": "face",
+              "covered": 1.0,
+              "longest_miss": 0
+            }
+          },
+          "over_blur": 0.05673944304152637
+        }
+      },
+      "fail_closed": {
+        "ours": {
+          "uncertain_keyframes": 232,
+          "doubled": 232,
+          "rate": 1.0
+        },
+        "fail_open": {
+          "uncertain_keyframes": 232,
+          "doubled": 0,
+          "rate": 0.0
+        }
+      },
+      "latency": {
+        "detect_s": 32.396,
+        "detect_ms_per_frame": 99.68119675150284,
+        "render_s": 1.574,
+        "render_ms_per_frame": 4.842252565117983,
+        "offline_speed": 0.3826892459206222
       },
       "requests": [
         {
@@ -276,15 +1539,29 @@
             "leaked": [],
             "covered": {
               "license_plate_1": 1.0,
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0,
               "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "screen_1": 0.0
+              "face_2": 0.05263157894736842,
+              "face_3": 0.0,
+              "face_4": 0.0,
+              "face_5": 0.0,
+              "face_6": 0.0,
+              "face_7": 0.0,
+              "face_8": 0.0,
+              "face_9": 0.0,
+              "face_10": 0.0,
+              "face_11": 0.0,
+              "face_12": 0.0,
+              "face_13": 0.0
             },
             "path": "template",
-            "seconds": 0.003,
+            "seconds": 0.001,
             "tool_calls": 2,
-            "message": "Applied blur to 1 track(s) for: license plate."
+            "message": "Applied blur to 15 track(s) for: license plate."
           },
           "keyword": {
             "ok": true,
@@ -292,332 +1569,212 @@
             "leaked": [],
             "covered": {
               "license_plate_1": 1.0,
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0,
               "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "screen_1": 0.0
+              "face_2": 0.05263157894736842,
+              "face_3": 0.0,
+              "face_4": 0.0,
+              "face_5": 0.0,
+              "face_6": 0.0,
+              "face_7": 0.0,
+              "face_8": 0.0,
+              "face_9": 0.0,
+              "face_10": 0.0,
+              "face_11": 0.0,
+              "face_12": 0.0,
+              "face_13": 0.0
             },
             "path": "keyword",
-            "seconds": 0.003,
-            "tool_calls": 0,
-            "message": null
-          },
-          "fail_open": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "license_plate_1": 1.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "screen_1": 0.0
-            },
-            "path": "template",
-            "seconds": 0.003,
-            "tool_calls": 2,
-            "message": "Applied blur to 1 track(s) for: license plate."
-          }
-        },
-        {
-          "text": "pixelate every face and screen",
-          "before": [],
-          "window": null,
-          "ours": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "face_1": 1.0,
-              "screen_1": 1.0,
-              "license_plate_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0
-            },
-            "path": "template",
-            "seconds": 0.006,
-            "tool_calls": 4,
-            "message": "Applied pixelate to 2 track(s) for: face, screen."
-          },
-          "keyword": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "face_1": 1.0,
-              "screen_1": 1.0,
-              "license_plate_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0
-            },
-            "path": "keyword",
-            "seconds": 0.005,
-            "tool_calls": 0,
-            "message": null
-          },
-          "fail_open": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "face_1": 1.0,
-              "screen_1": 1.0,
-              "license_plate_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0
-            },
-            "path": "template",
-            "seconds": 0.005,
-            "tool_calls": 4,
-            "message": "Applied pixelate to 2 track(s) for: face, screen."
-          }
-        },
-        {
-          "text": "blur the person in the red shirt",
-          "before": [],
-          "window": null,
-          "ours": {
-            "ok": false,
-            "missed": [],
-            "leaked": [
-              "person_2"
-            ],
-            "covered": {
-              "person_1": 1.0,
-              "person_2": 1.0,
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "screen_1": 0.0
-            },
-            "path": "template",
-            "seconds": 0.003,
-            "tool_calls": 3,
-            "message": "Applied blur to 2 track(s) for: person."
-          },
-          "keyword": {
-            "ok": false,
-            "missed": [],
-            "leaked": [
-              "person_2"
-            ],
-            "covered": {
-              "person_1": 1.0,
-              "person_2": 1.0,
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "screen_1": 0.0
-            },
-            "path": "keyword",
-            "seconds": 0.003,
+            "seconds": 0.001,
             "tool_calls": 0,
             "message": null
           },
           "fail_open": {
             "ok": false,
             "missed": [
-              "person_1"
+              "license_plate_1"
             ],
             "leaked": [],
             "covered": {
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "license_plate_1": 0.0,
+              "license_plate_1": 0.8,
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0,
               "face_1": 0.0,
-              "screen_1": 0.0
+              "face_2": 0.0,
+              "face_3": 0.0,
+              "face_4": 0.0,
+              "face_5": 0.0,
+              "face_6": 0.0,
+              "face_7": 0.0,
+              "face_8": 0.0,
+              "face_9": 0.0,
+              "face_10": 0.0,
+              "face_11": 0.0,
+              "face_12": 0.0,
+              "face_13": 0.0
             },
             "path": "template",
-            "seconds": 0.0,
+            "seconds": 0.001,
             "tool_calls": 2,
-            "message": "I looked for person but found nothing to change."
+            "message": "Applied blur to 15 track(s) for: license plate."
           }
         },
         {
-          "text": "black box the screen in the last 2 seconds",
-          "before": [],
-          "window": [
-            4.0,
-            6.0
-          ],
-          "ours": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "screen_1": 1.0,
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0
-            },
-            "path": "template",
-            "seconds": 0.003,
-            "tool_calls": 3,
-            "message": "Applied box to 1 track(s) for: screen."
-          },
-          "keyword": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "screen_1": 1.0,
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0
-            },
-            "path": "keyword",
-            "seconds": 0.003,
-            "tool_calls": 0,
-            "message": null
-          },
-          "fail_open": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "screen_1": 1.0,
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0
-            },
-            "path": "template",
-            "seconds": 0.003,
-            "tool_calls": 3,
-            "message": "Applied box to 1 track(s) for: screen."
-          }
-        },
-        {
-          "text": "blur both people",
+          "text": "blur faces and plates",
           "before": [],
           "window": null,
           "ours": {
-            "ok": true,
-            "missed": [],
+            "ok": false,
+            "missed": [
+              "face_3",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
             "leaked": [],
             "covered": {
-              "person_1": 1.0,
-              "person_2": 1.0,
-              "license_plate_1": 0.0,
-              "screen_1": 0.0
-            },
-            "path": "template",
-            "seconds": 0.003,
-            "tool_calls": 2,
-            "message": "Applied blur to 2 track(s) for: person."
-          },
-          "keyword": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "person_1": 1.0,
-              "person_2": 1.0,
-              "license_plate_1": 0.0,
-              "screen_1": 0.0
-            },
-            "path": "keyword",
-            "seconds": 0.003,
-            "tool_calls": 0,
-            "message": null
-          },
-          "fail_open": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
-              "person_1": 1.0,
-              "person_2": 1.0,
-              "license_plate_1": 0.0,
-              "screen_1": 0.0
-            },
-            "path": "template",
-            "seconds": 0.003,
-            "tool_calls": 2,
-            "message": "Applied blur to 2 track(s) for: person."
-          }
-        },
-        {
-          "text": "unblur the faces",
-          "before": [
-            "blur all plates and faces"
-          ],
-          "window": null,
-          "ours": {
-            "ok": true,
-            "missed": [],
-            "leaked": [],
-            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 1.0,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.7777777777777778,
+              "face_10": 1.0,
+              "face_11": 0.5555555555555556,
+              "face_12": 0.2,
+              "face_13": 1.0,
               "license_plate_1": 1.0,
-              "face_1": 0.0
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0
             },
             "path": "template",
-            "seconds": 0.002,
-            "tool_calls": 2,
-            "message": "Unmasked 1 track(s) for: face."
+            "seconds": 0.003,
+            "tool_calls": 4,
+            "message": "Applied blur to 123 track(s) for: license plate, face."
           },
           "keyword": {
             "ok": false,
-            "missed": [],
-            "leaked": [
-              "face_1"
+            "missed": [
+              "face_3",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
             ],
+            "leaked": [],
             "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 1.0,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.7777777777777778,
+              "face_10": 1.0,
+              "face_11": 0.5555555555555556,
+              "face_12": 0.2,
+              "face_13": 1.0,
               "license_plate_1": 1.0,
-              "face_1": 1.0
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0
             },
             "path": "keyword",
-            "seconds": 0.003,
+            "seconds": 0.002,
             "tool_calls": 0,
             "message": null
           },
           "fail_open": {
-            "ok": true,
-            "missed": [],
+            "ok": false,
+            "missed": [
+              "face_2",
+              "face_3",
+              "face_5",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12",
+              "license_plate_1"
+            ],
             "leaked": [],
             "covered": {
-              "license_plate_1": 1.0,
-              "face_1": 0.0
+              "face_1": 1.0,
+              "face_2": 0.8947368421052632,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 0.8,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.6666666666666666,
+              "face_10": 1.0,
+              "face_11": 0.3333333333333333,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 0.8,
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0
             },
             "path": "template",
             "seconds": 0.003,
-            "tool_calls": 2,
-            "message": "Unmasked 1 track(s) for: face."
+            "tool_calls": 4,
+            "message": "Applied blur to 123 track(s) for: license plate, face."
           }
         },
         {
-          "text": "make it look cinematic",
+          "text": "blur the plates in the last 3 seconds",
           "before": [],
-          "window": null,
+          "window": [
+            10.0,
+            13.0
+          ],
           "ours": {
             "ok": true,
             "missed": [],
             "leaked": [],
             "covered": {
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "screen_1": 0.0
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0
             },
-            "path": "clarify",
-            "seconds": 0.0,
-            "tool_calls": 0,
-            "message": "I couldn't tell what to hide. Try e.g. \"blur all license plates\" or draw a box."
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 3,
+            "message": "Applied blur to 5 track(s) for: license plate."
           },
           "keyword": {
             "ok": true,
             "missed": [],
             "leaked": [],
             "covered": {
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "screen_1": 0.0
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0
             },
             "path": "keyword",
-            "seconds": 0.0,
+            "seconds": 0.001,
             "tool_calls": 0,
             "message": null
           },
@@ -626,16 +1783,259 @@
             "missed": [],
             "leaked": [],
             "covered": {
-              "license_plate_1": 0.0,
-              "face_1": 0.0,
-              "person_1": 0.0,
-              "person_2": 0.0,
-              "screen_1": 0.0
+              "license_plate_4": 1.0,
+              "license_plate_6": 1.0
             },
-            "path": "clarify",
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 3,
+            "message": "Applied blur to 5 track(s) for: license plate."
+          }
+        },
+        {
+          "text": "undo",
+          "before": [
+            "blur all faces",
+            "blur all plates"
+          ],
+          "window": null,
+          "ours": {
+            "ok": false,
+            "missed": [
+              "face_3",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 1.0,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.7777777777777778,
+              "face_10": 1.0,
+              "face_11": 0.5555555555555556,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 0.0,
+              "license_plate_2": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_5": 0.0,
+              "license_plate_6": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 1,
+            "message": "Undid op_2."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [
+              "face_3",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
+            "leaked": [
+              "license_plate_1",
+              "license_plate_2",
+              "license_plate_3",
+              "license_plate_4",
+              "license_plate_5",
+              "license_plate_6"
+            ],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 1.0,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.7777777777777778,
+              "face_10": 1.0,
+              "face_11": 0.5555555555555556,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 1.0,
+              "license_plate_2": 0.9090909090909091,
+              "license_plate_3": 1.0,
+              "license_plate_4": 1.0,
+              "license_plate_5": 1.0,
+              "license_plate_6": 1.0
+            },
+            "path": "keyword",
             "seconds": 0.0,
             "tool_calls": 0,
-            "message": "I couldn't tell what to hide. Try e.g. \"blur all license plates\" or draw a box."
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "face_2",
+              "face_3",
+              "face_5",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 0.8947368421052632,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 0.8,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.6666666666666666,
+              "face_10": 1.0,
+              "face_11": 0.3333333333333333,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 0.0,
+              "license_plate_2": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_5": 0.0,
+              "license_plate_6": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 1,
+            "message": "Undid op_2."
+          }
+        },
+        {
+          "text": "black box every face",
+          "before": [],
+          "window": null,
+          "ours": {
+            "ok": false,
+            "missed": [
+              "face_3",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 1.0,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.7777777777777778,
+              "face_10": 1.0,
+              "face_11": 0.5555555555555556,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 0.0,
+              "license_plate_2": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_5": 0.0,
+              "license_plate_6": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Applied box to 108 track(s) for: face."
+          },
+          "keyword": {
+            "ok": false,
+            "missed": [
+              "face_3",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 1.0,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 1.0,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.7777777777777778,
+              "face_10": 1.0,
+              "face_11": 0.5555555555555556,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 0.0,
+              "license_plate_2": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_5": 0.0,
+              "license_plate_6": 0.0
+            },
+            "path": "keyword",
+            "seconds": 0.001,
+            "tool_calls": 0,
+            "message": null
+          },
+          "fail_open": {
+            "ok": false,
+            "missed": [
+              "face_2",
+              "face_3",
+              "face_5",
+              "face_6",
+              "face_8",
+              "face_9",
+              "face_11",
+              "face_12"
+            ],
+            "leaked": [],
+            "covered": {
+              "face_1": 1.0,
+              "face_2": 0.8947368421052632,
+              "face_3": 0.75,
+              "face_4": 1.0,
+              "face_5": 0.8,
+              "face_6": 0.8333333333333334,
+              "face_7": 1.0,
+              "face_8": 0.2,
+              "face_9": 0.6666666666666666,
+              "face_10": 1.0,
+              "face_11": 0.3333333333333333,
+              "face_12": 0.2,
+              "face_13": 1.0,
+              "license_plate_1": 0.0,
+              "license_plate_2": 0.0,
+              "license_plate_3": 0.0,
+              "license_plate_4": 0.0,
+              "license_plate_5": 0.0,
+              "license_plate_6": 0.0
+            },
+            "path": "template",
+            "seconds": 0.001,
+            "tool_calls": 2,
+            "message": "Applied box to 108 track(s) for: face."
           }
         }
       ]
