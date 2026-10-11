@@ -111,6 +111,32 @@ def test_except_one_person_breaks_a_tie_by_screen_presence():
     assert masked == ["t1", "t3"]  # the woman on screen the whole clip (t2) stays visible, not the 1 s passer-by
 
 
+def test_except_one_face_weighs_a_tie_by_faces_not_a_whole_person():
+    """"All faces but mine": a face with no person found is asked about by itself, the others through their person.
+    A tie is weighed by the faces each answer stands for, so the big face in focus is spared, not a passer-by whose
+    whole person box is bigger than that face."""
+    from types import SimpleNamespace as NS
+    kf = lambda n, box: [NS(f=f, box=box) for f in range(n)]  # noqa: E731
+    tracks = {"f1": NS(keyframes=kf(400, (800, 100, 920, 250))),  # mine: a big face, no person found for it
+              "f2": NS(keyframes=kf(300, (60, 400, 90, 440))),    # a passer-by's small face
+              "p2": NS(keyframes=kf(300, (40, 380, 160, 680)))}  # her whole person box
+    s = FakeSession(owner={"f2": "p2"})
+    s.tracks = NS(get=tracks.get)
+    masked = []
+
+    def call(name, args):
+        if name == "find_objects":
+            return [{"track_id": t} for t in ("f1", "f2")]
+        if name == "check_attribute":
+            return [{"track_id": i, "answer": "yes", "p_yes": 1.0} for i in args["track_ids"]]
+        if name == "add_masks":
+            masked.extend(args["track_ids"])
+        return "op"
+    plan = planner.Plan(targets=[planner.Target("face", exclude=["Is this a person wearing black?"], one=True)])
+    planner.execute(plan, s, call)
+    assert masked == ["f2"]
+
+
 def test_a_time_phrase_after_in_is_not_clothing():
     from censor.agent import intents
     assert intents.parse("blur the woman in the first 3 seconds").attribute_questions == ["Is this a woman?"]

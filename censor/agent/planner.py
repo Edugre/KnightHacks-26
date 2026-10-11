@@ -178,8 +178,11 @@ def _filter(s: Session, call, t: Target, ids: list[str]) -> tuple[list[str], str
         spared = {a for a, res in got.items() if any(x == "yes" for x, _ in res)}  # unknown stays masked: fail closed
         if t.one and spared:  # "but the lady": only the most likely one, not every passer-by who might be
             # A tie (the VLM saturates at 1.0) goes to the person the video is about, the most screen time x size,
-            # not a passer-by seen for a second: on street_talk the woman and a 1 s background track both got 1.0
-            spared = {max(spared, key=lambda a: (round(max(p for _, p in got[a]), 2), _presence(s, a)))}
+            # not a passer-by seen for a second: on street_talk the woman and a 1 s background track both got 1.0.
+            # Presence counts the found tracks each answer stands for, so a face asked about through its person is
+            # weighed by its face, not by the person's whole box; sorted ids settle the rest instead of set order.
+            presence = {a: sum(_presence(s, i) for i in ids if (owner.get(i) or i) == a) for a in spared}
+            spared = {max(sorted(spared), key=lambda a: (round(max(p for _, p in got[a]), 2), presence[a]))}
         keep = {i for i in keep if (owner.get(i) or i) not in spared}
     left = [i for i in ids if i in keep]
     return left, f"{len(left)} of {len(ids)} {t.object} track(s) matched."
