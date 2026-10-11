@@ -345,3 +345,114 @@ def test_run_without_egoblur_models_exits_2(tmp_path, monkeypatch, capsys):
         main(["run", str(clip), "--out", str(tmp_path / "o.mp4"), "--report", str(tmp_path / "o.json")])
     assert e.value.code == 2
     assert "EgoBlur" in capsys.readouterr().err
+
+
+# ---- run --stub without a sidecar: YuNet ----------------------------------------------------------
+
+def _clip_without_sidecar(tmp_path: Path) -> Path:
+    clip = tmp_path / "synthetic.mp4"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "make_test_clip.py"), str(clip), "3"], check=True)
+    Path(f"{clip}.tracks.json").unlink()
+    return clip
+
+
+def _run_args(clip: Path, tmp_path: Path, *extra: str) -> list[str]:
+    return ["run", str(clip), "--stub", "--seconds", "1.5", "--delay", "0.3", "--out", str(tmp_path / "o.mp4"),
+            "--report", str(tmp_path / "o.json"), *extra]
+
+
+def test_stub_source_prefers_sidecar_then_flag_then_env(tmp_path, monkeypatch):
+    import argparse
+    import censor.live_cli as cli
+    clip = tmp_path / "c.mp4"
+    a = argparse.Namespace(clip=str(clip), yunet=None)
+    monkeypatch.delenv("CENSOR_YUNET", raising=False)
+    assert cli._stub_source(a) == ("none", None)
+    monkeypatch.setenv("CENSOR_YUNET", "/env.onnx")
+    assert cli._stub_source(a) == ("yunet", "/env.onnx")
+    a.yunet = "/flag.onnx"  # the flag wins over the env var
+    assert cli._stub_source(a) == ("yunet", "/flag.onnx")
+    Path(f"{clip}.tracks.json").write_text("{}")  # a sidecar wins over both
+    assert cli._stub_source(a) == ("sidecar", None)
+
+
+def test_build_detect_stub_without_sidecar_builds_yunet_from_the_flag(tmp_path, monkeypatch):
+    import argparse
+    import types
+    import censor.live as live
+    import censor.live_cli as cli
+    seen = []
+    monkeypatch.setattr(live, "yunet_detect", lambda path, score=0.6: seen.append(path) or "YUNET")
+    monkeypatch.setenv("CENSOR_YUNET", "/env.onnx")
+    a = argparse.Namespace(clip=str(tmp_path / "c.mp4"), stub=True, yunet="/flag.onnx")
+    src = types.SimpleNamespace(height=1080, n_frames=90)
+    assert cli._build_detect(a, src, (1280, 720)) == "YUNET"
+    a.yunet = None
+    assert cli._build_detect(a, src, (1280, 720)) == "YUNET"
+    assert seen == ["/flag.onnx", "/env.onnx"]
+
+
+def test_build_detect_stub_with_a_sidecar_never_loads_yunet(tmp_path, monkeypatch):
+    import argparse
+    import types
+    import censor.live as live
+    import censor.live_cli as cli
+    monkeypatch.setattr(live, "yunet_detect", lambda path, score=0.6: pytest.fail("YuNet loaded despite a sidecar"))
+    monkeypatch.setattr(live, "sidecar_detect", lambda path, src_h, live_h, n_frames: ("SIDECAR", Path(path).name))
+    (tmp_path / "c.mp4.tracks.json").write_text("{}")
+    a = argparse.Namespace(clip=str(tmp_path / "c.mp4"), stub=True, yunet="/flag.onnx")
+    src = types.SimpleNamespace(height=1080, n_frames=90)
+    assert cli._build_detect(a, src, (1280, 720)) == ("SIDECAR", "c.mp4.tracks.json")
+
+
+@pytest.mark.skipif(shutil.which(FFMPEG) is None, reason="ffmpeg not on PATH")
+def test_run_stub_without_sidecar_or_yunet_exits_2_with_the_hint(tmp_path, monkeypatch, capsys):
+    monkeypatch.delenv("CENSOR_YUNET", raising=False)
+    clip = _clip_without_sidecar(tmp_path)
+    with pytest.raises(SystemExit) as e:
+        main(_run_args(clip, tmp_path))
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "tracks.json" in err and "CENSOR_YUNET" in err and "--yunet" in err and "Traceback" not in err
+
+
+@pytest.mark.skipif(shutil.which(FFMPEG) is None, reason="ffmpeg not on PATH")
+def test_run_stub_with_a_missing_yunet_file_exits_2_in_one_line(tmp_path, monkeypatch, capsys):
+    pytest.importorskip("censor.live")
+    monkeypatch.delenv("CENSOR_YUNET", raising=False)
+    clip = _clip_without_sidecar(tmp_path)
+    missing = tmp_path / "nope.onnx"
+    with pytest.raises(SystemExit) as e:
+        main(_run_args(clip, tmp_path, "--yunet", str(missing)))
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert str(missing) in err and "opencv_zoo" in err
+    assert "Traceback" not in err and len(err.strip().splitlines()) == 1
+
+
+@pytest.mark.skipif(shutil.which(FFMPEG) is None, reason="ffmpeg not on PATH")
+def test_run_stub_with_yunet_from_the_env_reaches_the_engine(tmp_path, monkeypatch):
+    import censor.live as live
+    clip = _clip_without_sidecar(tmp_path)
+    monkeypatch.setenv("CENSOR_YUNET", "/env.onnx")
+    seen = []
+
+    def fake_yunet(path, score=0.6):
+        seen.append(path)
+        return lambda clip_f, frame: {"face": [((10.0, 10.0, 50.0, 50.0), 0.9)], "license plate": []}
+
+    monkeypatch.setattr(live, "yunet_detect", fake_yunet)
+    with pytest.raises(SystemExit) as e:
+        main(_run_args(clip, tmp_path))
+    assert e.value.code == 0 and seen == ["/env.onnx"]
+    doc = json.loads((tmp_path / "o.json").read_text())
+    assert doc["frames"] and any(fr["rects"] for fr in doc["frames"])
+
+
+def test_yunet_flag_without_stub_exits_2(tmp_path, capsys):
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"")
+    with pytest.raises(SystemExit) as e:
+        main(["run", str(clip), "--yunet", "m.onnx", "--out", str(tmp_path / "o.mp4"), "--report", str(tmp_path / "o.json")])
+    assert e.value.code == 2
+    assert "--stub" in capsys.readouterr().err

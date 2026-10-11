@@ -4,7 +4,11 @@ Included by censor.server.app only when CENSOR_LIVE=1 (the replay puts ~100% loa
 :8000 never exposes /api/live/start.
 
   POST /api/live/start   {"clip": str, "height": 360..1080 = 720}  -> 202 + stats; warms the detectors in the background
-                         404 unknown clip, 409 already running, 503 no EgoBlur models (not in stub mode), 400 stub clip without sidecar
+                         404 unknown clip, 409 already running, 503 no EgoBlur models (not in stub mode), 400 stub clip with
+                         neither a sidecar nor CENSOR_YUNET
+                         stub mode (CENSOR_STUB=1, no GPU) masks a clip with its <clip>.mp4.tracks.json sidecar when there is one,
+                         else with OpenCV's YuNet faces when CENSOR_YUNET names the ONNX file; the 202 / stats of a stub clip
+                         run then carry "detector_kind": "sidecar" | "yunet" (real-mode clip runs carry none)
                          clip "camera" is the browser's own camera, not a sample file: the page pushes frames (no sidecar, no file
                          lookup) and the 202 / stats carry "detector_kind": "egoblur" | "yunet" | "none" ("none": nothing is masked)
   POST /api/live/push    one JPEG as the raw request body (camera runs only), header X-Live-Run must be the run id
@@ -58,7 +62,7 @@ ENGINE_DIED = "engine stopped unexpectedly; see the server log"
 _lock = threading.Lock()
 # phase: idle | warming | running. gen counts starts and stops, so a warm-up that was stopped meanwhile discards its
 # engine. error: why the last start failed, shown by /stats once the phase is back to idle. detector_kind: what masks a
-# camera run ("egoblur" | "yunet" | "none"), None for clips. last_poll: the last accepted /frame poll or /push.
+# camera run ("egoblur" | "yunet" | "none") or a stub-mode clip ("sidecar" | "yunet"), None for real-mode clips. last_poll: the last accepted /frame poll or /push.
 _state: dict = {"phase": "idle", "replay": None, "last_poll": 0.0, "clip": None, "error": None, "gen": 0,
                 "detector_kind": None}
 _watchdog: threading.Thread | None = None
@@ -104,6 +108,14 @@ def _camera_detector_kind(stub: bool) -> str:
     return "yunet" if os.environ.get("CENSOR_YUNET") else "none"
 
 
+def _stub_clip_detector_kind(sidecar: Path) -> str | None:
+    """What masks a stub-mode clip: its sidecar when it exists (that wins), else YuNet when CENSOR_YUNET is set, else
+    None (nothing can mask it). /start and make_replay both ask, so they never disagree."""
+    if sidecar.exists():
+        return "sidecar"
+    return "yunet" if os.environ.get("CENSOR_YUNET") else None
+
+
 def _make_camera_replay(height: int, stub: bool) -> LiveReplay:
     """The push-mode engine for the browser's camera. Real mode warms EgoBlur at the 16:9 size the page sends; stub mode
     uses OpenCV's YuNet face detector when CENSOR_YUNET names the ONNX file, else detects nothing."""
@@ -122,20 +134,34 @@ def _make_camera_replay(height: int, stub: bool) -> LiveReplay:
 
 def make_replay(clip_path: str, height: int, stub: bool) -> LiveReplay:
     """Build the engine for one clip (tests replace this with a fake). Real mode loads EgoBlur and warms it at the
-    live size before the clock starts; stub mode replays the clip's tracks.json sidecar, no GPU. `clip_path == "camera"`
-    builds a push-mode engine instead (see _make_camera_replay)."""
+    live size before the clock starts; stub mode (no GPU) replays the clip's tracks.json sidecar if it has one, else
+    runs YuNet from CENSOR_YUNET on every frame. `clip_path == "camera"` builds a push-mode engine instead (see
+    _make_camera_replay)."""
     if clip_path == CAMERA:
         return _make_camera_replay(height, stub)
     from censor.core.video import probe
     from censor.live import LiveReplay, egoblur_detect, sidecar_detect
 
     if stub:
-        v = probe(clip_path)
-        detect = sidecar_detect(Path(f"{clip_path}.tracks.json"), src_h=v.height, live_h=height, n_frames=v.n_frames)
+        sidecar = Path(f"{clip_path}.tracks.json")
+        kind = _stub_clip_detector_kind(sidecar)
+        if kind == "sidecar":
+            v = probe(clip_path)
+            detect = sidecar_detect(sidecar, src_h=v.height, live_h=height, n_frames=v.n_frames)
+        elif kind == "yunet":
+            from censor.live import yunet_detect
+
+            detect = yunet_detect(os.environ["CENSOR_YUNET"])
+        else:
+            raise FileNotFoundError(_stub_needs(Path(clip_path).name))
         return LiveReplay(clip_path, detect, height=height)
     v = probe(clip_path)
     det = _detector_for((height, _even(v.width * height / v.height)))
     return LiveReplay(clip_path, egoblur_detect(det.infer), height=height)
+
+
+def _stub_needs(clip_name: str) -> str:
+    return f"stub mode needs {clip_name}.tracks.json next to the clip, or CENSOR_YUNET=<onnx> for faces"
 
 
 def _stub_mode() -> bool:
@@ -247,11 +273,15 @@ def start(body: StartIn):
             raise HTTPException(409, "a live replay is already running; stop it first")
         if not stub and not egoblur_available():
             raise HTTPException(503, f"EgoBlur models not found in {EGOBLUR_DIR}; live replay needs them")
-        if stub and not camera and not Path(f"{src}.tracks.json").exists():
-            raise HTTPException(400, f"stub mode needs {src.name}.tracks.json next to the clip")
+        kind = None  # real-mode clips carry no detector_kind
+        if camera:
+            kind = _camera_detector_kind(stub)
+        elif stub:
+            kind = _stub_clip_detector_kind(Path(f"{src}.tracks.json"))
+            if kind is None:
+                raise HTTPException(400, _stub_needs(src.name))
         gen = _state["gen"] + 1
-        _state.update(phase="warming", replay=None, clip=body.clip, error=None, gen=gen,
-                      detector_kind=_camera_detector_kind(stub) if camera else None)
+        _state.update(phase="warming", replay=None, clip=body.clip, error=None, gen=gen, detector_kind=kind)
         stats = _stats_locked()
     _ensure_watchdog()
     threading.Thread(target=_warm_and_run, args=(gen, CAMERA if camera else str(src), body.height, stub), daemon=True,
