@@ -57,7 +57,23 @@ Every number we report comes from `bench/run_bench.py`, which writes `bench/repo
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\run.ps1 bench    # Windows laptop: stub detector on the synthetic clip
 ```
-Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), labels live in `bench/labels/<clip>.json` (every 10th frame) and test requests in `bench/requests.yaml`. Options: `python -m bench.run_bench --help`. The stub detector replays ground truth, so on the synthetic clip the report checks the plumbing, not detection quality.
+Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored; `bash scripts/fetch_clips.sh` downloads the three Pexels clips), labels live in `bench/labels/<clip>.json` (every 10th frame) and test requests in `bench/requests.yaml`. Options: `python -m bench.run_bench --help`. The stub detector replays ground truth, so on the synthetic clip the report checks the plumbing, not detection quality.
+
+**What's labeled.** All three real clips, every 10th frame, every frame confirmed by a person (only confirmed frames are scored). Each clip's `notes` in the manifest say who each label id is and what isn't labeled; the `desc` of each object in the label file says the same.
+
+| Clip | Frames | Faces | Persons | Plates |
+|---|---|---|---|---|
+| `street_walk` | 23 | 3 people in focus | the same 3 | 5 |
+| `street_plates` | 33 | the 13 largest only, not the whole crowd | not labeled | 6 |
+| `street_talk` | 52 | 3 | the same 3 | none (side-on, unreadable) |
+
+Read before quoting a number: the face labels are **head** boxes (hair to chin), while EgoBlur masks the face, so a fully masked face can land just under the 90% coverage that counts as covered and face recall reads low (IMPLEMENTATION.md open item 3). On `street_plates`, person recall and over-blur mean nothing, because persons aren't labeled there. How the labels were made: IMPLEMENTATION.md open item 7.
+
+**The request success rate (target: at least 15 of 20).** `bench/requests.yaml` has 7 requests on the synthetic clip and 20 on the real clips (7 / 6 / 7 on walk / plates / talk), each naming the label ids that must end up masked (`must_mask`) and must stay visible (`must_not_mask`), with an optional time `window` and `before` requests applied first (for "unblur" and "undo"). Score the 20 on the real clips only, with the model server running, and keep the tracked report files untouched while trying things:
+```bash
+python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk --out-dir /tmp/bench
+```
+Without `--clip`, the synthetic requests are pooled into the same count, and YOLOE finds nothing in the synthetic clip. Without the model server, the two "everyone except ..." requests read as "only ..." and fail. Two more can fail for reasons in the app, not the labels: "unblur the woman" after "blur everyone" (on unblur, an unsure vision answer unmasks that person) and "undo" on `street_plates` if its "blur all plates" step finds nothing.
 
 **Reviewing detections and masks (any CUDA GPU, including a laptop):** `bench/review.py` caches EgoBlur on every frame of a clip, then replays the app's track rules in milliseconds. `python -m bench.review detect <clip>` (3 min for a 13 s 1080p clip on an RTX 3050 Ti), `candidates <clip> --cat plate --min-len 3` writes crop sheets of every candidate track to `data/review/<clip>/`, `label <clip> --cat plate --real 0 36 ...` saves the real ones to `bench/labels/<clip>.plate.json`, `score <clip> --cat plate` gives per-plate masking and over-blur, and `frames <clip> --frames 0 60 120` draws detections and masks. On a Windows laptop with an NVIDIA GPU: `uv pip install --python .venv\Scripts\python.exe torch torchvision --index-url https://download.pytorch.org/whl/cu126`, and put the two EgoBlur `.jit` files in `~/datasets/egoblur/`.
 
@@ -73,7 +89,16 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
    python -m bench.label_server bench/clips/<id>.mp4      # http://localhost:8020; Windows: .venv\Scripts\python.exe -m ...
    ```
    Optional head start on the GPU server: `python3 -m bench.gt prelabel bench/clips/<id>.mp4` writes detector drafts. They are not scored until you confirm each frame, so check every frame for objects the detector missed.
-4. Add requests for the clip to `bench/requests.yaml` (20 across the real clips is the target), then commit the labels, manifest and requests.
+
+   How to label so the scores mean something:
+   - **Box what is visible, clamped to the frame.** An object counts as masked when 90% of its box is covered, so a box that includes hidden parts is one a perfect system still misses. For faces, box the face (forehead to chin, ear to ear), not the whole head.
+   - **Confirm empty frames too.** A confirmed frame with no boxes says "nothing here"; `Enter` confirms every category on the frame at once.
+   - **One id per real object across frames**, and a `desc` that requests can be written from: `man, red hoodie`, `woman, salmon tee`; faces `face, man, red hoodie`; plates `plate, UK 2189, red taxi` or `plate, unreadable, blue car left`; people never named in requests `background, ...`.
+   - **Type the description before clicking `+ Add`** (the field is read and cleared on Add). After picking a category, click the picture before using keys: the dropdown keeps focus and swallows them.
+   - **`Del` or `Backspace` deletes the selected box** whenever the cursor isn't in a text field. Deleting a whole object (×) and merging two objects take two clicks.
+   - **`C` copies every box from the previous labeled frame, whatever its category**: delete any that left the picture before you confirm.
+   - **One open tab per clip, and a fresh tab after restarting the server.** The page saves its whole copy of the labels on `Enter` or `S`, so an old tab overwrites newer work (and two clips of the same size can even overwrite each other).
+4. Add requests for the clip to `bench/requests.yaml` (20 across the real clips is the target), then commit the labels, manifest and requests. Name ids from the saved file, not from the order you added them (deleting and merging leave gaps). Every id in a request must have a confirmed box (inside the `window`, if there is one), or the whole bench run stops with an error that names it.
 
 ## Layout
 

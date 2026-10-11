@@ -3,7 +3,9 @@
 #   must_not_mask  gt_ids that must stay visible: covered on <= 10% of their labeled frames inside `window`
 #   window         optional [start_s, end_s]; only labeled frames inside it are checked (default: whole clip)
 #   before         optional requests applied first and not scored, e.g. blur something, then "unblur ..."
-# Target (IMPLEMENTATION.md section 6): 20 requests over the real clips, at least 15 correct.
+# Target (IMPLEMENTATION.md section 6): 20 requests over the real clips, at least 15 correct. Score them alone:
+#   python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk
+# Every id named here must have a confirmed label box (inside `window`, if set), or the run stops with an error.
 #
 # Synthetic clip objects: license_plate_1 (moving plate), face_1, person_1 (red), person_2 (blue),
 # screen_1 (second half only, 3.0 to 6.0 s).
