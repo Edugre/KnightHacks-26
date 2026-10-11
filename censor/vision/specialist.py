@@ -26,7 +26,12 @@ from censor.core.tracks import Keyframe, Track, TrackStore
 from censor.core.video import frames
 
 EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets" / "egoblur"))
-EGOBLUR_FILES = {"face": "ego_blur_face_gen1.jit", "license plate": "ego_blur_lp_gen1.jit"}
+# Which model file each category uses. Gen2 files (ego_blur_face_gen2.jit, ego_blur_lp_gen2.jit) load too; see
+# DETECTOR_OPTIONS.md item 1 for how they compare before switching.
+EGOBLUR_FILES = {"face": os.environ.get("CENSOR_EGOBLUR_FACE", "ego_blur_face_gen1.jit"),
+                 "license plate": os.environ.get("CENSOR_EGOBLUR_LP", "ego_blur_lp_gen1.jit")}
+# Gen2 models don't resize their input; 0 runs them at full resolution, N resizes the short side to N first.
+EGOBLUR_GEN2_SHORT = int(os.environ.get("CENSOR_EGOBLUR_GEN2_SHORT", "0"))
 EGOBLUR_CONF = float(os.environ.get("CENSOR_EGOBLUR_CONF", "0.1"))
 EGOBLUR_EVERY = int(os.environ.get("CENSOR_EGOBLUR_EVERY", "3"))
 # fp16 on the GPU: 0.147 -> 0.049 s per 1080p frame on the R9700 with the same boxes (mean IoU 0.999 faces,
@@ -75,28 +80,58 @@ Infer = Callable[[np.ndarray], list[tuple[Box, float]]]  # BGR frame -> [(xyxy, 
 
 
 def load_egoblur(model_dir: Optional[Path] = None, device: str = "cuda", nms_iou: float = 0.3,
-                 fp16: Optional[bool] = None) -> dict[str, Infer]:
-    """Meta's Gen1 TorchScript models, called the way its demo script does: BGR uint8 CHW in,
-    (boxes, labels, scores, dims) out, then NMS. On the GPU they run under fp16 autocast unless
+                 fp16: Optional[bool] = None, files: Optional[dict[str, str]] = None) -> dict[str, Infer]:
+    """Meta's TorchScript models. Gen1 is called the way its demo script does: BGR uint8 CHW in,
+    (boxes, labels, scores, dims) out. Gen2 is a Detectron2 model: a list of {"image": BGR float CHW} in,
+    instances out, no resizing inside. Both get NMS after. On the GPU they run under fp16 autocast unless
     CENSOR_EGOBLUR_FP16=0."""
+    import cv2
     import torch
-    import torchvision
+    import torchvision  # registers torchvision::nms, which both models call
     model_dir = model_dir or EGOBLUR_DIR
     amp = (EGOBLUR_FP16 if fp16 is None else fp16) and str(device).startswith("cuda")
     infer: dict[str, Infer] = {}
-    for cat, name in EGOBLUR_FILES.items():
+    for cat, name in (files or EGOBLUR_FILES).items():
         model = torch.jit.load(str(model_dir / name), map_location="cpu").to(device)
-        model.eval()
+        try:
+            model.eval()
+        except RuntimeError:  # Gen2 is frozen, already in eval mode, and refuses the call
+            pass
+        gen2 = _gen2_boxes(model) if hasattr(model, "inference") else None
 
-        def run(img: np.ndarray, model=model) -> list[tuple[Box, float]]:
+        def run(img: np.ndarray, model=model, gen2=gen2) -> list[tuple[Box, float]]:
+            s = 1.0
+            if gen2 is not None and EGOBLUR_GEN2_SHORT:
+                s = EGOBLUR_GEN2_SHORT / min(img.shape[:2])
+                img = cv2.resize(img, (round(img.shape[1] * s), round(img.shape[0] * s)), interpolation=cv2.INTER_LINEAR)
             t = torch.from_numpy(np.ascontiguousarray(img.transpose(2, 0, 1))).to(device)
             with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16, enabled=amp):
-                boxes, _, scores, _ = model(t)
-            boxes, scores = boxes.float(), scores.float()
+                boxes, scores = gen2(t.float()) if gen2 is not None else model(t)[::2]
+            boxes, scores = boxes.float() / s, scores.float()
             keep = torchvision.ops.nms(boxes, scores, nms_iou)
             return [(tuple(b), float(s)) for b, s in zip(boxes[keep].tolist(), scores[keep].tolist())]
         infer[cat] = run
     return infer
+
+
+def _gen2_boxes(model):
+    """Gen2 returns Detectron2 instances, a TorchScript class Python can't receive; this compiled wrapper hands
+    back (boxes, scores) as plain tensors."""
+    import torch
+    from typing import Tuple
+
+    class Gen2(torch.nn.Module):
+        def __init__(self, inner):
+            super().__init__()
+            self.inner = inner
+
+        def forward(self, img: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            inst = self.inner.inference([{"image": img}], None, False)[0]
+            boxes, scores = inst._pred_boxes, inst._scores
+            assert boxes is not None and scores is not None
+            return boxes.tensor, scores
+
+    return torch.jit.script(Gen2(model))
 
 
 def egoblur_available(model_dir: Optional[Path] = None) -> bool:

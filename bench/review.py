@@ -37,6 +37,9 @@ CATS = {"plate": "license plate", "face": "face"}
 Box = tuple[float, float, float, float]
 
 
+TAG = ""  # set by --tag: keeps one cache per model setup (raw.json, raw_gen2.json, ...)
+
+
 def out_dir(clip: str) -> Path:
     d = ROOT / "data" / "review" / Path(clip).stem
     d.mkdir(parents=True, exist_ok=True)
@@ -60,14 +63,15 @@ def detect(clip: str) -> dict:
     info = probe(clip)
     data = {"clip": clip, "width": info.width, "height": info.height, "fps": info.fps, "n_frames": info.n_frames,
             "raw_conf": RAW_CONF, "dets": raw}
-    (out_dir(clip) / "raw.json").write_text(json.dumps(data))
+    (out_dir(clip) / f"raw{'_' + TAG if TAG else ''}.json").write_text(json.dumps(data))
     return data
 
 
 def load_raw(clip: str) -> dict:
-    p = out_dir(clip) / "raw.json"
+    p = out_dir(clip) / f"raw{'_' + TAG if TAG else ''}.json"
     if not p.exists():
-        sys.exit(f"no detections cached for {clip}: run `python -m bench.review detect {clip}` first")
+        sys.exit(f"no detections cached for {clip}: run `python -m bench.review detect {clip}"
+                 f"{' --tag ' + TAG if TAG else ''}` first")
     d = json.loads(p.read_text())
     d["dets"] = {c: {int(f): v for f, v in per.items()} for c, per in d["dets"].items()}
     return d
@@ -264,7 +268,10 @@ def main() -> None:
     ap.add_argument("--real", type=int, nargs="+", help="label: candidate numbers that are real objects")
     ap.add_argument("--frames", type=int, nargs="+", help="frames: which frames to draw")
     ap.add_argument("--min-len", type=int, default=1, help="candidates: only tracks seen in this many frames")
+    ap.add_argument("--tag", default="", help="a separate detection cache, e.g. gen2 with CENSOR_EGOBLUR_LP set")
     a = ap.parse_args()
+    global TAG
+    TAG = a.tag
     cat = CATS[a.cat]
     if a.cmd == "detect":
         d = detect(a.clip)
