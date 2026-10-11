@@ -78,11 +78,13 @@ CONFIRM = {"license plate": {
     # (bench/review.py on the three clips). Small faint faces stay: in a crowd many real faces never pass 0.3.
     "big_frac": float(os.environ.get("CENSOR_FACE_BIG_FRAC", "0.2")),        # of the frame height, median box
     "big_min_conf": float(os.environ.get("CENSOR_FACE_BIG_CONF", "0.8")),
-    # So does a "face" much wider than tall, unless the frame edge cuts it off. The weak faces EgoBlur put on car
-    # backs were plate-shaped (103x40 px at 0.29 on street_walk's car, 336x133 at 0.23 on a street_plates taxi) and
-    # blurred those plates in "blur all faces"; of the 121 face tracks kept on the three clips they were the only ones
-    # over 1.2:1. Real faces were 0.54-0.98:1, and 1.14:1 cut off at the edge (Strix Halo bench, Sun Oct 11).
-    "wide_aspect": float(os.environ.get("CENSOR_FACE_WIDE_ASPECT", "1.6")),  # width / height, median box
+    # A faint "face" much wider than tall is a license plate, unless the frame edge cuts it off. EgoBlur took
+    # street_walk's car plate (103x40 px, 0.29) and a street_plates taxi's (336x133, 0.23) for faces, so "blur all
+    # faces" blurred plates the request left visible. Of the 121 face tracks kept on the three clips they were the only
+    # ones over 1.2:1; real faces were 0.54-0.98:1, and 1.14:1 cut off at the edge. A confident wide face (someone
+    # lying down) is kept.
+    "wide_aspect": float(os.environ.get("CENSOR_FACE_WIDE_ASPECT", "1.6")),  # median width / height
+    "wide_min_conf": float(os.environ.get("CENSOR_FACE_WIDE_CONF", "0.5")),
 }}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
 
@@ -234,14 +236,14 @@ def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0, frame
     """Tracks with enough confident detections count if they're the right shape (when the rule asks and the box
     isn't cut off by the frame edge or tiny). The rest need enough frames and, when the rule asks, the median
     box of the track has to be plate-shaped (a median, so one odd frame doesn't decide). A face that is big, or
-    wide and not cut off, needs a detection at big_min_conf; without the frame size a wide face is kept."""
+    wide and not cut off, needs a detection at big_min_conf / wide_min_conf; without the frame size a wide face is kept."""
     if rule is None:
         return True
     if "big_frac" in rule and frame_h:
         heights = sorted(k.box[3] - k.box[1] for k in kfs)
         if heights[len(heights) // 2] > rule["big_frac"] * frame_h and max(k.conf for k in kfs) < rule["big_min_conf"]:
             return False
-    if "wide_aspect" in rule and frame_h and frame_w and max(k.conf for k in kfs) < rule["big_min_conf"]:
+    if "wide_aspect" in rule and frame_h and frame_w and max(k.conf for k in kfs) < rule["wide_min_conf"]:
         w, h = _median_size(kfs)
         if h > 0 and w / h > rule["wide_aspect"] and not _at_edge(kfs, frame_h, frame_w):
             return False
