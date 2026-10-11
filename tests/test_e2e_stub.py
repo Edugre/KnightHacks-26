@@ -191,6 +191,32 @@ def test_export_gives_up_with_a_message(clip, client, monkeypatch):
     assert r.status_code == 409 and "blur everyone except me" in r.json()["detail"]
 
 
+def test_request_logs_where_its_time_went(clip, client, capsys):
+    """A first request once took 59 s with nothing in the log to say why; now each request logs its wait for the
+    previous edit, its total and each step."""
+    import re
+    import threading
+    import time
+    c, app_mod = client
+    vid = _upload(c, clip)
+    held = threading.Event()
+
+    def hold():
+        with app_mod.turn(vid, "an earlier edit"):
+            held.set()
+            time.sleep(0.3)
+
+    t = threading.Thread(target=hold)
+    t.start()
+    held.wait()
+    c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates"})
+    t.join()
+    line = next(x for x in capsys.readouterr().err.splitlines() if x.startswith("[request]"))
+    assert f"{vid} 'blur all plates'" in line and "template" in line
+    assert float(re.search(r"waited ([\d.]+) s", line).group(1)) >= 0.2
+    assert re.search(r"find_objects [\d.]+ s", line) and re.search(r"add_masks [\d.]+ s", line)
+
+
 def test_frames_skip_and_decode_ahead(clip):
     """Every n-th frame, and decoding on a thread, give exactly the frames a plain read gives."""
     from censor.core.video import frames
@@ -214,3 +240,24 @@ def test_vlm_crops_always_have_the_same_shape(clip):
         crops = vlm.track_crops(str(clip), t)
         assert len(crops) == vlm.CROPS_PER_TRACK
         assert all(c.shape == (vlm.CROP_SIZE[1], vlm.CROP_SIZE[0], 3) for c in crops)
+
+
+def test_vlm_logs_crops_and_model_time(monkeypatch, capsys):
+    """The log splits an attribute check into reading frames and the model; a failed crop read still answers
+    'unknown' (fail closed) and counts as crop time."""
+    import numpy as np
+    from censor.core.tracks import Keyframe, Track
+    from censor.vision import vlm
+    kf = [Keyframe(f=0, box=(0, 0, 10, 10), conf=0.5)]
+    ok, broken = Track(track_id="a", label="person", keyframes=kf), Track(track_id="b", label="person", keyframes=kf)
+
+    def crops(video, t):
+        if t.track_id == "b":
+            raise OSError("cannot read frame")
+        return [np.zeros((4, 4, 3), np.uint8)]
+    monkeypatch.setattr(vlm, "MODEL_URL", "http://model")
+    monkeypatch.setattr(vlm, "track_crops", crops)
+    monkeypatch.setattr(vlm, "_ask_server", lambda c, q: ("yes", 0.9, 0.95))
+    out = vlm.check_attribute("x.mp4", [ok, broken], "Is this a woman?")
+    assert [(a.track_id, a.answer) for a in out] == [("a", "yes"), ("b", "unknown")]
+    assert "[vlm] 'Is this a woman?' on 2 tracks: crops" in capsys.readouterr().err

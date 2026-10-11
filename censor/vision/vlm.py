@@ -9,6 +9,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import sys
+import time
 import urllib.request
 from dataclasses import dataclass
 
@@ -82,13 +84,24 @@ def _ask_server(crops: list[np.ndarray], question: str) -> tuple[str, float, flo
 
 def check_attribute(video: str, tracks: list[Track], question: str) -> list[AttributeAnswer]:
     answers = []
+    crop_s = ask_s = slowest = 0.0  # where the time goes, for the log: reading frames or the model
     for t in tracks:
         if not MODEL_URL:
             answers.append(AttributeAnswer(t.track_id, "unknown", 0.0))
             continue
+        t0, t1 = time.perf_counter(), None
         try:
-            ans, conf, p_yes = _ask_server(track_crops(video, t), question)
+            crops = track_crops(video, t)
+            t1 = time.perf_counter()
+            ans, conf, p_yes = _ask_server(crops, question)
         except Exception:
             ans, conf, p_yes = "unknown", 0.0, 0.5
+        t2 = time.perf_counter()
+        crop_s += (t1 or t2) - t0
+        if t1 is not None:
+            ask_s, slowest = ask_s + t2 - t1, max(slowest, t2 - t1)
         answers.append(AttributeAnswer(t.track_id, ans, conf, p_yes))
+    if MODEL_URL and tracks:
+        print(f"[vlm] {question!r} on {len(tracks)} tracks: crops {crop_s:.1f} s, model {ask_s:.1f} s "
+              f"(slowest call {slowest:.1f} s)", file=sys.stderr)
     return answers

@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -65,11 +67,14 @@ class Session:
             if owner:
                 done = self._scans[q] = threading.Event()
         if not owner:
+            t0 = time.perf_counter()
             done.wait()
+            print(f"[scan] {q}: waited {time.perf_counter() - t0:.1f} s for the scan already running", file=sys.stderr)
             if q not in self.tracks.queries:
                 raise ToolError(f"detector failed for {q!r} (see the server log)")
             return
         found = TrackStore()
+        t0 = time.perf_counter()
         try:
             self.detector.run(self.video, [q], found)
         except Exception as e:  # surface to the agent/UI instead of a 500; nothing is marked as searched
@@ -82,6 +87,7 @@ class Session:
                 self.tracks.add(t.model_copy(update={"track_id": self.tracks.next_id()}))
             self.tracks.queries.append(q)
             self.save()
+        print(f"[scan] {q}: {len(found.tracks)} tracks in {time.perf_counter() - t0:.1f} s", file=sys.stderr)
         done.set()
 
     def _append(self, request_id: str, **kw) -> str:
