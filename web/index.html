@@ -1,126 +1,785 @@
 <!doctype html>
-<!-- Minimal test UI for M1 (role D replaces this with the React app in web/). Talks to censor/server/app.py. -->
+<!-- Censor editor, layout 4a "conversation-first" (design_handoff_conversation_editor/README.md). Plain HTML and JS,
+     no build step: censor/server/app.py serves this file as is. Talks only to the /api routes in that file. -->
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Censor Agent</title>
+<title>Censor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#111; --fg:#eee; --muted:#999; --line:#333; --accent:#e5484d; }
-  body { margin:0; font:14px system-ui, sans-serif; background:var(--bg); color:var(--fg); }
-  main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:12px; grid-template-columns:1fr 340px; }
-  @media (max-width:800px){ main { grid-template-columns:1fr; } }
-  .panel { border:1px solid var(--line); border-radius:8px; padding:12px; }
-  video, #stage { width:100%; border-radius:6px; background:#000; display:block; }
-  #wrap { position:relative; } #draw { position:absolute; inset:0; width:100%; height:100%; cursor:crosshair; }
-  input[type=text] { width:100%; box-sizing:border-box; padding:8px; background:#1b1b1b; color:var(--fg); border:1px solid var(--line); border-radius:6px; }
-  button { padding:7px 12px; background:#222; color:var(--fg); border:1px solid var(--line); border-radius:6px; cursor:pointer; }
-  button.primary { background:var(--accent); border-color:var(--accent); }
-  #log { max-height:360px; overflow:auto; font:12px ui-monospace, monospace; white-space:pre-wrap; color:var(--muted); }
-  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; }
-  h1 { font-size:16px; margin:0 0 8px; }
+  :root {
+    --bg:#12141a; --well:#0b0d12; --panel:#171a21; --field:#20242d; --bubble:#2a2f3a;
+    --ink:#eef1f6; --ink-2:#d9dee8; --muted:#9aa2b1; --faint:#737b8a;
+    --line:rgba(238,241,246,.22); --line-2:rgba(238,241,246,.11); --line-3:rgba(238,241,246,.07);
+    --accent:#4d6bff; --accent-down:#3d56d6; --on-accent:#fff; --accent-text:#9fb0ff; --accent-edge:#b5c2ff;
+    --accent-tint:rgba(77,107,255,.10); --seg:#4a505d; --seg-edge:#a9b0bd; --frame-line:#eef1f6;
+    --frame-label:#9aa2b1; --blur-fill:rgba(18,20,26,.35); --scrim:rgba(11,13,18,.86);
+    --stripe-a:#252933; --stripe-b:#1d2029; --danger:#ff8f8f;
+    --mono:ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; border-radius:0; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:400 15px Archivo, system-ui, sans-serif; overflow:hidden; }
+  button, input, textarea, select { font:inherit; color:inherit; }
+  button { cursor:pointer; background:none; border:1px solid var(--line); padding:7px 12px; font-size:13px; }
+  button:hover:not(:disabled) { background:var(--accent-tint); }
+  button:disabled, .disabled { opacity:.45; cursor:default; }
+  button:focus-visible, textarea:focus-visible, a:focus-visible, [tabindex]:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:800; }
+  button.primary:hover:not(:disabled) { background:#5e7aff; }
+  button.primary:active:not(:disabled) { background:var(--accent-down); }
+  a { color:var(--accent-text); } a:hover { color:var(--accent); }
+  .mono { font-family:var(--mono); }
+  .label { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  [hidden] { display:none !important; }
+
+  /* ---- shell ---- */
+  #app { height:100%; display:grid; grid-template-rows:52px minmax(0,1fr); }
+  header { display:flex; align-items:center; gap:20px; padding:0 20px; border-bottom:2px solid var(--line); min-width:0; }
+  .wordmark { font-weight:800; font-size:17px; }
+  .vrule { width:2px; height:20px; background:var(--line); flex:none; }
+  #fileName { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  #fileMeta { font-size:12px; color:var(--muted); white-space:nowrap; }
+  .head-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+  #exportBtn { height:36px; padding:0 14px; min-width:120px; text-align:left; font-size:14px; }
+  #dl { font-size:13px; white-space:nowrap; }
+  .rail-toggle { display:none; }
+  #body { display:grid; grid-template-columns:240px minmax(0,1fr) 260px; min-height:0; position:relative; }
+  aside { background:var(--panel); padding:20px 16px; overflow:auto; min-height:0; }
+  #targetsRail { border-right:2px solid var(--line); display:flex; flex-direction:column; gap:4px; }
+  #versionsRail { border-left:2px solid var(--line); }
+  @media (max-width:1199px) {
+    #body { grid-template-columns:240px minmax(0,1fr); }
+    #versionsRail { position:absolute; right:0; top:0; bottom:0; width:260px; z-index:20; display:none; }
+    #versionsRail.open { display:block; }
+    #versionsToggle { display:inline-block; }
+  }
+  @media (max-width:860px) {
+    #body { grid-template-columns:minmax(0,1fr); }
+    #targetsRail { position:absolute; left:0; top:0; bottom:0; width:240px; z-index:20; display:none; }
+    #targetsRail.open { display:flex; }
+    #targetsToggle { display:inline-block; }
+    header { gap:12px; padding:0 16px; } #fileMeta { display:none; }
+  }
+
+  /* ---- targets rail ---- */
+  .target { display:flex; align-items:center; gap:10px; padding:8px; cursor:pointer; border:0; width:100%; text-align:left; font-size:13px; }
+  .target:hover { background:var(--accent-tint); }
+  .chip { font:600 11px var(--mono); padding:2px 5px; background:var(--seg); color:#fff; flex:none; }
+  .target.sel { background:var(--accent-tint); } .target.sel .chip { background:var(--accent); }
+  .target .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .target .fx { font-size:11px; color:var(--faint); }
+  .rail-empty { font-size:13px; color:var(--faint); line-height:1.5; padding:0 8px; }
+
+  /* ---- versions rail ---- */
+  .version { display:grid; grid-template-columns:32px 1fr; gap:4px 10px; padding:12px 0; border-top:1px solid var(--line-2); cursor:pointer; }
+  .version .vid { font:600 11px var(--mono); color:var(--muted); }
+  .version.cur .vid { color:var(--accent-text); } .version.undone .vid { color:var(--faint); }
+  .version.undone .vtext { text-decoration:line-through; color:var(--faint); }
+  .vtext { font-size:13px; line-height:1.4; color:var(--ink-2); overflow-wrap:anywhere; }
+  .vmeta { font-size:11px; color:var(--faint); }
+
+  /* ---- conversation ---- */
+  #center { position:relative; min-height:0; display:flex; flex-direction:column; align-items:center; }
+  #thread { width:100%; flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; align-items:center; }
+  #threadInner { width:100%; max-width:820px; padding:28px 24px 8px; display:flex; flex-direction:column; gap:18px; }
+  @media (max-width:860px) { #threadInner { padding:20px 16px 8px; } }
+  .user { align-self:flex-end; max-width:70%; padding:10px 12px; background:var(--bubble); overflow-wrap:anywhere; }
+  .agent { display:flex; flex-direction:column; gap:12px; }
+  .agent .text { line-height:1.5; color:var(--ink-2); }
+  .agent.error .text { color:var(--danger); }
+  .agent.note .text { color:var(--muted); font-size:13px; }
+  .steps { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; font-size:13px; color:var(--muted); line-height:1.45; }
+  .steps li { padding-left:16px; position:relative; }
+  .steps li::before { content:""; position:absolute; left:2px; top:.6em; width:6px; height:2px; background:var(--seg-edge); }
+  .steps li.err { color:var(--danger); }
+  .steps b { color:var(--ink-2); font-weight:600; }
+  .tally { font:11px var(--mono); padding:1px 5px; border:1px solid var(--line); margin-left:4px; white-space:nowrap; }
+  .tally.yes { color:#9fe0b0; } .tally.no { color:var(--muted); } .tally.unsure { color:#ffd27a; }
+  details.raw summary { cursor:pointer; font-size:12px; color:var(--faint); }
+  details.raw pre { font:12px/1.5 var(--mono); color:var(--ink-2); background:var(--well); border:1px solid var(--line-2); padding:10px; margin:6px 0 0; overflow:auto; max-height:260px; white-space:pre-wrap; }
+  .pending { font:12px/1.6 var(--mono); color:var(--ink-2); }
+  .pending .sub { color:var(--faint); }
+  .dots::after { content:""; animation:dots 1.2s steps(4) infinite; }
+  @keyframes dots { 0%{content:""} 25%{content:"."} 50%{content:".."} 75%{content:"..."} }
+
+  /* result card */
+  .card { border:2px solid var(--line); background:var(--well); }
+  .frame { position:relative; aspect-ratio:16/9; overflow:hidden; background:repeating-linear-gradient(135deg,var(--stripe-a) 0 10px,var(--stripe-b) 10px 20px); }
+  .frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
+  .frame canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .frame.drawing canvas { cursor:crosshair; }
+  .frame .tc { position:absolute; left:12px; top:10px; font:11px var(--mono); color:var(--frame-label); background:var(--scrim); padding:2px 6px; }
+  .frame .drawhint { position:absolute; right:12px; top:10px; font:11px var(--mono); background:var(--accent); color:#fff; padding:2px 6px; }
+  .frame.loading img { opacity:.6; }
+  .card.stale .frame::after { content:"older version"; position:absolute; right:12px; bottom:10px; font:11px var(--mono); color:var(--faint); background:var(--scrim); padding:2px 6px; }
+  .strip { position:relative; padding:10px 12px; display:flex; flex-direction:column; gap:3px; background:var(--panel); cursor:pointer; }
+  .card.stale .strip { cursor:default; }
+  .bar { position:relative; height:5px; background:var(--line-3); }
+  .bar .seg { position:absolute; top:0; bottom:0; background:var(--seg-edge); }
+  .bar.sel .seg { background:var(--accent-edge); }
+  .bar .unc { position:absolute; top:-2px; bottom:-2px; background:var(--accent); }
+  .strip .head { position:absolute; top:6px; bottom:6px; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* empty state */
+  .welcome { display:flex; flex-direction:column; gap:16px; padding-top:6vh; }
+  .welcome h1 { font-size:28px; font-weight:800; margin:0; letter-spacing:-.01em; }
+  .welcome p { margin:0; color:var(--muted); line-height:1.5; max-width:60ch; }
+  .samples { display:flex; gap:8px; flex-wrap:wrap; }
+  .samples button { font-size:14px; padding:10px 14px; text-align:left; }
+  .samples .mb { color:var(--faint); font-size:12px; margin-left:6px; }
+  .uploads { display:flex; gap:16px; flex-wrap:wrap; align-items:center; font-size:13px; color:var(--muted); }
+  .filebtn { position:relative; overflow:hidden; display:inline-block; border:1px solid var(--line); padding:7px 12px; cursor:pointer; color:var(--ink); }
+  .filebtn:hover { background:var(--accent-tint); }
+  .filebtn input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+
+  /* composer */
+  #composerWrap { width:100%; max-width:820px; padding:16px 24px 24px; position:relative; }
+  @media (max-width:860px) { #composerWrap { padding:12px 16px 16px; } }
+  #composer { display:flex; align-items:center; gap:12px; padding:14px 16px; border:2px solid var(--line); background:var(--field); }
+  #composer:focus-within { border-color:var(--accent); }
+  #text { flex:1; min-width:0; resize:none; border:0; outline:0; background:transparent; font-size:15px; line-height:1.4; height:21px; max-height:120px; padding:0; }
+  #text::placeholder { color:var(--faint); }
+  .cbtn { font-size:12px; padding:4px 8px; color:var(--muted); flex:none; }
+  .cbtn.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #status { font-size:12px; color:var(--faint); margin-top:8px; min-height:16px; }
+  #status.err { color:var(--danger); }
+  #hints { position:absolute; left:24px; right:24px; bottom:100%; background:var(--panel); border:2px solid var(--line); padding:16px; display:flex; flex-direction:column; gap:10px; z-index:10; }
+  #hints .ex { display:flex; flex-wrap:wrap; gap:8px; }
+  #hints .ex button { font-size:13px; text-align:left; }
+  #hints .ex button small { color:var(--faint); margin-left:6px; }
+  #hints p { margin:0; font-size:12px; color:var(--faint); line-height:1.5; }
+
+  /* timeline drawer */
+  #drawer { position:absolute; left:0; right:0; bottom:0; max-height:88%; background:var(--panel); border-top:2px solid var(--line); z-index:15; display:flex; flex-direction:column; }
+  .drawer-head { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line-2); }
+  .drawer-head .seg-ctl { display:flex; } .drawer-head .seg-ctl button { font-size:12px; padding:4px 10px; }
+  .drawer-head .seg-ctl button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .drawer-body { overflow:auto; padding:16px 20px 20px; display:flex; flex-direction:column; gap:14px; }
+  #player { width:100%; max-height:42vh; background:#000; display:block; }
+  .tl { display:grid; grid-template-columns:200px minmax(0,1fr); gap:0 12px; font-size:13px; }
+  @media (max-width:860px) { .tl { grid-template-columns:120px minmax(0,1fr); } }
+  .tl .axis { position:relative; height:18px; font:10px var(--mono); color:var(--faint); }
+  .tl .axis span { position:absolute; transform:translateX(-50%); top:2px; }
+  .tl .rowlabel { display:flex; align-items:center; gap:8px; padding:6px 0; cursor:pointer; min-width:0; }
+  .tl .rowlabel .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tl .rowlabel .fx { color:var(--faint); font-size:11px; margin-left:auto; }
+  .tl .lane { position:relative; height:30px; border-top:1px solid var(--line-2); cursor:pointer; }
+  .tl .lane .seg { position:absolute; top:9px; height:12px; background:var(--seg-edge); }
+  .tl .lane.sel .seg { background:var(--accent-edge); }
+  .tl .lane .unc { position:absolute; top:7px; height:16px; background:var(--accent); }
+  .tl .lanes { position:relative; }
+  .tl .ph { position:absolute; top:0; bottom:0; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
+  .tl .lane:hover { background:var(--line-3); }
 </style>
 </head>
 <body>
-<main>
-  <section class="panel">
-    <h1>Censor Agent</h1>
-    <div class="row"><select id="sample"><option value="">Load a sample clip…</option></select>
-      <input type="file" id="file" accept="video/*"><input type="file" id="sidecar" accept=".json" title="stub mode: ground-truth tracks"></div>
-    <video id="player" controls></video>
-    <div class="row"><span id="time">frame 0</span><button id="prev">Preview masked frame</button><small>Drag on the preview to draw a box.</small></div>
-    <div id="wrap"><img id="stage" alt=""><canvas id="draw"></canvas></div>
-  </section>
-  <aside class="panel">
-    <form id="ask"><input type="text" id="text" placeholder='e.g. "blur all plates and the person in the red shirt"'></form>
-    <div class="row"><button id="undo">Undo</button><button id="export" class="primary">Export</button><a id="dl" hidden>Download</a></div>
-    <div id="status" style="margin:6px 0;font-weight:600"></div>
-    <div id="summary"></div>
-    <div id="log"></div>
-  </aside>
-</main>
+<div id="app">
+  <header>
+    <button class="rail-toggle cbtn" id="targetsToggle" aria-controls="targetsRail">Targets</button>
+    <div class="wordmark">CENSOR</div><div class="vrule"></div>
+    <div id="fileName">No video</div><div id="fileMeta"></div>
+    <div class="head-right">
+      <button class="cbtn" id="timelineBtn" disabled>Timeline</button>
+      <button class="rail-toggle cbtn" id="versionsToggle" aria-controls="versionsRail">Versions</button>
+      <a id="dl" hidden download="export.mp4">Download</a>
+      <button class="primary" id="exportBtn" disabled>Export</button>
+    </div>
+  </header>
+  <div id="body">
+    <aside id="targetsRail"><div class="label" style="margin-bottom:8px">Targets</div><div id="targets"></div></aside>
+    <section id="center">
+      <div id="thread"><div id="threadInner"></div></div>
+      <div id="composerWrap">
+        <div id="hints" hidden>
+          <div class="label">What can I ask?</div>
+          <div class="ex" id="examples"></div>
+          <p>Plain requests are understood instantly. Exceptions ("everyone except…") and unusual wording go to the
+            on-device language model. Questions about people ("the woman") are answered by the vision model; if it
+            can't tell, the person stays blurred. Drag on a frame with <b>Draw box</b> to track anything by hand.</p>
+        </div>
+        <form id="composer" autocomplete="off">
+          <textarea id="text" rows="1" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea>
+          <button type="button" class="cbtn" id="hintBtn" title="Example requests" aria-expanded="false">?</button>
+          <button type="button" class="cbtn" id="drawBtn" disabled title="Drag a box on the latest frame to track it">Draw box</button>
+        </form>
+        <div id="status" role="status"></div>
+      </div>
+      <div id="drawer" hidden>
+        <div class="drawer-head">
+          <div class="label">Timeline</div>
+          <div class="seg-ctl" id="srcCtl"><button data-src="source" class="on">Original</button><button data-src="export" disabled>Blurred export</button></div>
+          <span id="drawerTime" class="mono" style="font-size:12px;color:var(--muted)"></span>
+          <button class="cbtn" id="drawerClose" style="margin-left:auto">Close</button>
+        </div>
+        <div class="drawer-body">
+          <video id="player" controls preload="metadata"></video>
+          <div class="tl" id="tl"></div>
+        </div>
+      </div>
+    </section>
+    <aside id="versionsRail"><div class="label" style="margin-bottom:12px">Versions</div><div id="versions"></div></aside>
+  </div>
+</div>
 <script>
-let vid = null, info = null;
+// ---------- state ----------
+const S = {
+  vid: null, info: null, name: '', timeline: null, ops: [],
+  ids: {},          // track_id -> "T1"... (stable for this video)
+  desc: {},         // track_id -> what the VLM said yes to ("woman")
+  versions: [],     // {key, text, at, opIds, n, undone, card}
+  selected: null, busy: false, exportUrl: null, cards: [],
+};
 const $ = id => document.getElementById(id);
-const log = x => { $('log').textContent = (typeof x === 'string' ? x : JSON.stringify(x, null, 1)) + '\n\n' + $('log').textContent; };
-const frameNow = () => info ? Math.min(info.n_frames - 1, Math.round($('player').currentTime * info.fps)) : 0;
-const api = async (path, opts) => { const r = await fetch(path, opts); const j = await r.json(); if (!r.ok) throw j; return j; };
-const showSummary = s => $('summary').textContent = s ? `${s.n_targets} targets · ${JSON.stringify(s.by_label)} · ${s.n_ops} ops` : '';
-
-$('file').onchange = async e => {
-  const fd = new FormData(); fd.append('file', e.target.files[0]);
-  const j = await api('api/videos', { method: 'POST', body: fd });
-  vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j);
-};
-// ?video=<id> reopens a video uploaded earlier (or through the API), with its masks so far
-const reopen = new URLSearchParams(location.search).get('video');
-if (reopen) api(`api/videos/${reopen}`).then(j => {
-  vid = reopen; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(j.summary); refresh();
-}).catch(log);
-// Sample clips already on the server: no file picker needed (the in-app browser and demos can't always open one)
-api('api/samples').then(list => list.forEach(c => $('sample').add(new Option(`${c.id} (${c.mb} MB)`, c.id)))).catch(log);
-$('sample').onchange = async e => {
-  if (!e.target.value) return;
-  const j = await api(`api/samples/${e.target.value}`, { method: 'POST' });
-  vid = j.video_id; info = j.info; $('player').src = `api/videos/${vid}/source`; log(j); showSummary(null); refresh();
-};
-$('sidecar').onchange = async e => {
-  if (!vid) return log('upload a video first');
-  const fd = new FormData(); fd.append('file', e.target.files[0]);
-  log(await api(`api/videos/${vid}/tracks-sidecar`, { method: 'POST', body: fd }));
-};
-$('player').ontimeupdate = () => $('time').textContent = `frame ${frameNow()}`;
-const refresh = () => { if (vid) $('stage').src = `api/videos/${vid}/preview/${frameNow()}.jpg?t=${Date.now()}`; };
-$('prev').onclick = refresh;
-// One thing at a time, with a visible status: an Export started while a request was still waiting on the
-// detector used to render the video with no masks at all.
-const busy = (msg) => { $('status').textContent = msg || ''; ['text', 'undo', 'export', 'sample'].forEach(id => $(id).disabled = !!msg); };
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-$('ask').onsubmit = async e => {
-  e.preventDefault(); if (!vid) return log('pick a sample clip or upload a video first');
-  busy('Working on: ' + $('text').value + ' (the first request on a new video waits for its scan)');
-  try {
-    const j = await api(`api/videos/${vid}/request`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text: $('text').value }) });
-    log(j); showSummary(j.summary); refresh();
-    busy(); $('status').textContent = j.message + ' Click Export to render it.';
-  } catch (err) {
-    log(err);
-    if (err && err.detail !== undefined) { busy(); $('status').textContent = 'Request failed, see the log below.'; return; }
-    // Not an answer from the app: AUP's proxy gives up after about 100 s (the LLM path can take longer) while
-    // the server keeps working. Wait for it to finish, so Export doesn't run before the masks exist.
-    $('status').textContent = 'The connection dropped, but the server is still working on it. Waiting…';
-    try {
-      let j; do { await sleep(3000); j = await api(`api/videos/${vid}`); } while (j.busy);
-      showSummary(j.summary); refresh();
-      busy(); $('status').textContent = `The server finished: ${j.summary.n_targets} targets now. Check the preview, then click Export.`;
-    } catch (e2) { busy(); $('status').textContent = 'Request failed, see the log below.'; log(e2); }
+const el = (tag, attrs = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') e.className = v; else if (k.startsWith('on')) e[k] = v; else if (v !== undefined && v !== null) e.setAttribute(k, v);
   }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k.nodeType ? k : String(k));
+  return e;
 };
-$('undo').onclick = async () => { const j = await api(`api/videos/${vid}/undo`, { method: 'POST' }); log(j); showSummary(j.summary); refresh(); };
-$('export').onclick = async () => {
-  if (!vid) return log('pick a sample clip or upload a video first');
-  // An export with no masks is just the original video: say so instead of producing one that looks censored
-  const cur = await api(`api/videos/${vid}`).catch(() => null);
-  if (cur && !cur.busy && cur.summary.n_targets === 0) { $('status').textContent = 'No masks yet: send a request first.'; return; }
-  busy('Rendering the blurred video… (waits for a request that is still running)');
+const api = async (path, opts) => {
+  const r = await fetch(path, opts);
+  let j; try { j = await r.json(); } catch { j = { detail: `${r.status} ${r.statusText}` }; }
+  if (!r.ok) throw Object.assign(j || {}, { status: r.status });
+  return j;
+};
+const post = (path, body) => api(path, body === undefined ? { method: 'POST' } :
+  { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const errText = e => (e && (typeof e.detail === 'string' ? e.detail : e.detail && JSON.stringify(e.detail))) || (e && e.message) || 'something went wrong';
+const fmt = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(0).padStart(2, '0')}`; };
+const fmtF = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
+const dur = () => S.info ? S.info.n_frames / S.info.fps : 1;
+const pct = s => `${Math.max(0, Math.min(100, s / dur() * 100))}%`;
+const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'now' : m < 60 ? `${m} min ago` : `${Math.round(m / 60)} h ago`; };
+
+// Per-viewer memory (request wording, target names) so a reopened video keeps its history. Optional: the page
+// works the same without it.
+const store = {
+  key: () => `censor:${S.vid}`,
+  load() { try { return JSON.parse(localStorage.getItem(this.key()) || 'null'); } catch { return null; } },
+  save() {
+    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc,
+      versions: S.versions.map(({ card, ...v }) => v) })); } catch {}
+  },
+};
+
+// ---------- names, segments ----------
+const LABELS = { 'license plate': 'Plate', 'face': 'Face', 'person': 'Person', 'user box': 'Drawn box' };
+const plural = { 'license plate': 'license plates', 'face': 'faces', 'person': 'people', 'user box': 'drawn boxes' };
+const tid = id => S.ids[id] || (S.ids[id] = `T${Object.keys(S.ids).length + 1}`);
+const tname = (id, label) => {
+  const base = LABELS[label] || (label ? label[0].toUpperCase() + label.slice(1) : id);
+  return S.desc[id] ? `${base} · ${S.desc[id]}` : base;
+};
+// Contiguous runs of keyframes (a gap of over half a second starts a new run), in seconds
+function runs(kfs, pick = () => true) {
+  const fps = S.info.fps, gap = Math.max(2, Math.round(fps / 2)), out = [];
+  let a = null, b = null;
+  for (const k of [...kfs].sort((x, y) => x.f - y.f)) {
+    if (!pick(k)) continue;
+    if (a !== null && k.f - b <= gap) { b = k.f; continue; }
+    if (a !== null) out.push([a / fps, (b + 1) / fps]);
+    a = b = k.f;
+  }
+  if (a !== null) out.push([a / fps, (b + 1) / fps]);
+  return out;
+}
+function targetList(tl = S.timeline) {
+  if (!tl) return [];
+  return Object.entries(tl.targets).map(([id, t]) => ({
+    id, chip: tid(id), label: t.label, name: tname(id, t.label), effect: t.effect, padding: t.padding, keyframes: t.keyframes,
+    segs: runs(t.keyframes), unc: runs(t.keyframes, k => k.state === 'uncertain'),
+  })).sort((a, b) => +a.chip.slice(1) - +b.chip.slice(1));
+}
+// The masked area of a target at frame f: the nearest keyframe within a few frames, padded the way
+// censor/render/render.py pads it (uncertain boxes get double padding, at least 3 px a side)
+function boxAt(t, f) {
+  let best = null, d = 1e9;
+  for (const k of t.keyframes) { const dd = Math.abs(k.f - f); if (dd < d) { d = dd; best = k; } }
+  if (!best || d > 3) return null;
+  const [x1, y1, x2, y2] = best.box, pad = (t.padding || 0) * (best.state === 'uncertain' ? 2 : 1);
+  const px = Math.max((x2 - x1) * pad, 3), py = Math.max((y2 - y1) * pad, 3);
+  return [Math.max(0, x1 - px), Math.max(0, y1 - py), Math.min(S.info.width, x2 + px), Math.min(S.info.height, y2 + py)];
+}
+
+// ---------- loading a video ----------
+async function refreshState() {
+  const [v, tl] = await Promise.all([api(`api/videos/${S.vid}`), api(`api/videos/${S.vid}/timeline`)]);
+  S.info = v.info; S.ops = v.ops; S.timeline = tl;
+  const present = new Set(S.ops.map(o => o.op_id));
+  // A version whose ops left the log was undone. Sticky: op ids are reused after an undo.
+  for (const ver of S.versions) if (ver.opIds.length && !ver.undone && ver.opIds.some(o => !present.has(o))) ver.undone = true;
+  targetList(); store.save();
+  renderTargets(); renderVersions(); renderTimeline();
+  S.cards.forEach(c => c.update());
+  return v;
+}
+async function openVideo(j, name) {
+  S.vid = j.video_id; S.info = j.info; S.name = name; S.ids = {}; S.desc = {}; S.versions = []; S.cards = [];
+  S.selected = null; S.exportUrl = null;
+  const saved = store.load();
+  if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, versions: saved.versions || [] });
+  if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
+  history.replaceState(null, '', `?video=${S.vid}`);
+  $('threadInner').replaceChildren();
+  $('fileName').textContent = S.name; $('dl').hidden = true; setSrc('source');
+  $('player').src = `api/videos/${S.vid}/source`;
+  ['timelineBtn', 'exportBtn', 'drawBtn', 'text'].forEach(id => $(id).disabled = false);
+  $('text').placeholder = 'Ask for a change…';
+  const v = await refreshState();
+  if (saved && S.versions.length > 1) {
+    note(`Reopened ${S.name}: ${v.summary.n_targets} target(s) masked so far. Earlier messages aren't kept, but the versions are on the right.`);
+    if (v.summary.n_targets) addCard(note(''), null);
+  } else {
+    note(`Loaded ${S.name} (${fmt(dur())}, ${S.info.width}×${S.info.height}, ${S.info.fps} fps). ` +
+      (j.prescan && j.prescan.length ? `Scanning for ${j.prescan.join(', ')} in the background, so the first request is quick.` :
+        'Ask for what to hide, or press ? for examples.'));
+  }
+  $('text').focus();
+}
+async function loadSample(id) {
+  status(`Loading ${id}…`);
+  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); status(''); }
+  catch (e) { status(`Couldn't load ${id}: ${errText(e)}`, true); }
+}
+async function uploadFile(file) {
+  status(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+  const fd = new FormData(); fd.append('file', file);
+  try { await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); status(''); }
+  catch (e) { status(`Upload failed: ${errText(e)}`, true); }
+}
+async function uploadSidecar(file) {
+  if (!S.vid) return status('Load the video first, then its .tracks.json.', true);
+  const fd = new FormData(); fd.append('file', file);
+  try { await api(`api/videos/${S.vid}/tracks-sidecar`, { method: 'POST', body: fd }); note(`Attached ground-truth tracks from ${file.name} (stub mode).`); }
+  catch (e) { status(`Sidecar upload failed: ${errText(e)}`, true); }
+}
+
+// ---------- thread ----------
+const thread = () => $('threadInner');
+const scrollDown = () => { const t = $('thread'); requestAnimationFrame(() => t.scrollTop = t.scrollHeight); };
+function userMsg(text) { const e = el('div', { class: 'user' }, text); thread().append(e); scrollDown(); return e; }
+function note(text) { const e = el('div', { class: 'agent note' }, text ? el('div', { class: 'text' }, text) : null); thread().append(e); scrollDown(); return e; }
+function status(msg, err = false) { $('status').textContent = msg || ''; $('status').classList.toggle('err', !!err); }
+
+function welcome() {
+  const list = el('div', { class: 'samples' }, el('span', { class: 'rail-empty', style: 'padding:0' }, 'Looking for sample clips…'));
+  const w = el('div', { class: 'welcome' },
+    el('div', { class: 'label' }, 'Start'),
+    el('h1', {}, 'Hide people, faces and plates by asking.'),
+    el('p', {}, 'Pick a clip, then type what to hide: "blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". ' +
+      'Everything runs on this machine; nothing leaves it.'),
+    list,
+    el('div', { class: 'uploads' },
+      el('label', { class: 'filebtn' }, 'Upload a video…', el('input', { type: 'file', accept: 'video/*', onchange: e => e.target.files[0] && uploadFile(e.target.files[0]) })),
+      el('label', { class: 'filebtn', title: 'Stub mode only: ground-truth tracks from scripts/make_test_clip.py' },
+        'Attach .tracks.json', el('input', { type: 'file', accept: '.json', onchange: e => e.target.files[0] && uploadSidecar(e.target.files[0]) })),
+      el('span', {}, 'Tip: in stub mode pick synthetic: its ground truth comes along.')));
+  thread().replaceChildren(w);
+  api('api/samples').then(cl => {
+    list.replaceChildren(...(cl.length ? cl.map(c => el('button', { onclick: () => loadSample(c.id) }, c.id, el('span', { class: 'mb' }, `${c.mb} MB`)))
+      : [el('span', { class: 'rail-empty', style: 'padding:0' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
+  }).catch(e => list.replaceChildren(el('span', { class: 'rail-empty', style: 'padding:0' }, `Couldn't list samples: ${errText(e)}`)));
+}
+
+// Plain words for each tool call in a request response
+function describe(calls, path) {
+  const items = [];
+  const names = ids => ids.map(i => tid(i)).join(', ');
+  if (path === 'template') items.push(el('li', {}, 'Understood the request directly, no language model needed.'));
+  for (const c of calls) {
+    const a = c.args || {}, r = c.result, ms = c.ms !== undefined ? ` (${c.ms < 1000 ? c.ms + ' ms' : (c.ms / 1000).toFixed(1) + ' s'})` : '';
+    if (c.error) {
+      items.push(el('li', { class: 'err' }, c.tool === '_plan' ? `The language model couldn't plan it: ${c.error}` : `${c.tool} failed: ${c.error}`));
+      continue;
+    }
+    switch (c.tool) {
+      case '_plan': {
+        const p = c.plan || {}, ts = (p.targets || []).map(t => [t.object, t.only && t.only.length ? `only "${t.only.join('", "')}"` : '',
+          t.exclude && t.exclude.length ? `except "${t.exclude.join('", "')}"` : '', t.time ? `at ${Array.isArray(t.time) ? t.time.map(fmt).join('–') : t.time}` : '']
+          .filter(Boolean).join(' '));
+        items.push(el('li', {}, 'Planned with the on-device language model', ms, ': ', el('b', {}, `${p.action || 'mask'}${p.action === 'mask' || !p.action ? ' (' + (p.effect || 'blur') + ')' : ''}`),
+          ts.length ? ` ${ts.join('; ')}.` : '.'));
+        break;
+      }
+      case 'resolve_time': items.push(el('li', {}, `Read "${a.phrase}" as `, el('b', {}, `${fmt(r[0])}–${fmt(r[1])}`), '.')); break;
+      case 'find_objects': {
+        const n = r.length, what = plural[a.query] || a.query;
+        items.push(el('li', {}, `Looked for ${what}${a.time_range ? ` between ${fmt(a.time_range[0])} and ${fmt(a.time_range[1])}` : ''}: `,
+          el('b', {}, n ? `${n} found` : 'none found'), n ? ` (${names(r.map(o => o.track_id))})` : '', ms, '.'));
+        break;
+      }
+      case 'check_attribute': {
+        const t = { yes: 0, no: 0, unknown: 0 };
+        r.forEach(x => { t[x.answer] = (t[x.answer] || 0) + 1; });
+        const m = /^is (?:this|it) (?:a |an |the )?(.+?)\?*$/i.exec(a.question || '');
+        if (m) r.forEach(x => { if (x.answer === 'yes') S.desc[x.track_id] = m[1]; });
+        items.push(el('li', {}, `Asked "${a.question}" about ${r.length} track${r.length === 1 ? '' : 's'}`, ms, ':',
+          el('span', { class: 'tally yes' }, `${t.yes} yes`), el('span', { class: 'tally no' }, `${t.no} no`),
+          el('span', { class: 'tally unsure' }, `${t.unknown} unsure`),
+          t.unknown ? el('span', {}, ' (unsure stays masked)') : null));
+        break;
+      }
+      case 'person_for': items.push(el('li', {}, 'Matched each face to the person it belongs to.')); break;
+      case 'add_masks': {
+        const ids = [...(a.track_ids || [])];
+        items.push(el('li', {}, `${{ blur: 'Blurred', pixelate: 'Pixelated', box: 'Covered' }[a.effect || 'blur'] || a.effect} `,
+          el('b', {}, ids.length ? names(ids) : (a.labels || []).join(', ')),
+          a.time_range ? ` from ${fmt(a.time_range[0])} to ${fmt(a.time_range[1])}` : '', '.'));
+        break;
+      }
+      case 'remove_masks': items.push(el('li', {}, 'Removed the mask from ', el('b', {}, names(a.track_ids || [])), '.')); break;
+      case 'set_effect': items.push(el('li', {}, `Switched `, el('b', {}, names(a.track_ids || [])), ` to ${a.effect}.`)); break;
+      case 'add_rule': items.push(el('li', {}, `Added a rule: ${a.effect || 'blur'} every ${a.category}.`)); break;
+      case 'undo': items.push(el('li', {}, r ? `Undid ${r}.` : 'There was nothing to undo.')); break;
+      case 'track_box': items.push(el('li', {}, 'Tracked the drawn box from ', el('b', {}, `${fmt(r.start)} to ${fmt(r.end)}`), '.')); break;
+      default: items.push(el('li', {}, `${c.tool}${ms}`));
+    }
+  }
+  return el('ul', { class: 'steps' }, items);
+}
+const opIdsOf = calls => calls.filter(c => !c.error && ['add_masks', 'remove_masks', 'set_effect', 'add_rule'].includes(c.tool) && typeof c.result === 'string').map(c => c.result);
+
+// A result card: the masked frame (scrubbable), one coverage bar per target, and the actions
+function addCard(host, focusIds) {
+  const img = el('img', { alt: 'masked video frame' }), cv = el('canvas'), tc = el('div', { class: 'tc' });
+  const drawHint = el('div', { class: 'drawhint', hidden: '' }, 'drag to draw a box');
+  const frame = el('div', { class: 'frame loading' }, img, cv, tc, drawHint);
+  const strip = el('div', { class: 'strip', title: 'Click to see that moment' });
+  const reviewBtn = el('button', { class: 'primary', hidden: '' });
+  const undoBtn = el('button', { onclick: () => undoLast() }, 'Undo');
+  const card = el('div', { class: 'card' }, frame, strip);
+  const actions = el('div', { class: 'actions' }, reviewBtn, el('button', { onclick: () => openDrawer(c.t) }, 'Open timeline'), undoBtn);
+  host.append(card, actions);
+  const c = { t: 0, live: true, targets: [], unc: [], uncIdx: -1, frame, cv, img, undoBtn, card };
+  // Start on the first thing this request masked, else the middle of the clip
+  const first = focusIds && targetList().filter(t => focusIds.includes(t.id) && t.segs.length)[0];
+  c.t = first ? (first.segs[0][0] + first.segs[0][1]) / 2 : dur() / 2;
+  let loadTimer = null, wanted = '';
+  c.seek = (t, now = false) => {
+    c.t = Math.max(0, Math.min(dur() - 1 / S.info.fps, t));
+    const f = Math.round(c.t * S.info.fps);
+    tc.textContent = `video frame ${String(f).padStart(4, '0')} · ${fmtF(c.t)}`;
+    drawStrip(); overlay();
+    if (!c.live) return;
+    clearTimeout(loadTimer);
+    loadTimer = setTimeout(() => {
+      wanted = `api/videos/${S.vid}/preview/${f}.jpg?t=${Date.now()}`;
+      frame.classList.add('loading'); img.src = wanted;
+    }, now ? 0 : 120);
+  };
+  img.onload = () => { if (img.src.endsWith(wanted.split('/').pop())) frame.classList.remove('loading'); overlay(); };
+  img.onerror = () => frame.classList.remove('loading');
+  const head = el('div', { class: 'head' });
+  function drawStrip() {
+    const kids = c.targets.map(t => {
+      const bar = el('div', { class: `bar${t.id === S.selected ? ' sel' : ''}`, title: `${t.chip} ${t.name} (${t.effect})` });
+      t.segs.forEach(([a, b]) => bar.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
+      t.unc.forEach(([a, b]) => bar.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
+      return bar;
+    });
+    if (!kids.length) kids.push(el('div', { style: 'font-size:12px;color:var(--faint)' }, 'Nothing masked.'));
+    head.style.left = `calc(12px + (100% - 24px) * ${c.t / dur()})`;
+    strip.replaceChildren(...kids, head);
+  }
+  // Outline of the selected target (and the box being drawn) over the image, in its letterboxed area
+  let drag = null;
+  function overlay() {
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio;
+    const g = cv.getContext('2d'); g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    const fit = fitRect(r);
+    const f = Math.round(c.t * S.info.fps);
+    for (const t of c.targets) {
+      if (t.id !== S.selected) continue;
+      const b = boxAt(t, f); if (!b) continue;
+      g.strokeStyle = '#4d6bff'; g.lineWidth = 2;
+      g.strokeRect(fit.x + b[0] * fit.s, fit.y + b[1] * fit.s, (b[2] - b[0]) * fit.s, (b[3] - b[1]) * fit.s);
+      g.fillStyle = '#4d6bff'; g.font = '600 11px ui-monospace, Menlo, monospace';
+      const lbl = t.chip, w = g.measureText(lbl).width + 10;
+      g.fillRect(fit.x + b[0] * fit.s - 1, fit.y + b[1] * fit.s - 17, w, 16);
+      g.fillStyle = '#fff'; g.fillText(lbl, fit.x + b[0] * fit.s + 4, fit.y + b[1] * fit.s - 5);
+    }
+    if (drag && drag.b) {
+      const [x1, y1, x2, y2] = drag.b; g.setLineDash([6, 4]); g.strokeStyle = '#fff'; g.lineWidth = 2;
+      g.strokeRect(fit.x + x1 * fit.s, fit.y + y1 * fit.s, (x2 - x1) * fit.s, (y2 - y1) * fit.s);
+    }
+  }
+  const fitRect = r => { const s = Math.min(r.width / S.info.width, r.height / S.info.height);
+    return { s, x: (r.width - S.info.width * s) / 2, y: (r.height - S.info.height * s) / 2 }; };
+  const toVideo = ev => { const r = cv.getBoundingClientRect(), fit = fitRect(r);
+    return [Math.max(0, Math.min(S.info.width, (ev.clientX - r.left - fit.x) / fit.s)), Math.max(0, Math.min(S.info.height, (ev.clientY - r.top - fit.y) / fit.s))]; };
+  cv.onpointerdown = ev => { if (!S.drawMode || !c.live || S.busy) return; cv.setPointerCapture(ev.pointerId); drag = { a: toVideo(ev), b: null }; };
+  cv.onpointermove = ev => { if (!drag) return; const p = toVideo(ev);
+    drag.b = [Math.min(drag.a[0], p[0]), Math.min(drag.a[1], p[1]), Math.max(drag.a[0], p[0]), Math.max(drag.a[1], p[1])]; overlay(); };
+  cv.onpointerup = () => { if (!drag) return; const b = drag.b; drag = null; overlay();
+    if (b && b[2] - b[0] >= 8 && b[3] - b[1] >= 8) sendBox(Math.round(c.t * S.info.fps), b.map(Math.round)); };
+  strip.onclick = ev => {
+    if (!c.live) return;
+    const r = strip.getBoundingClientRect();
+    c.seek((ev.clientX - r.left - 12) / (r.width - 24) * dur(), true);
+  };
+  reviewBtn.onclick = () => {
+    if (!c.unc.length) return;
+    c.uncIdx = (c.uncIdx + 1) % c.unc.length;
+    const u = c.unc[c.uncIdx]; S.selected = u.id; renderTargets(); S.cards.forEach(x => x.paint());
+    c.seek((u.a + u.b) / 2, true);
+    status(`Uncertain ${c.uncIdx + 1} of ${c.unc.length}: ${u.chip} ${fmt(u.a)}–${fmt(u.b)}. The detector lost track here, so it stays blurred to be safe.`);
+  };
+  c.paint = () => { drawStrip(); overlay(); };
+  c.update = () => {
+    if (!c.live) return;
+    c.targets = targetList();
+    c.unc = c.targets.flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
+    reviewBtn.hidden = !c.unc.length;
+    reviewBtn.textContent = `Review ${c.unc.length} uncertain`;
+    c.seek(c.t, true);
+  };
+  c.freeze = () => { c.live = false; card.classList.add('stale'); undoBtn.hidden = true; reviewBtn.hidden = true; drawHint.hidden = true; frame.classList.remove('drawing'); };
+  c.setDraw = on => { drawHint.hidden = !on; frame.classList.toggle('drawing', on); };
+  new ResizeObserver(overlay).observe(cv);
+  S.cards.forEach(x => x.freeze());
+  S.cards.push(c);
+  c.update();
+  c.setDraw(!!S.drawMode);
+  scrollDown();
+  return c;
+}
+
+// ---------- actions ----------
+function setBusy(msg) {
+  S.busy = !!msg;
+  ['text', 'drawBtn', 'exportBtn'].forEach(id => $(id).disabled = !!msg || !S.vid);
+  document.querySelectorAll('#threadInner .actions button').forEach(b => b.disabled = !!msg);
+  status(msg || '');
+}
+function pending(host, first) {
+  const t0 = Date.now(), line = el('div', { class: 'pending' }), sub = el('div', { class: 'pending sub' });
+  host.append(line, sub);
+  const tick = () => {
+    const s = Math.round((Date.now() - t0) / 1000);
+    line.replaceChildren(el('span', { class: 'dots' }, `working${s ? ` · ${s} s` : ''}`));
+    sub.textContent = first ? 'The first request on a new video waits for its scan (faces, plates, people).' :
+      s > 8 ? 'Still going: requests that need the language model or many person checks take longer.' : '';
+  };
+  tick(); const iv = setInterval(tick, 1000);
+  return () => { clearInterval(iv); line.remove(); sub.remove(); };
+}
+async function sendRequest(text) {
+  if (!S.vid || S.busy || !text.trim()) return;
+  if (/^\s*undo\s*$/i.test(text)) { $('text').value = ''; autosize(); return undoLast(); }
+  closeHints();
+  userMsg(text); $('text').value = ''; autosize();
+  const host = el('div', { class: 'agent' }); thread().append(host); scrollDown();
+  const first = S.versions.length === 1;
+  const done = pending(host, first);
+  setBusy('Working on it…');
   let j;
-  try { j = await api(`api/videos/${vid}/export`, { method: 'POST' }); }
-  catch (err) { busy(); $('status').textContent = (err && err.detail) || 'Export failed, see the log below.'; return log(err); }
-  busy(); $('status').textContent = `Done: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames. The player now shows the blurred video.`;
-  // j.url names this render (?v=...), so neither the player nor the download link can get an older, cached file
-  log(j); $('dl').href = j.url; $('dl').textContent = 'Download export.mp4'; $('dl').hidden = false;
-  $('player').src = j.url;  // play the blurred result, not the original
-};
-// draw-a-box on the preview image
-const cv = $('draw'); let start = null;
-const toVideo = ev => { const r = cv.getBoundingClientRect(); return [ (ev.clientX - r.left) / r.width * info.width, (ev.clientY - r.top) / r.height * info.height ]; };
-cv.onmousedown = ev => { if (info) start = toVideo(ev); };
-cv.onmouseup = async ev => {
-  if (!start) return; const end = toVideo(ev);
-  const box = [Math.min(start[0], end[0]), Math.min(start[1], end[1]), Math.max(start[0], end[0]), Math.max(start[1], end[1])]; start = null;
-  if (box[2] - box[0] < 8 || box[3] - box[1] < 8) return;
-  try { const j = await api(`api/videos/${vid}/box`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ frame: frameNow(), box }) }); log(j); showSummary(j.summary); refresh(); }
-  catch (err) { log(err); }
-};
+  try {
+    j = await post(`api/videos/${S.vid}/request`, { text });
+  } catch (err) {
+    if (err && err.detail !== undefined) {
+      done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `That request failed: ${errText(err)}`));
+      setBusy(); return;
+    }
+    // No answer from the app: a proxy in front of it (AUP's gives up after ~100 s) dropped the connection while
+    // the server keeps working. Wait for it to finish, so nothing runs before the masks exist.
+    status('The connection dropped, but the server is still working on it. Waiting…');
+    try {
+      let v; do { await sleep(3000); v = await api(`api/videos/${S.vid}`); } while (v.busy);
+      done(); host.append(el('div', { class: 'text' }, `The server finished: ${v.summary.n_targets} target(s) masked now. The connection dropped before its answer came back, so the steps aren't shown.`));
+      S.versions.push({ key: `lost_${Date.now()}`, text, at: Date.now(), opIds: [], n: v.summary.n_targets, undone: false });
+      await refreshState(); addCard(host, null); setBusy(); return;
+    } catch (e2) { done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `That request failed: ${errText(e2)}`)); setBusy(); return; }
+  }
+  done();
+  const ops = opIdsOf(j.calls);
+  host.append(el('div', { class: 'text' }, j.message));
+  if (j.calls.length) host.append(describe(j.calls, j.path));
+  if (ops.length) S.versions.push({ key: j.request_id, text, at: Date.now(), opIds: ops, n: j.summary.n_targets, undone: false });
+  await refreshState();
+  if (ops.length || j.calls.some(c => c.tool === 'undo' && c.result)) {
+    const added = j.calls.filter(c => c.tool === 'add_masks' && !c.error).flatMap(c => c.args.track_ids || []);
+    addCard(host, added);
+  } else if (j.path === 'clarify') {
+    host.append(el('div', { class: 'actions' }, el('button', { onclick: showHints }, 'See example requests')));
+  }
+  host.append(el('details', { class: 'raw' }, el('summary', {}, `Tool calls (${j.calls.length}) · ${j.path}`), el('pre', {}, JSON.stringify(j.calls, null, 1))));
+  setBusy(); scrollDown(); $('text').focus();
+}
+async function sendBox(frame, box) {
+  if (S.busy) return;
+  toggleDraw(false);
+  userMsg(`Box drawn on frame ${String(frame).padStart(4, '0')}`);
+  const host = el('div', { class: 'agent' }); thread().append(host);
+  const done = pending(host, false); setBusy('Tracking the box…');
+  try {
+    const j = await post(`api/videos/${S.vid}/box`, { frame, box });
+    done();
+    S.versions.push({ key: `box_${j.op_id}_${Date.now()}`, text: `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    await refreshState();
+    host.append(el('div', { class: 'text' }, `Tracking ${tid(j.track.track_id)} from ${fmt(j.track.start)} to ${fmt(j.track.end)}; it's blurred wherever it was followed.`));
+    S.selected = j.track.track_id; renderTargets();
+    addCard(host, [j.track.track_id]);
+  } catch (e) { done(); host.classList.add('error'); host.append(el('div', { class: 'text' }, `Couldn't track that box: ${errText(e)}`)); }
+  setBusy();
+}
+// Undo the latest version: every op it added (a request can add several), not just the last op
+async function undoLast() {
+  if (S.busy || !S.vid) return;
+  const ver = [...S.versions].reverse().find(v => !v.undone && v.opIds.length);
+  if (!ver) { note('Nothing to undo.'); return; }
+  setBusy('Undoing…');
+  try {
+    for (let i = 0; i < 20; i++) {
+      const last = S.ops[S.ops.length - 1];
+      if (!last || !ver.opIds.includes(last.op_id)) break;
+      await post(`api/videos/${S.vid}/undo`);
+      S.ops = (await api(`api/videos/${S.vid}`)).ops;
+    }
+    ver.undone = true;
+    const n = S.versions.indexOf(ver) + 1;
+    await refreshState();
+    const host = note(`Undid v${n} ("${ver.text}"). ${S.timeline ? Object.keys(S.timeline.targets).length : 0} target(s) masked now.`);
+    addCard(host, null);
+  } catch (e) { status(`Undo failed: ${errText(e)}`, true); }
+  setBusy();
+}
+async function doExport() {
+  if (!S.vid || S.busy) return;
+  if (!Object.keys(S.timeline.targets).length) { status('No masks yet: send a request first, or the export would just be the original.', true); return; }
+  setBusy('Rendering the blurred video…'); $('exportBtn').textContent = 'Rendering…';
+  try {
+    const j = await post(`api/videos/${S.vid}/export`);
+    S.exportUrl = j.url;
+    $('dl').href = j.url; $('dl').hidden = false;
+    $('srcCtl').querySelector('[data-src=export]').disabled = false;
+    const cur = S.versions.filter(v => !v.undone).length;
+    note(`Exported v${cur}: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames${j.stats.failed_frames ? `, ${j.stats.failed_frames} frames failed to decode` : ''}. Rendered on this machine.`);
+    setSrc('export'); openDrawer(0);
+    setBusy();
+  } catch (e) { setBusy(); status(errText(e) || 'Export failed.', true); }
+  $('exportBtn').textContent = 'Export';
+}
+
+// ---------- rails ----------
+function select(id) {
+  S.selected = S.selected === id ? null : id;
+  renderTargets(); renderTimeline(); S.cards.forEach(c => c.paint());
+}
+function renderTargets() {
+  const ts = targetList();
+  $('targets').replaceChildren(...(ts.length ? ts.map(t => el('button', { class: `target${t.id === S.selected ? ' sel' : ''}`, title: `${t.id} · ${t.effect}`, onclick: () => select(t.id) },
+    el('span', { class: 'chip' }, t.chip), el('span', { class: 'name' }, t.name), el('span', { class: 'fx' }, t.effect)))
+    : [el('div', { class: 'rail-empty' }, S.vid ? 'Nothing masked yet.' : 'Load a clip to start.')]));
+}
+function renderVersions() {
+  const live = S.versions.filter(v => !v.undone);
+  const cur = live[live.length - 1];
+  $('fileMeta').textContent = S.vid ? `${fmt(dur())} · v${S.versions.indexOf(cur) + 1}` : '';
+  $('versions').replaceChildren(...S.versions.map((v, i) => [v, i]).reverse().map(([v, i]) =>
+    el('div', { class: `version${v === cur ? ' cur' : ''}${v.undone ? ' undone' : ''}`, title: v.key },
+      el('span', { class: 'vid' }, `v${i + 1}`), el('span', { class: 'vtext' }, v.text), el('span'),
+      el('span', { class: 'vmeta' }, v.undone ? 'undone' : i === 0 ? ago(v.at) : `${ago(v.at)} · ${v.n} target${v.n === 1 ? '' : 's'}`))));
+}
+
+// ---------- timeline drawer ----------
+function openDrawer(t) {
+  $('drawer').hidden = false; renderTimeline();
+  if (typeof t === 'number' && isFinite(t)) $('player').currentTime = t;
+}
+function setSrc(which) {
+  for (const b of $('srcCtl').children) b.classList.toggle('on', b.dataset.src === which);
+  const t = $('player').currentTime || 0;
+  const src = which === 'export' && S.exportUrl ? S.exportUrl : S.vid ? `api/videos/${S.vid}/source` : '';
+  if (src && !$('player').src.endsWith(src)) { $('player').src = src; $('player').currentTime = t; }
+}
+function renderTimeline() {
+  const tl = $('tl'); if ($('drawer').hidden || !S.info) return;
+  const ts = targetList(), d = dur(), step = d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
+  const axis = el('div', { class: 'axis' });
+  for (let s = 0; s <= d + 1e-6; s += step) axis.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
+  const lanes = el('div', { class: 'lanes' });
+  const labels = [];
+  ts.forEach(t => {
+    labels.push(el('div', { class: 'rowlabel', onclick: () => select(t.id), title: t.id },
+      el('span', { class: 'chip', style: t.id === S.selected ? 'background:var(--accent)' : '' }, t.chip),
+      el('span', { class: 'name' }, t.name), el('span', { class: 'fx' }, t.effect)));
+    const lane = el('div', { class: `lane${t.id === S.selected ? ' sel' : ''}`, title: `${t.chip} ${t.name}: ${t.segs.map(([a, b]) => `${fmt(a)}–${fmt(b)}`).join(', ')}` });
+    t.segs.forEach(([a, b]) => lane.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
+    t.unc.forEach(([a, b]) => lane.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
+    lane.onclick = ev => { const r = lane.getBoundingClientRect(); $('player').currentTime = (ev.clientX - r.left) / r.width * d; };
+    lanes.append(lane);
+  });
+  const ph = el('div', { class: 'ph', id: 'ph' }); lanes.append(ph);
+  const labelCol = el('div', {}, el('div', { class: 'axis' }), ...labels);
+  if (!ts.length) labelCol.append(el('div', { class: 'rail-empty', style: 'padding:6px 0' }, 'Nothing masked yet.'));
+  tl.replaceChildren(labelCol, el('div', {}, axis, lanes));
+  movePlayhead();
+}
+function movePlayhead() {
+  const t = $('player').currentTime || 0, ph = $('ph');
+  if (ph) ph.style.left = pct(t);
+  $('drawerTime').textContent = S.info ? `${fmtF(t)} · frame ${Math.round(t * S.info.fps)}` : '';
+}
+
+// ---------- composer ----------
+const EXAMPLES = [
+  ['blur all plates', ''], ['blur the woman', 'vision model'], ['pixelate faces', ''],
+  ['blur people in the first 5 seconds', ''], ['blur everyone except the man in red', 'language model'],
+  ['unblur the plates', ''], ['undo', ''],
+];
+function showHints() {
+  $('hints').hidden = false; $('hintBtn').classList.add('on'); $('hintBtn').setAttribute('aria-expanded', 'true');
+}
+function closeHints() { $('hints').hidden = true; $('hintBtn').classList.remove('on'); $('hintBtn').setAttribute('aria-expanded', 'false'); }
+$('examples').append(...EXAMPLES.map(([t, n]) => el('button', { type: 'button', onclick: () => {
+  closeHints(); if (!S.vid) return status('Pick a clip first.', true);
+  $('text').value = t; autosize(); $('text').focus();
+} }, t, n ? el('small', {}, n) : null)));
+$('hintBtn').onclick = () => $('hints').hidden ? showHints() : closeHints();
+function autosize() { const t = $('text'); t.style.height = '21px'; t.style.height = Math.min(120, t.scrollHeight) + 'px'; }
+$('text').oninput = autosize;
+$('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendRequest($('text').value); } };
+$('composer').onsubmit = e => { e.preventDefault(); sendRequest($('text').value); };
+function toggleDraw(on = !S.drawMode) {
+  S.drawMode = on; $('drawBtn').classList.toggle('on', on);
+  const live = S.cards.filter(c => c.live);
+  if (on && !live.length) {  // nothing to draw on yet: show the current frame first
+    const host = note('Drag a box around what to hide. It will be tracked through the clip.'); addCard(host, null);
+  }
+  S.cards.forEach(c => c.setDraw(on && c.live));
+  if (on) { const c = S.cards[S.cards.length - 1]; c.card.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); status('Draw mode: drag on the latest frame. Esc to cancel.'); }
+  else if (!S.busy) status('');
+}
+$('drawBtn').onclick = () => toggleDraw();
+$('exportBtn').onclick = doExport;
+$('timelineBtn').onclick = () => $('drawer').hidden ? openDrawer() : ($('drawer').hidden = true);
+$('drawerClose').onclick = () => $('drawer').hidden = true;
+$('srcCtl').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setSrc(b.dataset.src); };
+$('player').ontimeupdate = movePlayhead; $('player').onseeked = movePlayhead;
+$('targetsToggle').onclick = () => $('targetsRail').classList.toggle('open');
+$('versionsToggle').onclick = () => $('versionsRail').classList.toggle('open');
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (S.drawMode) toggleDraw(false); else if (!$('hints').hidden) closeHints(); else if (!$('drawer').hidden) $('drawer').hidden = true;
+});
+setInterval(() => S.vid && renderVersions(), 30000);
+
+// ---------- start ----------
+renderTargets(); renderVersions();
+// ?video=<id> reopens a video uploaded earlier, with its masks so far
+const reopen = new URLSearchParams(location.search).get('video');
+if (reopen) {
+  api(`api/videos/${reopen}`).then(j => openVideo({ video_id: reopen, info: j.info, prescan: [] }, `video ${reopen}`))
+    .catch(e => { welcome(); status(`Couldn't reopen video ${reopen}: ${errText(e)}`, true); history.replaceState(null, '', location.pathname); });
+} else welcome();
 </script>
 </body>
 </html>
