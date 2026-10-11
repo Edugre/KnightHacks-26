@@ -110,8 +110,8 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 ## When the server is back
 
-1. The Dublin hub (R9700) is gone for now, so relaunch on the San Jose hub (https://sjc.aupcloud.io): VSCode Server GPU, node "AMD Radeon 8060S (Strix Halo iGPU)" (not the 890M), with `https://github.com/Edugre/KnightHacks-26.git` in the git repository field. Upload the EgoBlur Gen1 files (`ego_blur_face_gen1.jit`, `ego_blur_lp_gen1.jit`) to `~/datasets/egoblur/`, then `cd ~/KnightHacks-26 && git pull && bash scripts/setup.sh && ./run.sh`, and open `https://sjc.aupcloud.io/user/<user>/proxy/8000/`. Details: README, "If the Dublin hub is down".
-2. Fill in the Strix Halo TBDs in docs/STACK.md, then re-measure Worker 1's stitching on the server (person tracks per clip, request time for "blur the woman").
-3. Run the benchmark with the real models: `./run.sh bench`, and record the request success rate.
+1. **Back on the San Jose hub since Sun Oct 11 ~01:00 (Dublin's R9700 was down).** Relaunch at https://sjc.aupcloud.io: VSCode Server GPU, node "AMD Radeon 8060S (Strix Halo iGPU)" (not the 890M), git repository `https://github.com/Edugre/KnightHacks-26.git`, runtime 240. Upload the EgoBlur Gen1 files (`ego_blur_face_gen1.jit`, `ego_blur_lp_gen1.jit`) to `~/datasets/egoblur/` and wait for the upload to finish, then `cd ~/KnightHacks-26 && git pull && bash scripts/setup.sh && ./run.sh`, and open `https://sjc.aupcloud.io/user/<user>/proxy/8000/`. Details and gotchas: README, "If the Dublin hub is down"; measurements so far: docs/STACK.md, "Strix Halo".
+2. Measure what's still "not measured" in docs/STACK.md's Strix Halo section (first the `bench.review` plate comparison), then re-measure Worker 1's stitching on the server (person tracks per clip, request time for "blur the woman").
+3. `./run.sh bench` has run on the Strix Halo (2026-10-11T05:00:59Z), but all 7 requests in `bench/requests.yaml` target the synthetic clip and only `street_walk` has labels in the format it reads. Add labels for `street_talk` and `street_plates` and requests for the real clips, then rerun it and record the request success rate.
 4. Try Worker 2's request list against the real planner; add any phrasing it gets wrong as a test.
 5. Delete this file, or move what's left into IMPLEMENTATION.md.

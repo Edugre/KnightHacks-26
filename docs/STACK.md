@@ -6,28 +6,52 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 
 ## Strix Halo (gfx1151) on the San Jose hub
 
-Fill in the TBDs as they're measured, with the date and commit. Don't copy R9700 numbers across: the 8060S is an iGPU sharing LPDDR5X with the CPU, so memory bandwidth and GPU memory readings differ.
+Measured Sun Oct 11, ~00:30-01:00 ET. Anything not listed here is not measured yet; don't copy R9700 numbers across.
 
 | Item | Value |
 | --- | --- |
-| Platform | AUP Learning Cloud San Jose (sjc.aupcloud.io), resource **VSCode Server GPU**, node **AMD Radeon 8060S (Strix Halo iGPU)** |
-| GPU | Radeon 8060S iGPU, **gfx1151**, **64 GB LPDDR5X** shared with the CPU |
+| Platform | AUP Learning Cloud San Jose (sjc.aupcloud.io), resource **VSCode Server GPU**, node **AMD Radeon 8060S (Strix Halo iGPU)**, runtime 240 |
+| GPU | Radeon 8060S iGPU, **gfx1151**, **64 GB LPDDR5X** shared with the CPU (`rocm-smi` reports 68.7 GB VRAM) |
+| CPU, RAM, disk | 32 cores, 62 GB RAM, ~984 GB disk |
+| ROCm | 7.13 (hip 7.13.99004) |
+| PyTorch | 2.9.1+rocm7.13.0 and torchvision 0.24.0+rocm7.13.0, preinstalled; `scripts/setup.sh` left torch unchanged |
+| Python and libraries | Python 3.12.3, Ultralytics 8.4.175, transformers 5.19.0, OpenCV 5.0.0 (headless), ffmpeg 7.0.2 static |
 | Session limit | **240 minutes** per launch |
-| Clone | `~/KnightHacks-26` (set the repo URL in the launch form's git repository field) |
-| EgoBlur | Re-upload `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` to `~/datasets/egoblur/` on every fresh server: Meta's CDN refuses AUP hosts |
-| ROCm | TBD (`rocminfo`, `python3 -c "import torch; print(torch.version.hip)"`) |
-| PyTorch | TBD (`python3 -c "import torch; print(torch.__version__)"`) |
+| Clone and ports | `~/KnightHacks-26` (repo URL in the launch form's git repository field); model server on :8100, app on :8000, `https://sjc.aupcloud.io/user/<user>/proxy/8000/` |
+| EgoBlur | Re-upload `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` to `~/datasets/egoblur/` on every fresh server: Meta's CDN refuses AUP hosts (upload gotchas: README, "If the Dublin hub is down") |
+| `scripts/setup.sh` | Ran clean once the MobileCLIP download completed. The first run was cut off mid-download by a browser disconnect; rerunning fixed it (the script is idempotent) |
+| `./run.sh test` | 114 passed, 1 failed: `tests/test_e2e_stub.py::test_sample_clips_load_without_a_file_picker` (OSError opening a copied clip under pytest's temp dir). Cause not investigated; known failure, not fixed |
+| Offline | Model server `/health` says `"offline": true`; `logs/egress.log` was never created, so nothing tried to connect out |
 | Not an option | Radeon 890M node: 4 GB can't hold Qwen3-VL-8B |
 
-| Measurement | R9700 (Dublin) | Strix Halo (San Jose) | How |
-| --- | --- | --- | --- |
-| Qwen3-VL-8B load time | 211 s to about 9 min (NFS) | TBD | `tail logs/model_server.log` during `./run.sh` |
-| YOLOE-11s-seg at 640 px | 191 fps (147.5 fps with the model server up) | TBD | `python3 scripts/smoke_yoloe.py` |
-| VLM yes/no latency | 311 ms (one image); about 0.3 s for three crops in the app | TBD | `python3 scripts/smoke_vlm.py` (only while the model server is down) |
-| EgoBlur per model, 1080p frame, fp16 | 0.049 s (0.147 s fp32) | TBD | `python3 -m bench.egoblur_speed bench/clips/street_plates.mp4` |
-| Upload scan, `street_plates` (13 s, 1080p) | 17.2 s (0.76x real time) | TBD | `python3 -m bench.profile_scan bench/clips/street_plates.mp4 --warm-up` |
+| Measurement (Strix Halo) | Result |
+| --- | --- |
+| Qwen3-VL-8B model server load | **8 s** (`/health`: `load_s` 8, `gpu_mem_gb` 17.5). Probably storage, not the GPU: don't claim the GPU is faster for this |
+| YOLOE + EgoBlur warm-up at app start | **21.3 s** ("detectors ready in 21.3 s") |
+| GPU memory, model server + app | ~18.7 GB right after model-server start, ~20.3 GB with EgoBlur loaded and a request run |
+| `./run.sh bench`, `street_walk` (1280x720, 221 frames) | detect **45.4 ms/frame**, render **3.5 ms/frame**, offline speed **0.8x real time** |
+| `./run.sh bench`, `synthetic` (1280x720, 180 frames) | detect 140.5 ms/frame, render 3.7 ms/frame, 0.2x; agent 1.07 s mean / 7.52 s max per request. Not the product's speed: detect time here is dominated by test setup |
+| `./run.sh bench`, GPU memory | detector (bench process) 1.25 GB, model server 17.6 GB, **18.9 GB peak** with all models loaded (target <= 28 GB: pass) |
+| `./run.sh bench`, fail-closed on uncertain keyframes | 100% (pass) |
+| YOLOE-11s-seg at 640 px (`scripts/smoke_yoloe.py`) | not measured |
+| VLM yes/no latency (`scripts/smoke_vlm.py`) | not measured |
+| EgoBlur per model, 1080p frame (`bench.egoblur_speed`) | not measured |
+| Upload scan, `street_plates` 1080p (`bench.profile_scan`) | not measured |
+| Plate recall and over-blur on the labeled clips (`bench.review`) | not measured; the comparison with the R9700 is pending |
+| Request success rate | not measured (see below) |
+| gfx1151 stability under load, attention settings (PLAN.md concerns 1-2) | no crash seen in the runs above; not stress-tested |
 
-Also check, from PLAN.md concerns 1–2: no gfx1151 segfaults while the model server and the scan run together, and whether Qwen3-VL's attention needs a different setting than on the R9700. Result: TBD.
+**The bench report's quality numbers don't measure the product.** The run (bench/report.md generated 2026-10-11T05:00:59Z on the Strix Halo; the report wasn't committed) scored only `synthetic` and `street_walk`: `street_talk` and `street_plates` were skipped because `run_bench` expects `bench/labels/<clip>.json`. All 7 requests in `bench/requests.yaml` are written for the synthetic clip, whose drawn shapes real detectors can't find, so its face recall, plate recall, over-blur and request success are not results. The R9700 plate numbers (100% / 94.6% masked, 3% over-blur) came from `bench/review.py`, not `run_bench`.
+
+**R9700 vs Strix Halo, figures measured on both:**
+
+| | R9700 (Dublin) | Strix Halo (San Jose) |
+| --- | --- | --- |
+| Qwen3-VL-8B load | 211 s to about 9 min (NFS storage) | 8 s (likely storage, not GPU) |
+| Model server GPU memory (`/health`) | 17.7 GB | 17.5 GB |
+| Peak GPU memory, all models loaded | 17.9 GB (M0 smoke test) | 18.9 GB (`./run.sh bench`) |
+| Detector warm-up at app start (YOLOE + EgoBlur) | 18.5 s | 21.3 s |
+| YOLOE fps, EgoBlur per frame, VLM latency, upload scan, plate recall | measured (below) | not measured |
 
 ## Hardware and environment (R9700, Dublin)
 
