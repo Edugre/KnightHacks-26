@@ -293,6 +293,7 @@ class LiveReplay:
         self._ring: deque[_Slot] = deque(maxlen=int((delay_s + RING_SLACK_S) * self.fps) + 2)
         self._dets: list[Detection] = []
         self._history: deque[tuple[int, bytes]] = deque(maxlen=HISTORY)
+        self._handed = -1  # highest frame number any poller has been given (latest() hands each out once)
         self._threads: list[threading.Thread] = []
         self._logged: set[tuple[str, str]] = set()
         self._n = dict(frames_in=0, frames_out=0, blind=0, dropped_out=0, emit_errors=0, det_errors=0, passes=0,
@@ -340,14 +341,22 @@ class LiveReplay:
             self._cv.notify_all()
 
     def latest(self, after: int, timeout: float) -> tuple[int, bytes] | None:
-        """First retained frame with f > after; a client ahead of the stream (after > newest) gets the newest now.
-        None on timeout or once stopped."""
+        """First retained frame with f > after that no poller has been given yet; a client ahead of the stream
+        (after > newest) gets the newest now. None on timeout or once stopped. Each frame goes out once: the page
+        keeps two polls in flight with the same `after`, and without this both woke on the same frame, so the
+        second request carried a duplicate instead of the next frame (half the display rate through the proxy)."""
         with self._cv:
-            self._cv.wait_for(lambda: self._stop.is_set() or (bool(self._history) and self._history[-1][0] != after),
+            newest = self._history[-1][0] if self._history else -1
+            if after > newest >= 0:
+                return self._history[-1]
+            floor = max(after, self._handed)
+            self._cv.wait_for(lambda: self._stop.is_set() or (bool(self._history) and self._history[-1][0] > floor),
                               timeout)
-            if self._stop.is_set() or not self._history or self._history[-1][0] == after:
+            if self._stop.is_set() or not self._history or self._history[-1][0] <= floor:
                 return None
-            return next((h for h in self._history if h[0] > after), self._history[-1])
+            frame = next(h for h in self._history if h[0] > floor)
+            self._handed = frame[0]
+            return frame
 
     def _publish(self, f: int, jpeg: bytes) -> None:
         with self._cv:
