@@ -2,7 +2,9 @@
 import os
 import subprocess
 import sys
+import threading
 import time
+import types
 from pathlib import Path
 
 import pytest
@@ -24,7 +26,12 @@ class FakeReplay:
         self.fps, self.size, self.n_frames = 30.0, (1280, 720), 90
         self.frames = list(frames)
         self.started = self.stopped = False
+        self.alive = True  # a test flips this to False to play an engine whose thread died
         self.afters: list[int] = []
+
+    @property
+    def running(self):
+        return self.alive and not self.stopped
 
     def start(self):
         self.started = True
@@ -56,6 +63,7 @@ def fresh_state(monkeypatch, tmp_path):
     monkeypatch.setitem(live_routes._state, "last_poll", 0.0)
     monkeypatch.setitem(live_routes._state, "clip", None)
     monkeypatch.setitem(live_routes._state, "error", None)
+    monkeypatch.setattr(live_routes, "_detectors", {})
     samples = tmp_path / "clips"
     samples.mkdir()
     (samples / "demo.mp4").write_bytes(b"")  # the fake never opens it
@@ -232,8 +240,132 @@ def test_stop_while_warming_discards_the_engine(client, monkeypatch):
     assert built[0].stopped and live_routes._state["replay"] is None
 
 
+def _slow_factory(monkeypatch):
+    """make_replay that blocks until `release` is set, then builds a FakeReplay. engines[i] belongs to call i."""
+    release, engines, calls = threading.Event(), {}, []
+
+    def slow(clip, height, stub):
+        i = len(calls)
+        calls.append(clip)
+        assert release.wait(5)
+        engines[i] = FakeReplay()
+        return engines[i]
+
+    monkeypatch.setattr(live_routes, "make_replay", slow)
+    return release, engines, calls
+
+
+def _wait_for(cond, timeout=2.0):
+    end = time.monotonic() + timeout
+    while not cond() and time.monotonic() < end:
+        time.sleep(0.01)
+    assert cond()
+
+
+def test_engine_built_after_a_stop_is_never_started(client, monkeypatch):
+    release, engines, calls = _slow_factory(monkeypatch)
+    _start(client)
+    _wait_for(lambda: len(calls) == 1)
+    assert client.post("/api/live/stop").json()["phase"] == "idle"
+    assert _start(client).status_code == 202  # a second warm-up begins while the first is still going
+    _wait_for(lambda: len(calls) == 2)
+    release.set()
+    _wait_for(lambda: len(engines) == 2 and engines[0].stopped)
+    assert _wait_phase(client, "running")["running"] is True
+    assert not engines[0].started and engines[0].stopped  # built after its stop: never started
+    assert engines[1].started and not engines[1].stopped
+    assert live_routes._state["replay"] is engines[1]
+
+
+def test_stop_during_engine_start_discards_it(client, monkeypatch):
+    in_start, go = threading.Event(), threading.Event()
+    made = []
+
+    class SlowStart(FakeReplay):
+        def start(self):
+            in_start.set()
+            assert go.wait(5)
+            super().start()
+
+    def factory(clip, height, stub):
+        made.append(SlowStart())
+        return made[0]
+
+    monkeypatch.setattr(live_routes, "make_replay", factory)
+    _start(client)
+    assert in_start.wait(2)
+    assert client.post("/api/live/stop").json()["phase"] == "idle"
+    go.set()
+    _wait_for(lambda: made[0].started)
+    time.sleep(0.1)
+    assert made[0].stopped
+    assert client.get("/api/live/stats").json()["phase"] == "idle" and live_routes._state["replay"] is None
+
+
 def test_stats_idle_shape(client):
     assert client.get("/api/live/stats").json() == {"phase": "idle", "running": False}
+
+
+class FakeDetector:
+    """Stands in for censor.vision.specialist.EgoBlurDetector: counts loads and warm-ups."""
+    made: list = []
+    warmed: list = []
+    warm_gate: threading.Event | None = None
+
+    def __init__(self):
+        FakeDetector.made.append(self)
+        self.infer = {"face": object()}
+
+    def warm_up(self, sizes):
+        if FakeDetector.warm_gate is not None:
+            assert FakeDetector.warm_gate.wait(5)
+        FakeDetector.warmed.append(tuple(sizes))
+
+
+@pytest.fixture()
+def real_mode(monkeypatch):
+    """make_replay in real (non-stub) mode, with the detector, the probe and the engine faked."""
+    FakeDetector.made, FakeDetector.warmed, FakeDetector.warm_gate = [], [], None
+    monkeypatch.setattr("censor.vision.specialist.EgoBlurDetector", FakeDetector)
+    monkeypatch.setattr("censor.core.video.probe", lambda path: types.SimpleNamespace(width=1920, height=1080, n_frames=90))
+    engine_mod = types.ModuleType("censor.live")
+    engine_mod.LiveReplay = lambda path, detect, height: types.SimpleNamespace(path=path, detect=detect, height=height)
+    engine_mod.egoblur_detect = lambda infer: infer
+    engine_mod.sidecar_detect = None
+    monkeypatch.setitem(sys.modules, "censor.live", engine_mod)
+    return FakeDetector
+
+
+def test_make_replay_loads_and_warms_egoblur_once_per_size(real_mode):
+    a = live_routes.make_replay("a.mp4", 720, False)
+    b = live_routes.make_replay("b.mp4", 720, False)
+    assert (a.path, b.path) == ("a.mp4", "b.mp4") and a.detect is b.detect  # same detector, same infer
+    assert len(real_mode.made) == 1 and real_mode.warmed == [((720, 1280),)]
+    live_routes.make_replay("a.mp4", 540, False)  # a new live size is a new warm-up
+    assert len(real_mode.made) == 2 and real_mode.warmed[-1] == ((540, 960),)
+
+
+def test_concurrent_warmups_share_one_detector(real_mode):
+    real_mode.warm_gate = threading.Event()
+    out = []
+    threads = [threading.Thread(target=lambda: out.append(live_routes.make_replay("a.mp4", 720, False))) for _ in range(2)]
+    for t in threads:
+        t.start()
+    time.sleep(0.1)  # both are inside make_replay; one holds the detector lock in its warm-up
+    real_mode.warm_gate.set()
+    for t in threads:
+        t.join(5)
+    assert len(out) == 2 and len(real_mode.made) == 1 and len(real_mode.warmed) == 1
+
+
+def test_a_failed_warmup_is_not_cached(real_mode, monkeypatch):
+    def boom(self, sizes):
+        raise RuntimeError("out of memory")
+
+    monkeypatch.setattr(real_mode, "warm_up", boom)
+    with pytest.raises(RuntimeError):
+        live_routes.make_replay("a.mp4", 720, False)
+    assert live_routes._detectors == {}
 
 
 def test_failed_start_goes_idle_and_reports_the_error(client, monkeypatch):
@@ -283,6 +415,83 @@ def test_a_poll_keeps_it_alive(client, fake, monkeypatch):
     live_routes._auto_stop_check()
     assert not fake[0][3].stopped
     assert client.get("/api/live/stats").json()["phase"] == "running"
+
+
+def test_a_frame_poll_refreshes_last_poll(client, fake, monkeypatch):
+    _start(client)
+    _wait_phase(client, "running")
+    stale = time.monotonic() - live_routes.AUTO_STOP_S - 1
+    monkeypatch.setitem(live_routes._state, "last_poll", stale)
+    assert client.get("/api/live/frame", params={"run": "abc12345", "after": -1}).status_code == 200
+    assert live_routes._state["last_poll"] > stale
+    live_routes._auto_stop_check()
+    assert not fake[0][3].stopped
+
+
+def test_204_polls_do_not_keep_it_alive(client, fake, monkeypatch):
+    _start(client)
+    _wait_phase(client, "running")
+    stale = time.monotonic() - live_routes.AUTO_STOP_S - 1
+    monkeypatch.setitem(live_routes._state, "last_poll", stale)
+    for _ in range(3):  # nothing newer than frame 5: the engine is not producing, the poll times out
+        assert client.get("/api/live/frame", params={"run": "abc12345", "after": 5}).status_code == 204
+    assert live_routes._state["last_poll"] == stale
+    live_routes._auto_stop_check()
+    assert fake[0][3].stopped
+    assert client.get("/api/live/stats").json()["phase"] == "idle"
+
+
+def test_idle_204_polls_leave_last_poll_alone(client):
+    assert client.get("/api/live/frame").status_code == 204
+    assert live_routes._state["last_poll"] == 0.0
+
+
+def _start_and_kill(client, fake):
+    _start(client)
+    _wait_phase(client, "running")
+    replay = fake[0][3]
+    replay.alive = False  # a thread of the engine died
+    return replay
+
+
+def test_dead_engine_is_reaped_by_stats(client, fake):
+    dead = _start_and_kill(client, fake)
+    s = client.get("/api/live/stats").json()
+    assert s == {"phase": "idle", "running": False, "error": live_routes.ENGINE_DIED}
+    assert dead.stopped  # its leftover threads are stopped too
+    assert client.get("/api/live/frame").status_code == 204
+    assert _start(client).status_code == 202  # not 409
+    assert _wait_phase(client, "running")["running"] is True
+    assert fake[1][3] is not dead
+
+
+def test_dead_engine_is_reaped_by_frame(client, fake):
+    dead = _start_and_kill(client, fake)
+    assert client.get("/api/live/frame", params={"run": "abc12345", "after": -1}).status_code == 204
+    assert dead.stopped and live_routes._state["phase"] == "idle" and live_routes._state["replay"] is None
+    assert client.get("/api/live/stats").json()["error"] == live_routes.ENGINE_DIED
+    assert _start(client).status_code == 202
+
+
+def test_dead_engine_is_reaped_by_the_watchdog_check(client, fake):
+    dead = _start_and_kill(client, fake)
+    live_routes._auto_stop_check()  # last_poll is fresh: only the death can stop it
+    assert dead.stopped and client.get("/api/live/stats").json()["error"] == live_routes.ENGINE_DIED
+
+
+def test_start_over_a_dead_engine_is_accepted_without_a_poll(client, fake):
+    dead = _start_and_kill(client, fake)
+    assert _start(client).status_code == 202  # nobody looked at /stats or /frame in between
+    assert dead.stopped
+    assert _wait_phase(client, "running")["running"] is True
+
+
+def test_a_live_engine_is_not_reaped(client, fake):
+    _start(client)
+    _wait_phase(client, "running")
+    assert client.get("/api/live/stats").json()["running"] is True
+    live_routes._auto_stop_check()
+    assert not fake[0][3].stopped and "error" not in client.get("/api/live/stats").json()
 
 
 def test_live_page_is_served(client, monkeypatch, tmp_path):

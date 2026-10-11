@@ -12,6 +12,8 @@ Included by censor.server.app only when CENSOR_LIVE=1 (the replay puts ~100% loa
   GET  /api/live/live    web/live.html (so the page's own URLs are relative to /api/live/)
 
 A viewer that stops polling for AUTO_STOP_S seconds (a closed tab) gets the replay stopped, so it can't hold the GPU.
+Only a /frame poll that returns a frame counts as a poll. An engine whose thread died (LiveReplay.running is False) is
+noticed by /start, /stats, /frame and the watchdog: the run ends in idle with an error and a new start is accepted.
 """
 from __future__ import annotations
 
@@ -43,12 +45,17 @@ AUTO_STOP_S = 30.0  # no /frame poll for this long -> stop
 AUTO_STOP_CHECK_S = 5.0
 FRAME_WAIT_S = 2.0  # how long one /frame poll waits for a newer frame
 AHEAD = 10**12  # an `after` beyond any frame number: the engine answers with its newest frame
+ENGINE_DIED = "engine stopped unexpectedly; see the server log"
 
 _lock = threading.Lock()
 # phase: idle | warming | running. gen counts starts and stops, so a warm-up that was stopped meanwhile discards its
 # engine. error: why the last start failed, shown by /stats once the phase is back to idle.
 _state: dict = {"phase": "idle", "replay": None, "last_poll": 0.0, "clip": None, "error": None, "gen": 0}
 _watchdog: threading.Thread | None = None
+# EgoBlur detectors by live (height, width): warmed once, then shared by every start. A warm-up that outlives its
+# stop must not make the next start load a second 420 MB copy, so creation happens under _det_lock.
+_detectors: dict[tuple[int, int], object] = {}
+_det_lock = threading.Lock()
 
 
 class StartIn(BaseModel):
@@ -56,7 +63,7 @@ class StartIn(BaseModel):
     height: int = Field(720, ge=360, le=1080)
 
 
-def make_replay(clip_path: str, height: int, stub: bool) -> "LiveReplay":
+def make_replay(clip_path: str, height: int, stub: bool) -> LiveReplay:
     """Build the engine for one clip (tests replace this with a fake). Real mode loads EgoBlur and warms it at the
     live size before the clock starts; stub mode replays the clip's tracks.json sidecar, no GPU."""
     from censor.core.video import probe
@@ -70,8 +77,12 @@ def make_replay(clip_path: str, height: int, stub: bool) -> "LiveReplay":
 
     v = probe(clip_path)
     width = max(2, int(round(v.width * height / v.height / 2)) * 2)
-    det = EgoBlurDetector()
-    det.warm_up(sizes=((height, width),))
+    with _det_lock:
+        det = _detectors.get((height, width))
+        if det is None:
+            det = EgoBlurDetector()
+            det.warm_up(sizes=((height, width),))
+            _detectors[(height, width)] = det  # only a warmed detector is kept
     return LiveReplay(clip_path, egoblur_detect(det.infer), height=height)
 
 
@@ -96,11 +107,29 @@ def _stats_locked() -> dict:
     return {**replay.stats(), "phase": phase, "warming": False}
 
 
+def _reap_if_dead_locked() -> LiveReplay | None:
+    """The caller holds _lock. If the running engine has died (LiveReplay.running turned False without a stop from
+    here), end the run: back to idle with an error. Returns the dead engine so the caller can stop() it (which joins
+    its leftover threads) after releasing the lock; None when there was nothing to reap."""
+    replay = _state["replay"]
+    if _state["phase"] != "running" or replay is None or replay.running:
+        return None
+    _state.update(phase="idle", replay=None, gen=_state["gen"] + 1, error=ENGINE_DIED)
+    print(f"[live] {ENGINE_DIED}", file=sys.stderr)
+    return replay
+
+
 def _warm_and_run(gen: int, clip_path: str, height: int, stub: bool) -> None:
     replay = None
+    current = False
     try:
         replay = make_replay(clip_path, height, stub)
-        replay.start()
+        with _lock:
+            current = _state["gen"] == gen and _state["phase"] == "warming"
+            if current:
+                _state["replay"] = replay  # /stop can reach it from here on
+        if current:  # stopped while warming up: never start an engine nobody wants
+            replay.start()
     except Exception as e:  # noqa: BLE001  any failure (missing models, unreadable clip) ends in idle with a message
         print(f"[live] start failed: {type(e).__name__}: {e}", file=sys.stderr)
         with _lock:
@@ -110,19 +139,22 @@ def _warm_and_run(gen: int, clip_path: str, height: int, stub: bool) -> None:
             replay.stop()
         return
     with _lock:
-        if _state["gen"] == gen and _state["phase"] == "warming":
-            _state.update(phase="running", replay=replay, last_poll=time.monotonic())
+        if current and _state["gen"] == gen and _state["phase"] == "warming":
+            _state.update(phase="running", last_poll=time.monotonic())
             return
-    replay.stop()  # stopped while warming up: nobody wants this engine any more
+    replay.stop()  # stopped while warming up or starting: nobody wants this engine any more
 
 
 def _auto_stop_check() -> None:
     with _lock:
-        if _state["phase"] != "running" or time.monotonic() - _state["last_poll"] <= AUTO_STOP_S:
-            return
-        replay = _state["replay"]
-        _state.update(phase="idle", replay=None, gen=_state["gen"] + 1)
-    print(f"[live] no frame poll for {AUTO_STOP_S:.0f} s; stopping the replay", file=sys.stderr)
+        replay = _reap_if_dead_locked()
+        idle_viewer = (replay is None and _state["phase"] == "running"
+                       and time.monotonic() - _state["last_poll"] > AUTO_STOP_S)
+        if idle_viewer:
+            replay = _state["replay"]
+            _state.update(phase="idle", replay=None, gen=_state["gen"] + 1)
+    if idle_viewer:
+        print(f"[live] no frame poll for {AUTO_STOP_S:.0f} s; stopping the replay", file=sys.stderr)
     if replay is not None:
         replay.stop()
 
@@ -151,6 +183,10 @@ def start(body: StartIn):
     if not SAMPLE_NAME.fullmatch(body.clip) or not src.exists():
         raise HTTPException(404, f"no sample clip {body.clip!r}")
     stub = _stub_mode()
+    with _lock:
+        dead = _reap_if_dead_locked()  # a dead engine must not turn this start into a 409
+    if dead is not None:
+        dead.stop()
     with _lock:
         if _state["phase"] != "idle":
             raise HTTPException(409, "a live replay is already running; stop it first")
@@ -182,22 +218,29 @@ def stop():
 @router.get("/stats")
 def stats():
     with _lock:
-        return _stats_locked()
+        dead = _reap_if_dead_locked()
+        out = _stats_locked()
+    if dead is not None:
+        dead.stop()
+    return out
 
 
 @router.get("/frame")
 def frame(run: str = "", after: int = -1):
     with _lock:
+        dead = _reap_if_dead_locked()
         replay = _state["replay"] if _state["phase"] == "running" else None
+    if dead is not None:
+        dead.stop()
     if replay is None:
         return Response(status_code=204)
     if run != replay.run:  # a client from before a restart, or none yet: show the newest frame now
         after = AHEAD
     res = replay.latest(after, timeout=FRAME_WAIT_S)
+    if res is None:  # a poll that got nothing must not keep a stalled or dead stream "alive"
+        return Response(status_code=204)
     with _lock:
         _state["last_poll"] = time.monotonic()
-    if res is None:
-        return Response(status_code=204)
     f, jpeg = res
     return Response(content=jpeg, media_type="image/jpeg", headers={"X-Live-Frame": str(f), "X-Live-Run": replay.run})
 
