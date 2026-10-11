@@ -32,7 +32,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 ## The four tasks
 
-### Worker 1: stitch fragmented person tracks (vision) — taken, in progress (branch `A/person-stitch`)
+### Worker 1: stitch fragmented person tracks (vision) — done Sat 22:00 (`censor/vision/stitch.py`; results in IMPLEMENTATION.md open item 1)
 
 **Problem:** on `street_walk` the person detector gives 18 tracks for about 3 people in focus; 15 are short scraps of blurry background pedestrians, because the tracker loses someone for a few frames and starts a "new" person. Every request asks the VLM about every track (~0.3 s each), and scraps get inconsistent answers. (IMPLEMENTATION.md, open item 1.)
 
