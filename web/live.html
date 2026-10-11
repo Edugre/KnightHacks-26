@@ -1,0 +1,244 @@
+<!doctype html>
+<!-- Blurr live replay page (docs/LIVE_REPLAY_PLAN.md, C4). Served at /api/live/live by censor/server/live_routes.py, so every
+     URL below is relative to /api/live/ (never a leading slash). Plain HTML and JS, no build step. Dark only, like index.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blurr · Live replay</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23111111'/%3E%3Ctext x='16' y='24.5' font-family='Helvetica,Arial,sans-serif' font-weight='700' font-size='24' text-anchor='middle' fill='%23E5484D'%3EB%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --acc:#E5484D; --acc-tint:rgba(229,72,77,.14);
+    --gridbg:#242424; --panel:#141414; --head:#111111; --well:#0B0B0B; --field:#1A1A1A;
+    --text:#EDEDED; --mute:#8A8A8A; --meta:#7A7A7A; --faint:#6A6A6A; --divider:#2E2E2E; --hair:#1F1F1F;
+    --ink:#FFFFFF; --ink-dark:#111111; --err:#FF8F8F; --warn:#E8B04B;
+    --primary-bg:#FFFFFF; --primary-fg:#111111;
+    --font:"Geist", system-ui, sans-serif; --mono:"Geist Mono", ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; min-height:100%; }
+  body { background:var(--gridbg); color:var(--text); font:400 13px/1.4 var(--font); font-variant-numeric:tabular-nums; display:flex; flex-direction:column; min-height:100vh; }
+  button, select { font:inherit; color:inherit; }
+  :focus { outline:none; }
+  :focus-visible { outline:2px solid var(--text); outline-offset:2px; }  /* not red: red means "redacted" */
+  [hidden] { display:none !important; }
+
+  header { background:var(--head); display:flex; align-items:center; flex-wrap:wrap; gap:8px 18px; padding:12px 18px; border-bottom:1px solid var(--divider); }
+  .wm { font:700 22px/1 var(--font); letter-spacing:-.045em; color:var(--ink); white-space:nowrap; user-select:none; }
+  .wm .r1 { filter:blur(.018em); } .wm .r2 { filter:blur(.055em); color:var(--acc); }
+  header h1 { margin:0; font:500 14px/1.2 var(--font); color:var(--text); }
+  .badge { margin-left:auto; display:flex; align-items:center; gap:7px; font:400 12px/1.3 var(--mono); color:var(--text); border:1px solid var(--acc); background:var(--acc-tint); padding:4px 10px; border-radius:4px; min-width:0; }
+  .badge i { width:6px; height:6px; background:var(--acc); flex:none; }
+
+  main { flex:1; width:100%; max-width:1180px; margin:0 auto; padding:16px 18px; display:flex; flex-direction:column; gap:16px; min-width:0; }
+  section { min-width:0; }
+  .h { margin:0 0 8px; font:500 11px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--mute); }
+
+  .controls { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; background:var(--panel); padding:14px 16px; }
+  .controls label { display:flex; flex-direction:column; gap:4px; font:500 10.5px/1.2 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); min-width:0; }
+  select { background:var(--field); border:1px solid #333; border-radius:6px; padding:7px 10px; font:500 13px/1.2 var(--font); text-transform:none; letter-spacing:0; color:var(--text); max-width:100%; }
+  select:hover:not(:disabled) { border-color:var(--faint); }
+  select:disabled { opacity:.5; }
+  .btns { display:flex; gap:8px; margin-left:auto; }
+  button { cursor:pointer; background:none; border:1px solid #3A3A3A; border-radius:6px; padding:8px 18px; font:600 13px/1.2 var(--font); }
+  button:hover:not(:disabled) { background:rgba(237,237,237,.08); }
+  button:active:not(:disabled) { background:rgba(237,237,237,.16); }
+  button.primary { background:var(--primary-bg); color:var(--primary-fg); border-color:var(--primary-bg); }
+  button.primary:hover:not(:disabled) { background:#E6E6E6; } button.primary:active:not(:disabled) { background:#D4D4D4; }
+  button:disabled { opacity:.4; cursor:default; }
+  #err { flex-basis:100%; margin:0; min-height:0; color:var(--err); font:400 12px/1.4 var(--mono); }
+  #err:empty { display:none; }
+
+  .monitor { position:relative; width:100%; max-width:calc((100vh - 300px) * 16 / 9); min-width:min(100%, 320px); margin:0 auto; aspect-ratio:16/9; background:#000; outline:1px solid #2A2A2A; border-radius:4px; overflow:hidden; }
+  .monitor img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
+  .monitor .empty { position:absolute; inset:0; display:grid; place-items:center; color:var(--faint); font:400 12px/1.4 var(--mono); }
+  .overlay { position:absolute; left:8px; bottom:8px; right:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; pointer-events:none; }
+  .overlay span { background:rgba(17,17,17,.85); font:400 11px/1.4 var(--mono); padding:2px 8px; color:var(--text); }
+  .overlay .live::before { content:""; display:inline-block; width:6px; height:6px; margin-right:6px; background:var(--acc); }
+  .overlay .contended { background:var(--acc); color:var(--ink); font-weight:600; }
+
+  dl.stats { margin:0; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:1px; background:var(--divider); border:1px solid var(--divider); }
+  dl.stats div { background:var(--panel); padding:10px 12px; min-width:0; }
+  dl.stats dt { font:500 10.5px/1.3 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); }
+  dl.stats dd { margin:4px 0 0; font:500 18px/1.2 var(--mono); letter-spacing:-.02em; color:var(--ink); overflow-wrap:anywhere; }
+  dl.stats dd small { font-size:12px; color:var(--mute); letter-spacing:0; }
+
+  footer { background:var(--head); border-top:1px solid var(--divider); padding:12px 18px; font:400 12px/1.5 var(--font); color:var(--mute); }
+  @media (max-width:520px) { .badge { margin-left:0; } .btns { margin-left:0; width:100%; } .btns button { flex:1; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="wm" role="img" aria-label="Blurr">Blu<span class="r1">r</span><span class="r2">r</span></span>
+  <h1>Blurr · Live replay</h1>
+  <div class="badge"><i></i><span id="badge">REPLAY of a recorded clip · delayed 1.0 s · showing 0 fps</span></div>
+</header>
+<main>
+  <section aria-labelledby="hCtl">
+    <h2 class="h" id="hCtl">Stream</h2>
+    <form class="controls" id="ctl" onsubmit="return false">
+      <label>Clip <select id="clip" aria-label="Clip to replay"><option>loading clips…</option></select></label>
+      <label>Height <select id="height" aria-label="Live height in pixels"><option value="720" selected>720 p</option><option value="540">540 p</option><option value="1080">1080 p</option></select></label>
+      <div class="btns"><button type="button" class="primary" id="startBtn" disabled>Start</button><button type="button" id="stopBtn" disabled>Stop</button></div>
+      <p id="err" role="alert"></p>
+    </form>
+  </section>
+  <section aria-labelledby="hMon">
+    <h2 class="h" id="hMon">Masked output</h2>
+    <div class="monitor">
+      <div class="empty" id="empty">No stream running</div>
+      <img id="img" alt="Masked frame of the live replay" hidden>
+      <div class="overlay"><span id="status" class="" role="status" aria-live="polite">idle</span><span class="contended" id="contended" hidden>GPU contended</span></div>
+    </div>
+  </section>
+  <section aria-labelledby="hSt">
+    <h2 class="h" id="hSt">Engine</h2>
+    <dl class="stats" id="stats"></dl>
+  </section>
+</main>
+<footer>Replay of a recorded clip run through the live engine on this machine; nothing leaves it.</footer>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const BACKOFF_MS = [500, 1000, 2000, 4000], POLLS_IN_FLIGHT = 2, STATS_MS = 500, FPS_WINDOW_MS = 2000;
+const S = { phase: 'idle', stats: null, run: null, after: -1, ctrl: null, shown: -1, urls: [], times: [], epoch: 0, busy: false, clipsOk: false };
+
+const errText = e => (e && (typeof e.detail === 'string' ? e.detail : e.detail && JSON.stringify(e.detail))) || (e && e.message) || 'something went wrong';
+const setErr = msg => { if ($('err').textContent !== (msg || '')) $('err').textContent = msg || ''; };
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let j; try { j = await r.json(); } catch { j = { detail: `${r.status} ${r.statusText}` }; }
+  if (!r.ok) throw Object.assign(j || {}, { status: r.status });
+  return j;
+}
+const sleep = (ms, signal) => new Promise(res => { const t = setTimeout(res, ms); signal && signal.addEventListener('abort', () => { clearTimeout(t); res(); }, { once: true }); });
+
+/* ---- clips ---- */
+async function loadClips() {
+  const sel = $('clip');
+  try {
+    const clips = await api('../samples');
+    if (!Array.isArray(clips) || !clips.length) throw { detail: 'the server lists no sample clips' };
+    S.clipsOk = true;
+    sel.replaceChildren(...clips.map(c => {
+      const o = document.createElement('option'); o.value = c.id;
+      o.textContent = [c.id, c.duration != null && `${Number(c.duration).toFixed(0)}s`, c.width && c.height && `${c.width}x${c.height}`].filter(Boolean).join(' · ');
+      return o;
+    }));
+  } catch (e) {
+    sel.replaceChildren(Object.assign(document.createElement('option'), { textContent: 'no clips available' }));
+    setErr(`Could not load clips: ${errText(e)}`);
+  }
+  render();
+}
+
+/* ---- frame loop: POLLS_IN_FLIGHT long-polls, newest frame wins ---- */
+function showFrame(frame, blob) {
+  const url = URL.createObjectURL(blob), img = $('img');
+  S.urls.push(url);
+  img.onload = () => { while (S.urls.length > 1) URL.revokeObjectURL(S.urls.shift()); };  // keep only the one on screen
+  img.src = url; img.hidden = false; $('empty').hidden = true;
+  S.shown = frame; S.after = Math.max(S.after, frame); S.times.push(performance.now());
+}
+async function pollWorker(run, signal) {
+  let bad = 0;
+  while (!signal.aborted) {
+    try {
+      const t0 = performance.now();
+      const r = await fetch(`frame?run=${encodeURIComponent(run)}&after=${S.after}`, { cache: 'no-store', signal });
+      if (r.status === 204) { if (performance.now() - t0 < 100) await sleep(250, signal); continue; }  // 204 = timeout or idle; don't spin on an instant one
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const frame = parseInt(r.headers.get('X-Live-Frame'), 10), blob = await r.blob();
+      bad = 0; setErr('');
+      if (Number.isFinite(frame) && frame > S.shown) showFrame(frame, blob);  // else out of order: drop
+    } catch (e) {
+      if (signal.aborted) return;
+      setErr(`Frame feed interrupted (${errText(e)}); retrying…`);
+      await sleep(BACKOFF_MS[Math.min(bad++, BACKOFF_MS.length - 1)], signal);
+    }
+  }
+}
+function startLoop(run) {
+  stopLoop();
+  S.run = run; S.after = -1; S.shown = -1; S.times = [];
+  S.ctrl = new AbortController();
+  for (let i = 0; i < POLLS_IN_FLIGHT; i++) pollWorker(run, S.ctrl.signal);
+}
+function stopLoop() {
+  if (S.ctrl) S.ctrl.abort();
+  S.ctrl = null; S.run = null; S.times = [];
+  S.urls.forEach(u => URL.revokeObjectURL(u)); S.urls = [];
+  const img = $('img'); img.onload = null; img.removeAttribute('src'); img.hidden = true; $('empty').hidden = false;
+}
+
+/* ---- stats and rendering ---- */
+const num = (v, d = 0, unit = '') => v == null || !Number.isFinite(v) ? '–' : v.toFixed(d) + unit;
+const pct = v => v == null ? '–' : num(v * 100, v < 0.1 ? 1 : 0, '%');
+function fpsNow() {
+  const cut = performance.now() - FPS_WINDOW_MS;
+  S.times = S.times.filter(t => t >= cut);
+  const n = S.times.length / (FPS_WINDOW_MS / 1000);
+  return n < 10 ? n.toFixed(1) : String(Math.round(n));
+}
+function render() {
+  const st = S.stats || {}, det = st.detector || {}, idle = S.phase === 'idle';
+  const has = st.frames_out != null, gap = st.gap_frames && st.gap_frames.max;
+  const rows = [
+    ['Delay', num(st.delay_s, 1, ' s')],
+    ['Detector pass p50 / p95', `${num(det.p50_ms, 0)} / ${num(det.p95_ms, 0)} <small>ms</small>`],
+    ['Detected share', pct(st.detected_share)],
+    ['Largest gap / hold', `${num(gap, 0)} / ${num(st.hold_frames, 0)} <small>frames</small>`],
+    ['Blind share', pct(st.blind_share)],
+    ['Emit p95', num(st.emit && st.emit.p95_ms, 0, ' ms')],
+    ['Frame age p50', num(st.frame_age_ms && st.frame_age_ms.p50, 0, ' ms')],
+    ['Frames out', has ? String(st.frames_out) : '–'],
+  ];
+  $('stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');  // values are numbers formatted here, never server text
+  $('badge').textContent = `REPLAY of a recorded clip · delayed ${st.delay_s != null ? Number(st.delay_s).toFixed(1) : '1.0'} s · showing ${fpsNow()} fps`;
+  const text = idle ? 'idle' : st.warming || S.phase === 'warming' ? 'warming up the detectors…' : 'live';
+  const el = $('status'); if (el.textContent !== text) el.textContent = text;
+  el.className = text === 'live' ? 'live' : '';
+  $('contended').hidden = !(det.p95_ms != null && det.baseline_p95_ms != null && det.p95_ms > 2 * det.baseline_p95_ms);
+  $('startBtn').disabled = !idle || S.busy || !S.clipsOk;
+  $('stopBtn').disabled = idle && !S.busy;
+  $('clip').disabled = $('height').disabled = !idle || S.busy;
+}
+async function pollStats() {
+  const epoch = S.epoch;
+  try {
+    const st = await api('stats');
+    if (epoch !== S.epoch) return;  // a Stop landed while this request was in flight
+    S.stats = st; S.phase = st.phase || 'idle';
+    if (S.phase === 'running' && st.run && st.run !== S.run) startLoop(st.run);
+    else if (S.phase === 'idle' && S.ctrl) stopLoop();  // stopped elsewhere, or the server's no-poll auto-stop
+  } catch (e) { if (S.phase !== 'idle') setErr(`Could not read stats: ${errText(e)}`); }
+  render();
+}
+
+/* ---- controls ---- */
+async function start() {
+  S.busy = true; setErr(''); render();
+  try {
+    const st = await api('start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clip: $('clip').value, height: Number($('height').value) }) });
+    S.stats = st; S.phase = st.phase || 'warming';  // 202; the stats poll attaches the frame loop once phase is running and run is set
+  } catch (e) { setErr(`Could not start: ${errText(e)}`); }
+  S.busy = false; render();
+}
+async function stop() {
+  S.busy = true; S.epoch++; setErr(''); stopLoop(); render();
+  try { S.stats = await api('stop', { method: 'POST' }); }
+  catch (e) { setErr(`Could not stop: ${errText(e)}`); }
+  S.phase = 'idle'; S.stats = { phase: 'idle', running: false }; S.busy = false; render();
+}
+$('startBtn').addEventListener('click', start);
+$('stopBtn').addEventListener('click', stop);
+loadClips().then(pollStats);
+setInterval(pollStats, STATS_MS);
+window.addEventListener('pagehide', () => stopLoop());
+</script>
+</body>
+</html>
