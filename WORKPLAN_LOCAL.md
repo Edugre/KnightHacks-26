@@ -32,7 +32,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 ## The four tasks
 
-### Worker 1: stitch fragmented person tracks (vision) — taken, in progress (branch `A/person-stitch`)
+### Worker 1: stitch fragmented person tracks (vision) — done Sat 22:00 (`censor/vision/stitch.py`; results in IMPLEMENTATION.md open item 1)
 
 **Problem:** on `street_walk` the person detector gives 18 tracks for about 3 people in focus; 15 are short scraps of blurry background pedestrians, because the tracker loses someone for a few frames and starts a "new" person. Every request asks the VLM about every track (~0.3 s each), and scraps get inconsistent answers. (IMPLEMENTATION.md, open item 1.)
 
@@ -89,8 +89,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 ### Extra, for whoever finishes first
 
-- The taxi's round sticker on `street_plates` is blurred as a plate (EgoBlur 0.97): find a rule with `bench/review.py` that drops it without losing real plates (scored with `score`).
-- An 11x7 px plate on `street_walk` stays visible 0.16 s.
+- ~~The taxi's sticker blurred as a plate~~ and ~~the 11x7 px plate left visible~~: fixed Sat 22:15 (IMPLEMENTATION.md, open item 5).
 - ~~YOLOE `half=True` for the person scan~~ done Sat evening: slightly worse, keep fp32. ~~YOLOE-26~~ tried: misses real people in the night crowd, dropped (DETECTOR_OPTIONS.md item 2, `bench/compare_people.py`).
 - ~~EgoBlur Gen2~~ tried: worse than Gen1 for plates on both labeled clips (raw recall 0.94 / 0.89 vs 0.99 / 1.00), the same for faces. Keep Gen1 (DETECTOR_OPTIONS.md item 1).
 - Anyone free: make a Hugging Face account and request access to Meta's SAM 3 weights (gated), so SAM 3 can be tried as soon as the server is back (DETECTOR_OPTIONS.md item 3).

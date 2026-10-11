@@ -61,7 +61,7 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 - **Plate false alarms.** At a low threshold EgoBlur flags tail lights, signs and shoes. A plate track now needs two confident detections, or a plate shape and enough frames; on `street_plates` that took 232 plate tracks down to 49 while keeping every real plate.
 - **Small, fast plates.** A 13 px plate moving 10 px between checked frames doesn't overlap itself, so the tracker split it. Linking by size and distance, and starting masks a few frames early, took `street_walk` from 72% to 94.6% of plate frames masked.
 - **Step-by-step agents are slow.** Our first LLM loop picked one tool at a time and took over two minutes for "everyone except the guy in the red hoodie". One JSON plan per request, run by plain code, does it in 7 s.
-- **Fragmented person tracks.** The tracker sometimes loses a background pedestrian and starts a "new" person, so one person gets several tracks and the vision model gets asked several times. We're stitching those tracks back together.
+- **Fragmented person tracks.** The tracker sometimes loses a pedestrian for a few frames and starts a "new" person, so one person gets several tracks and the vision model gets asked several times. A stitcher now joins a track to one that starts nearby moments later, heading the same way, at the same size and with similar colors (`street_walk`: 15 -> 11 person tracks). Every join on our three clips was checked by eye, because merging two different people is worse than leaving a piece: one answer would apply to both. Most of what's left is many different people each seen briefly, not broken tracks.
 
 ## What we learned
 
@@ -69,7 +69,7 @@ Keep the model out of the pixels. A typed mask timeline between the agent and th
 
 ## What's next
 
-- Stitch fragmented person tracks, so each person gets one answer.
+- Fewer vision-model checks per request in crowds, where most person tracks are different people seen briefly.
 - Live mode: a standing rule ("blur any plate that appears") on a stream behind a short delay buffer, then an OBS virtual camera.
 - Pixel-accurate masks with SAM 3 instead of boxes.
 - More categories: screens, on-screen text, documents.

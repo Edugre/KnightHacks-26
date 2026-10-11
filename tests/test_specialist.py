@@ -120,7 +120,7 @@ def test_weak_persistent_tracks_must_be_plate_shaped():
     assert not sp.confirmed(track((565, 56, 1150, 1009)), rule, 1080)  # weak, steady, taller than wide (a dress)
     assert not sp.confirmed(track((1051, 705, 1097, 809)), rule, 1080) # weak, steady, 0.44:1 (a sign post)
     assert not sp.confirmed(track((0, 0, 900, 400)), rule, 720)        # wide but over a quarter of the frame tall
-    assert sp.confirmed(track((565, 56, 1150, 1009), 0.9), rule, 1080) # confident: trusted whatever the shape
+    assert not sp.confirmed(track((565, 56, 1150, 1009), 0.9), rule, 1080, 1920)  # confident but taller than wide
     assert sp.plate_shaped((0, 0, 120, 100), 720, 1.2) and not sp.plate_shaped((0, 0, 110, 100), 720, 1.2)
 
 
@@ -165,3 +165,27 @@ def test_big_faint_faces_are_dropped():
     assert not sp.confirmed(track((0, 100, 700, 900), 0.47), rule, 1080)  # 800 px "face" at 0.47: a car back
     assert sp.confirmed(track((0, 100, 300, 460), 1.0), rule, 720)        # a close-up face
     assert sp.confirmed(track((500, 300, 545, 360), 0.15), rule, 1080)    # a small faint face in a crowd stays
+
+
+def test_confident_plates_must_be_wider_than_tall_except_at_the_edge_or_tiny():
+    """The taxi's round sticker was a confident 131x123 "plate"; real plate tracks were 1.69:1 or wider."""
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["license plate"]
+    track = lambda box: [Keyframe(f=f, box=box, conf=0.92) for f in (0, 3, 6)]  # noqa: E731
+    assert not sp.confirmed(track((339, 751, 470, 874)), rule, 1080, 1920)  # the round sticker, 1.06:1
+    assert sp.confirmed(track((911, 640, 1167, 706)), rule, 1080, 1920)     # FL 320, 3.9:1
+    assert sp.confirmed(track((1890, 525, 1920, 569)), rule, 1080, 1920)    # FL 320 cut off by the right edge
+    assert sp.confirmed(track((102, 424, 115, 434)), rule, 720, 1280)       # a 13x10 px plate: too small to judge
+
+
+def test_a_tiny_plate_seen_once_is_checked_in_the_frames_around_it():
+    """An 11x7 px plate was there on 4 frames in a row but on one checked frame, so it was dropped as a blip."""
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["license plate"]
+    blip = [[Keyframe(f=27, box=(125, 395, 137, 404), conf=0.43, state="uncertain")]]
+    there = {25: 0.49, 26: 0.44, 28: 0.22}
+    detect_at = lambda f: [((125, 395, 137, 404), there[f])] if f in there else []  # noqa: E731
+    kept, checked = sp.recheck_tiny(blip, detect_at, rule, 720, 1280, 221)
+    assert checked == 4 and len(kept) == 1 and [k.f for k in kept[0]] == [25, 26, 27, 28]
+    big = [[Keyframe(f=27, box=(100, 300, 220, 360), conf=0.45, state="detected")]]  # a 60 px tall blip: not rechecked
+    assert sp.recheck_tiny(big, lambda f: [((100, 300, 220, 360), 0.45)], rule, 720, 1280, 221) == ([], 0)
