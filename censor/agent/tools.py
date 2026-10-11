@@ -187,9 +187,29 @@ class Session:
         return self._append(request_id, kind="add_targets", targets=track_ids, effect=effect,
                             padding=padding, time_range=tuple(time_range) if time_range else None)
 
-    def remove_masks(self, track_ids: list[str], request_id: str = "manual") -> str:
+    def remove_masks(self, track_ids: list[str], request_id: str = "manual",
+                     time_range: Optional[list[float]] = None) -> str:
         self._check_ids(track_ids)
-        return self._append(request_id, kind="remove_targets", targets=track_ids)
+        return self._append(request_id, kind="remove_targets", targets=track_ids,
+                            time_range=tuple(time_range) if time_range else None)
+
+    def move_box(self, track_id: str, frame: int, box: list[float], request_id: str = "manual") -> dict:
+        """The user corrected a mask's box at `frame`: from that frame on, mask a track followed from the corrected
+        box instead of the old one (same label, effect and padding). Two ops under one request id, so the UI's Undo
+        reverts both. Before `frame` nothing changes. Not offered to the LLM: it's a hand edit from the UI."""
+        self._check_ids([track_id])
+        old = self.timeline.targets.get(track_id)
+        if old is None:
+            raise ToolError(f"{track_id} isn't masked, so there is nothing to move")
+        fps, end = self.info.fps, self.info.n_frames / self.info.fps
+        if not 0 <= frame < self.info.n_frames:
+            raise ToolError(f"frame {frame} is outside the video (0-{self.info.n_frames - 1})")
+        new = self.track_box(frame, box, label=old.label)
+        window = [frame / fps, end]
+        removed = self.remove_masks([track_id], request_id=request_id, time_range=window)
+        added = self.add_masks([new["track_id"]], effect=old.effect, padding=old.padding, time_range=window,
+                               request_id=request_id)
+        return {"track": new, "op_ids": [removed, added]}
 
     def set_effect(self, track_ids: list[str], effect: str, request_id: str = "manual") -> str:
         self._check_ids(track_ids)
