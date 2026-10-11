@@ -327,6 +327,11 @@ remove them; the 4 uncovered plate boxes are isolated single labeled frames (0.4
 `recheck_tiny` / `absorb` and live can't. No bare labeled box was caused by the engine's logic; the misses are
 detector misses. 0 dropped frames, emit p50 7 ms, pass times equal to the idle-GPU benchmark: no contention.
 
+Regression re-run of `street_walk` on the final engine (~07:50, with cats / identity / letterbox code in): faces
+234/234 and plates 37/37 again (masking unchanged), but detector p50 295 ms / p95 392 and blind 8.4 %: at that moment
+`rocm-smi` read 95 % with a teammate's `bench.run_bench` and the :8000 app on the GPU. That is the contention case
+the plan warns about, not a change in the engine; the 06:00 idle-GPU numbers above stand.
+
 **Decision, per the plan's own gate ("score passes on both clips"): NO-GO for headlining live replay on
 `street_plates`; GO on `street_walk`.** Recommendation to the owner (not a plan step, their call): keep the branch
 and open the PR as "built and measured"; if live replay is shown, show it on `street_walk` or the camera and quote
