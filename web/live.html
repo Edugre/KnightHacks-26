@@ -1,6 +1,8 @@
 <!doctype html>
-<!-- Blurr live replay page (docs/LIVE_REPLAY_PLAN.md, C4). Served at /api/live/live by censor/server/live_routes.py, so every
-     URL below is relative to /api/live/ (never a leading slash). Plain HTML and JS, no build step. Dark only, like index.html. -->
+<!-- Blurr live replay page (docs/LIVE_REPLAY_PLAN.md, C4; camera mode C9). Served at /api/live/live by censor/server/live_routes.py,
+     so every URL below is relative to /api/live/ (never a leading slash). Plain HTML and JS, no build step. Dark only, like index.html.
+     Two sources: a recorded clip replayed on the server, or this device's camera (getUserMedia -> JPEGs POSTed to push). Either way
+     the masked, delayed frames come back over the same frame long-poll. -->
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -49,16 +51,24 @@
   button.primary { background:var(--primary-bg); color:var(--primary-fg); border-color:var(--primary-bg); }
   button.primary:hover:not(:disabled) { background:#E6E6E6; } button.primary:active:not(:disabled) { background:#D4D4D4; }
   button:disabled { opacity:.4; cursor:default; }
-  #err { flex-basis:100%; margin:0; min-height:0; color:var(--err); font:400 12px/1.4 var(--mono); }
+  .hint { flex-basis:100%; margin:0; color:var(--mute); font:400 12px/1.4 var(--font); }
+  #err { flex-basis:100%; margin:0; min-height:0; color:var(--err); font:400 12px/1.4 var(--mono); white-space:pre-line; }
   #err:empty { display:none; }
 
+  .monitors { display:flex; gap:14px; align-items:flex-start; }
+  .screen { margin:0; flex:1 1 0; min-width:0; }
+  .screen figcaption { margin:0 0 6px; font:500 10.5px/1.2 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); }
+  .monitors.cam .src { flex:0 1 40%; }  /* camera mode: the raw feed is the small one, the masked Program is the point */
   .monitor { position:relative; width:100%; max-width:calc((100vh - 300px) * 16 / 9); min-width:min(100%, 320px); margin:0 auto; aspect-ratio:16/9; background:#000; outline:1px solid #2A2A2A; border-radius:4px; overflow:hidden; }
-  .monitor img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
+  .monitor img, .monitor video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; display:block; }
   .monitor .empty { position:absolute; inset:0; display:grid; place-items:center; color:var(--faint); font:400 12px/1.4 var(--mono); }
   .overlay { position:absolute; left:8px; bottom:8px; right:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; pointer-events:none; }
   .overlay span { background:rgba(17,17,17,.85); font:400 11px/1.4 var(--mono); padding:2px 8px; color:var(--text); }
   .overlay .live::before { content:""; display:inline-block; width:6px; height:6px; margin-right:6px; background:var(--acc); }
   .overlay .contended { background:var(--acc); color:var(--ink); font-weight:600; }
+  .monitor.unmasked { outline:2px solid var(--warn); }
+  .nodet { position:absolute; left:0; right:0; top:0; z-index:2; display:flex; align-items:baseline; gap:8px; padding:7px 10px; background:var(--warn); color:var(--ink-dark); font:600 12px/1.35 var(--mono); pointer-events:none; }
+  .nodet b { background:var(--ink-dark); color:var(--warn); padding:0 6px; }
 
   dl.stats { margin:0; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:1px; background:var(--divider); border:1px solid var(--divider); }
   dl.stats div { background:var(--panel); padding:10px 12px; min-width:0; }
@@ -67,6 +77,7 @@
   dl.stats dd small { font-size:12px; color:var(--mute); letter-spacing:0; }
 
   footer { background:var(--head); border-top:1px solid var(--divider); padding:12px 18px; font:400 12px/1.5 var(--font); color:var(--mute); }
+  @media (max-width:720px) { .monitors.cam { flex-direction:column; align-items:stretch; } .monitors.cam .screen { flex:none; width:100%; } }
   @media (max-width:520px) { .badge { margin-left:0; } .btns { margin-left:0; width:100%; } .btns button { flex:1; } }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
 </style>
@@ -75,24 +86,39 @@
 <header>
   <span class="wm" role="img" aria-label="Blurr">Blu<span class="r1">r</span><span class="r2">r</span></span>
   <h1>Blurr · Live replay</h1>
-  <div class="badge"><i></i><span id="badge">REPLAY of a recorded clip · delayed 1.0 s · showing 0 fps</span></div>
+  <div class="badge"><i></i><span id="badge">LIVE camera · 1.0 s buffer + network · showing 0 fps</span></div>
 </header>
 <main>
   <section aria-labelledby="hCtl">
     <h2 class="h" id="hCtl">Stream</h2>
     <form class="controls" id="ctl" onsubmit="return false">
-      <label>Clip <select id="clip" aria-label="Clip to replay"><option>loading clips…</option></select></label>
-      <label>Height <select id="height" aria-label="Live height in pixels"><option value="720" selected>720 p</option><option value="540">540 p</option></select></label>
+      <label>Source <select id="clip" aria-label="Source: this device's camera, or a clip to replay" aria-describedby="camHint"><option value="camera" selected>Camera (this device)</option><option data-note disabled>loading clips…</option></select></label>
+      <label>Height <select id="height" aria-label="Live height in pixels"><option value="720">720 p</option><option value="540" selected>540 p</option></select></label>
       <div class="btns"><button type="button" class="primary" id="startBtn" disabled>Start</button><button type="button" id="stopBtn" disabled>Stop</button></div>
+      <p class="hint" id="camHint">Frames are sent unmasked to the server for masking; nothing is stored.</p>
       <p id="err" role="alert"></p>
     </form>
   </section>
   <section aria-labelledby="hMon">
     <h2 class="h" id="hMon">Masked output</h2>
-    <div class="monitor">
-      <div class="empty" id="empty">No stream running</div>
-      <img id="img" alt="Masked frame of the live replay" hidden>
-      <div class="overlay"><span id="status" class="" role="status" aria-live="polite">idle</span><span class="contended" id="contended" hidden>GPU contended</span></div>
+    <div class="monitors" id="monitors">
+      <figure class="screen src" id="srcFig" hidden>
+        <figcaption>Source (now)</figcaption>
+        <div class="monitor">
+          <div class="empty" id="camEmpty">Camera off</div>
+          <video id="cam" autoplay playsinline muted hidden aria-label="Unmasked camera preview"></video>
+          <div class="overlay"><span id="srcStatus" hidden></span></div>
+        </div>
+      </figure>
+      <figure class="screen prog">
+        <figcaption id="progCap" hidden>Program (delayed)</figcaption>
+        <div class="monitor" id="progMon">
+          <div class="empty" id="empty">No stream running</div>
+          <img id="img" alt="Masked frame of the live stream" hidden>
+          <div class="nodet" id="nodet" role="alert" hidden><b>!</b><span>no detector loaded: nothing is masked</span></div>
+          <div class="overlay"><span id="status" class="" role="status" aria-live="polite">idle</span><span class="contended" id="contended" hidden>GPU contended</span></div>
+        </div>
+      </figure>
     </div>
   </section>
   <section aria-labelledby="hSt">
@@ -100,15 +126,26 @@
     <dl class="stats" id="stats"></dl>
   </section>
 </main>
-<footer>Replay of a recorded clip run through the live engine on this machine; nothing leaves it.</footer>
+<footer>Clips never leave the server. Camera mode: your frames leave this device unmasked, over HTTPS through the AUP hub, to the GPU server, which masks them, stores nothing and sends nothing onward; anyone in view is uploaded too.</footer>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 const BACKOFF_MS = [500, 1000, 2000, 4000], POLLS_IN_FLIGHT = 2, STATS_MS = 500, FPS_WINDOW_MS = 2000;
-const S = { phase: 'idle', stats: null, run: null, after: -1, ctrl: null, shown: -1, urls: [], times: [], epoch: 0, busy: false, clipsOk: false };
+const CAMERA = 'camera', CAM_INTERVAL = 80, CAM_IN_FLIGHT = 3, CAM_QUALITY = 0.6, UPLOAD_TIMEOUT_MS = 800, CAP_KEEP = 200;
+const CAM_CONSTRAINTS = { video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' }, audio: false };
+const HEIGHT_DEFAULT = { camera: '540', clip: '720' };  // live height per source kind; the user's later pick is remembered per kind
+const S = { phase: 'idle', stats: null, run: null, after: -1, ctrl: null, shown: -1, urls: [], times: [], epoch: 0, busy: false, starting: false,
+            cam: null, errs: {}, heightPref: { ...HEIGHT_DEFAULT } };
 
 const errText = e => (e && (typeof e.detail === 'string' ? e.detail : e.detail && JSON.stringify(e.detail))) || (e && e.message) || 'something went wrong';
-const setErr = msg => { if ($('err').textContent !== (msg || '')) $('err').textContent = msg || ''; };
+/* Messages are kept per source so one part of the page clearing its own (a frame arrived) never wipes another's (the upload is down). */
+const ERR_ORDER = ['act', 'stats', 'feed', 'up'];
+function setErr(msg, key = 'act') {
+  S.errs = { ...S.errs, [key]: msg || '' };
+  const text = ERR_ORDER.map(k => S.errs[k]).filter(Boolean).join('\n');
+  if ($('err').textContent !== text) $('err').textContent = text;
+}
+const clearErrs = () => { S.errs = {}; setErr(''); };
 async function api(path, opts) {
   const r = await fetch(path, opts);
   let j; try { j = await r.json(); } catch { j = { detail: `${r.status} ${r.statusText}` }; }
@@ -116,21 +153,21 @@ async function api(path, opts) {
   return j;
 }
 const sleep = (ms, signal) => new Promise(res => { const t = setTimeout(res, ms); signal && signal.addEventListener('abort', () => { clearTimeout(t); res(); }, { once: true }); });
+const selMode = () => $('clip').value === CAMERA ? 'camera' : 'clip';
 
-/* ---- clips ---- */
+/* ---- clips (the camera entry is in the markup, so it is there even when the list fails to load) ---- */
 async function loadClips() {
-  const sel = $('clip');
+  const note = $('clip').querySelector('[data-note]');
   try {
     const clips = await api('../samples');
     if (!Array.isArray(clips) || !clips.length) throw { detail: 'the server lists no sample clips' };
-    S.clipsOk = true;
-    sel.replaceChildren(...clips.map(c => {
+    note.replaceWith(...clips.map(c => {
       const o = document.createElement('option'); o.value = c.id;
       o.textContent = [c.id, c.duration != null && `${Number(c.duration).toFixed(0)}s`, c.width && c.height && `${c.width}x${c.height}`].filter(Boolean).join(' · ');
       return o;
     }));
   } catch (e) {
-    sel.replaceChildren(Object.assign(document.createElement('option'), { textContent: 'no clips available' }));
+    note.textContent = 'no clips available';
     setErr(`Could not load clips: ${errText(e)}`);
   }
   render();
@@ -142,7 +179,9 @@ function showFrame(frame, blob) {
   S.urls.push(url);
   img.onload = () => { while (S.urls.length > 1) URL.revokeObjectURL(S.urls.shift()); };  // keep only the one on screen
   img.src = url; img.hidden = false; $('empty').hidden = true;
-  S.shown = frame; S.after = Math.max(S.after, frame); S.times.push(performance.now());
+  const now = performance.now(), cap = S.cam && S.cam.capAt.get(frame);
+  if (cap != null) S.cam.lags.push([now, now - cap]);  // camera -> screen, from when the frame was grabbed
+  S.shown = frame; S.after = Math.max(S.after, frame); S.times.push(now);
 }
 async function pollWorker(run, signal) {
   let bad = 0;
@@ -153,11 +192,11 @@ async function pollWorker(run, signal) {
       if (r.status === 204) { if (performance.now() - t0 < 100) await sleep(250, signal); continue; }  // 204 = timeout or idle; don't spin on an instant one
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const frame = parseInt(r.headers.get('X-Live-Frame'), 10), blob = await r.blob();
-      bad = 0; setErr('');
+      bad = 0; setErr('', 'feed');
       if (Number.isFinite(frame) && frame > S.shown) showFrame(frame, blob);  // else out of order: drop
     } catch (e) {
       if (signal.aborted) return;
-      setErr(`Frame feed interrupted (${errText(e)}); retrying…`);
+      setErr(`Frame feed interrupted (${errText(e)}); retrying…`, 'feed');
       await sleep(BACKOFF_MS[Math.min(bad++, BACKOFF_MS.length - 1)], signal);
     }
   }
@@ -173,19 +212,130 @@ function stopLoop() {
   S.ctrl = null; S.run = null; S.times = [];
   S.urls.forEach(u => URL.revokeObjectURL(u)); S.urls = [];
   const img = $('img'); img.onload = null; img.removeAttribute('src'); img.hidden = true; $('empty').hidden = false;
+  setErr('', 'feed');
+}
+
+/* ---- camera: getUserMedia first, then (once the server is running) an upload loop that POSTs JPEGs to push ---- */
+class CameraError extends Error {}
+async function openCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new CameraError('Camera needs https or localhost');
+  try { return await navigator.mediaDevices.getUserMedia(CAM_CONSTRAINTS); }
+  catch (e) {
+    const name = e && e.name;
+    if (name === 'NotAllowedError' || name === 'SecurityError') throw new CameraError('Camera access was denied. Allow the camera for this site, then press Start again.');
+    if (name === 'NotFoundError' || name === 'OverconstrainedError') throw new CameraError('No camera found on this device.');
+    if (name === 'NotReadableError' || name === 'AbortError') throw new CameraError('The camera is busy or not readable (is another app using it?).');
+    throw new CameraError(`Could not open the camera: ${errText(e)}`);
+  }
+}
+const stopStream = stream => stream.getTracks().forEach(t => t.stop());
+function attachCamera(stream) {
+  releaseCamera();
+  const video = $('cam');
+  video.srcObject = stream; video.play().catch(() => {});  // muted + playsinline, so autoplay is allowed
+  stream.getTracks().forEach(t => t.addEventListener('ended', () => {  // unplugged or revoked (our own stop() does not fire this)
+    if (S.cam && S.cam.stream === stream) { stopUpload(S.cam); setErr('The camera stopped (unplugged, or access was revoked). Press Stop, then Start again.'); render(); }
+  }));
+  S.cam = { stream, track: stream.getVideoTracks()[0], ctrl: null, timer: 0, due: 0, inFlight: 0, pushed: 0, skipped: 0, bad: 0, holdUntil: 0, attached: false, times: [],
+            width: Math.round(Number($('height').value) * 16 / 9 / 2) * 2,  // upload width follows the live height: 540 -> 960, 720 -> 1280
+            capAt: new Map(), lags: [], timeouts: 0, canvas: document.createElement('canvas') };
+  S.cam.ctx = S.cam.canvas.getContext('2d', { alpha: false });
+  render();
+}
+function stopUpload(c) {
+  if (c.ctrl) c.ctrl.abort();
+  clearTimeout(c.timer); c.ctrl = null; c.timer = 0;
+  setErr('', 'up');
+}
+function releaseCamera() {
+  const c = S.cam; S.cam = null;
+  if (!c) return;
+  stopUpload(c); stopStream(c.stream);
+  const video = $('cam'); video.pause(); video.srcObject = null;
+}
+function startUpload(c, run) {
+  stopUpload(c);
+  const ctrl = c.ctrl = new AbortController();
+  c.attached = true; c.due = performance.now();
+  const tick = () => {
+    c.timer = 0;
+    if (ctrl.signal.aborted) return;
+    pushOne(c, run, ctrl.signal);
+    const now = performance.now();
+    c.due = Math.max(c.due + CAM_INTERVAL, now + CAM_INTERVAL / 2);  // fixed rate, but a stalled tab does not catch up in a burst
+    c.timer = setTimeout(tick, c.due - now);
+  };
+  tick();
+}
+function pushOne(c, run, signal) {
+  const video = $('cam');
+  if (performance.now() < c.holdUntil || video.readyState < 2 || !video.videoWidth || c.track.readyState !== 'live') return;  // backing off, no picture yet, or the camera died
+  if (c.inFlight >= CAM_IN_FLIGHT) { c.skipped++; return; }  // latest wins: this tick's frame is never sent
+  const capturedAt = performance.now();
+  const w = Math.min(c.width, video.videoWidth) & ~1, h = Math.round(w * video.videoHeight / video.videoWidth / 2) * 2;  // CAM_W wide, never upscaled; even sizes
+  if (c.canvas.width !== w || c.canvas.height !== h) { c.canvas.width = w; c.canvas.height = h; }
+  c.ctx.drawImage(video, 0, 0, w, h);
+  c.inFlight++;  // counted from the encode on, so a slow encode cannot pile up either
+  c.canvas.toBlob(blob => {
+    if (blob && !signal.aborted) upload(c, run, blob, signal, capturedAt);
+    else c.inFlight--;
+  }, 'image/jpeg', CAM_QUALITY);
+}
+function holdOff(c, msg) {
+  const now = performance.now();
+  if (now >= c.holdUntil) c.holdUntil = now + BACKOFF_MS[Math.min(c.bad++, BACKOFF_MS.length - 1)];  // the two in-flight failures count once
+  setErr(msg, 'up');
+}
+async function upload(c, run, blob, signal, capturedAt) {
+  const own = new AbortController(), onAbort = () => own.abort();  // own: this upload's timeout, plus the loop's abort
+  signal.addEventListener('abort', onAbort, { once: true });
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; own.abort(); }, UPLOAD_TIMEOUT_MS);  // a half-dead link must not hold the in-flight slots
+  try {
+    const r = await fetch('push', { method: 'POST', body: blob, headers: { 'X-Live-Run': run, 'Content-Type': 'image/jpeg' }, cache: 'no-store', signal: own.signal });
+    if (r.ok) {
+      const f = await r.json().then(j => j && j.f, () => null);  // also drains the answer so the connection is reused
+      c.pushed++; c.times.push(performance.now()); c.timeouts = 0;
+      if (Number.isFinite(f)) { c.capAt.set(f, capturedAt); if (c.capAt.size > CAP_KEEP) c.capAt.delete(c.capAt.keys().next().value); }
+      if (performance.now() >= c.holdUntil) { c.bad = 0; setErr('', 'up'); }
+      return;
+    }
+    const detail = await r.json().then(j => j && typeof j.detail === 'string' ? j.detail : '', () => '');
+    if (r.status === 409) { stopUpload(c); setErr(`Upload stopped: ${detail || 'the server is not running this camera stream'}`, 'up'); return; }  // stale run, not running, clip mode: retrying cannot help
+    holdOff(c, `Upload interrupted (${detail || `HTTP ${r.status}`}); retrying…`);
+  } catch (e) {
+    if (signal.aborted) return;
+    if (timedOut && c.timeouts++ === 0) c.skipped++;  // the first timeout is just a dropped frame; a second in a row is an outage
+    else holdOff(c, 'Upload interrupted; retrying…');
+  } finally { clearTimeout(timer); signal.removeEventListener('abort', onAbort); c.inFlight--; }
 }
 
 /* ---- stats and rendering ---- */
 const num = (v, d = 0, unit = '') => v == null || !Number.isFinite(v) ? '–' : v.toFixed(d) + unit;
 const pct = v => v == null ? '–' : num(v * 100, v < 0.1 ? 1 : 0, '%');
-function fpsNow() {
+const fmtRate = n => n < 10 ? n.toFixed(1) : String(Math.round(n));
+function rate(times) {  // events per second over the last FPS_WINDOW_MS; times are ascending, so old ones drop off the front
   const cut = performance.now() - FPS_WINDOW_MS;
-  S.times = S.times.filter(t => t >= cut);
-  const n = S.times.length / (FPS_WINDOW_MS / 1000);
-  return n < 10 ? n.toFixed(1) : String(Math.round(n));
+  while (times.length && times[0] < cut) times.shift();
+  return times.length / (FPS_WINDOW_MS / 1000);
+}
+function lagMedian(c) {  // median camera -> screen lag over the last FPS_WINDOW_MS, null without samples
+  const cut = performance.now() - FPS_WINDOW_MS;
+  while (c.lags.length && c.lags[0][0] < cut) c.lags.shift();
+  if (!c.lags.length) return null;
+  const v = c.lags.map(l => l[1]).sort((a, b) => a - b), m = v.length >> 1;
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+}
+/* stats.detector is the engine's timing object {passes, p50_ms, ...}; stats.detector_kind ("egoblur"|"yunet"|"none") says which detector it is (camera runs only). */
+const detTiming = st => st.detector && typeof st.detector === 'object' ? st.detector : {};
+const detKind = st => st.detector_kind;
+const isPush = st => !!st && (st.mode === 'push' || st.clip === CAMERA);
+function camMode() {  // is the page showing a camera run? what is running wins over what is picked
+  if (S.cam) return true;
+  return S.phase !== 'idle' ? isPush(S.stats) : selMode() === 'camera';
 }
 function render() {
-  const st = S.stats || {}, det = st.detector || {}, idle = S.phase === 'idle';
+  const st = S.stats || {}, det = detTiming(st), idle = S.phase === 'idle', cam = camMode(), c = S.cam, picked = selMode() === 'camera';
   const has = st.frames_out != null, gap = st.gap_frames && st.gap_frames.max;
   const rows = [
     ['Delay', num(st.delay_s, 1, ' s')],
@@ -194,51 +344,105 @@ function render() {
     ['Largest gap / hold', `${num(gap, 0)} / ${num(st.hold_frames, 0)} <small>frames</small>`],
     ['Blind share', pct(st.blind_share)],
     ['Emit p95', num(st.emit && st.emit.p95_ms, 0, ' ms')],
-    ['Frame age p50', num(st.frame_age_ms && st.frame_age_ms.p50, 0, ' ms')],
+    ['Frame age (server)', num(st.frame_age_ms && st.frame_age_ms.p50, 0, ' ms')],
     ['Frames out', has ? String(st.frames_out) : '–'],
   ];
+  if (cam) rows.push(
+    ['Camera → screen', c ? num(lagMedian(c), 0, ' ms') : '–'],
+    ['Upload fps', c ? fmtRate(rate(c.times)) : '–'],
+    ['Pushed / skipped', c ? `${c.pushed} / ${c.skipped}` : '–'],
+    ['Server input fps', num(st.input_fps, 1)],
+    ['Input gaps', num(st.gaps_in, 0)]);
   $('stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');  // values are numbers formatted here, never server text
-  $('badge').textContent = `REPLAY of a recorded clip · delayed ${st.delay_s != null ? Number(st.delay_s).toFixed(1) : '1.0'} s · showing ${fpsNow()} fps`;
+  const delay = st.delay_s != null ? Number(st.delay_s).toFixed(1) : '1.0';
+  $('badge').textContent = `${cam ? `LIVE camera · ${delay} s buffer + network` : `REPLAY of a recorded clip · delayed ${delay} s`} · showing ${fmtRate(rate(S.times))} fps`;
   const text = idle ? 'idle' : st.warming || S.phase === 'warming' ? 'warming up the detectors…' : 'live';
   const el = $('status'); if (el.textContent !== text) el.textContent = text;
   el.className = text === 'live' ? 'live' : '';
   $('contended').hidden = !(det.p95_ms != null && det.baseline_p95_ms != null && det.p95_ms > 2 * det.baseline_p95_ms);
-  $('startBtn').disabled = !idle || S.busy || !S.clipsOk;
+
+  $('monitors').classList.toggle('cam', cam);  // two monitors in camera mode, one (as before) for clips
+  $('srcFig').hidden = $('progCap').hidden = !cam;
+  $('cam').hidden = !c; $('camEmpty').hidden = !!c;
+  $('camEmpty').textContent = idle ? 'Camera off' : 'This camera run was started elsewhere. Press Stop, then Start here.';
+  const sending = !!(c && c.ctrl), ss = $('srcStatus');
+  ss.hidden = !c; ss.className = sending ? 'live' : '';
+  ss.textContent = !c ? '' : sending ? `sending to server · ${fmtRate(rate(c.times))} fps` : 'camera on · not sending';
+  const unmasked = !idle && detKind(st) === 'none';  // the laptop stub without YuNet: the picture goes through untouched
+  $('nodet').hidden = !unmasked; $('progMon').classList.toggle('unmasked', unmasked);
+
+  $('camHint').hidden = !picked;
+  if (picked) $('clip').setAttribute('aria-describedby', 'camHint'); else $('clip').removeAttribute('aria-describedby');
+  $('startBtn').disabled = !idle || S.busy || !$('clip').value;
   $('stopBtn').disabled = idle && !S.busy;
   $('clip').disabled = $('height').disabled = !idle || S.busy;
+}
+function syncControls(st) {  // a run already going when the page loaded: show what it is
+  const id = isPush(st) ? CAMERA : st.clip;
+  if (id && [...$('clip').options].some(o => o.value === id)) $('clip').value = id;
+}
+function attachRun(st) {
+  startLoop(st.run);
+  const c = S.cam;
+  if (!c) syncControls(st);
+  else if (!isPush(st)) { releaseCamera(); setErr('The server is replaying a clip, not the camera; the camera was released.'); }
+  else if (!c.attached) startUpload(c, st.run);  // once per Start: a stale run is not re-joined
 }
 async function pollStats() {
   const epoch = S.epoch;
   try {
     const st = await api('stats');
-    if (epoch !== S.epoch) return;  // a Stop landed while this request was in flight
+    if (epoch !== S.epoch || S.starting) return;  // a Stop or a Start landed while this request was in flight
+    const was = S.phase;
+    setErr('', 'stats');
     S.stats = st; S.phase = st.phase || 'idle';
-    if (S.phase === 'running' && st.run && st.run !== S.run) startLoop(st.run);
-    else if (S.phase === 'idle' && S.ctrl) stopLoop();  // stopped elsewhere, or the server's no-poll auto-stop
-  } catch (e) { if (S.phase !== 'idle') setErr(`Could not read stats: ${errText(e)}`); }
+    if (S.phase === 'running' && st.run && st.run !== S.run) attachRun(st);
+    else if (S.phase === 'idle') {  // stopped elsewhere, the server's no-poll auto-stop, or the run failed
+      if (S.ctrl) stopLoop();
+      releaseCamera();
+      if (was !== 'idle' && st.error) setErr(`The server stopped the run: ${st.error}`);
+    }
+  } catch (e) { if (S.phase !== 'idle') setErr(`Could not read stats: ${errText(e)}`, 'stats'); }
   render();
 }
 
 /* ---- controls ---- */
 async function start() {
-  S.busy = true; setErr(''); render();
+  const camera = selMode() === 'camera', token = ++S.epoch;
+  S.busy = S.starting = true; clearErrs(); render();
   try {
+    if (camera) {  // first: a denied permission must fail before anything is started on the server
+      const stream = await openCamera();
+      if (token !== S.epoch) { stopStream(stream); return; }  // Stop landed during the permission prompt; stop() owns the UI
+      attachCamera(stream);
+    }
     const st = await api('start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clip: $('clip').value, height: Number($('height').value) }) });
-    S.stats = st; S.phase = st.phase || 'warming';  // 202; the stats poll attaches the frame loop once phase is running and run is set
-  } catch (e) { setErr(`Could not start: ${errText(e)}`); }
-  S.busy = false; render();
+    if (token !== S.epoch) { await api('stop', { method: 'POST' }).catch(() => {}); return; }  // Stop landed first and may have run before this Start
+    S.epoch++;  // stats polls sent before this answer may still say idle: drop them
+    S.stats = st; S.phase = st.phase || 'warming';  // 202; the stats poll attaches the frame loop (and the upload loop) once phase is running and run is set
+  } catch (e) {
+    if (token !== S.epoch) return;
+    releaseCamera();
+    setErr(e instanceof CameraError ? e.message : `Could not start: ${errText(e)}`);
+  }
+  S.busy = S.starting = false; render();
 }
 async function stop() {
-  S.busy = true; S.epoch++; setErr(''); stopLoop(); render();
+  S.busy = true; S.epoch++; clearErrs(); stopLoop(); releaseCamera(); render();
   try { S.stats = await api('stop', { method: 'POST' }); }
   catch (e) { setErr(`Could not stop: ${errText(e)}`); }
-  S.phase = 'idle'; S.stats = { phase: 'idle', running: false }; S.busy = false; render();
+  S.epoch++;  // a stats poll sent while the stop was in flight may still say running: drop it
+  S.phase = 'idle'; S.stats = { phase: 'idle', running: false }; S.busy = S.starting = false; render();
 }
 $('startBtn').addEventListener('click', start);
 $('stopBtn').addEventListener('click', stop);
+$('height').addEventListener('change', () => { S.heightPref[selMode()] = $('height').value; });
+$('clip').addEventListener('change', () => { $('height').value = S.heightPref[selMode()]; render(); });
+$('height').value = S.heightPref[selMode()];
+render();
 loadClips().then(pollStats);
 setInterval(pollStats, STATS_MS);
-window.addEventListener('pagehide', () => stopLoop());
+window.addEventListener('pagehide', () => { stopLoop(); releaseCamera(); });
 </script>
 </body>
 </html>
