@@ -1,12 +1,15 @@
 """Headless live replay: run the live engine in real time, record what a viewer would see, score it.
 
-    python -m censor.live_cli run <clip> [--seconds 30] [--height 720] [--delay 1.0] --out X.mp4 --report X.json [--stub]
+    python -m censor.live_cli run <clip> [--seconds 30] [--height 720] [--delay 1.0] --out X.mp4 --report X.json
+                                 [--stub [--yunet MODEL.onnx]]
     python -m censor.live_cli score X.json bench/labels/<clip>.json [--min-face 0.92] [--min-plate 0.95]
                                   [--max-blind 0.01]
 
 `run` plays the clip as if it were a live feed (censor.live.LiveReplay), writes the emitted frames to an MP4 with a
 REPLAY / age / blind overlay, and dumps a JSON report of the rects masked on every emitted frame. `--stub`
-replays <clip>.tracks.json instead of running EgoBlur (no GPU).
+needs no GPU: it replays <clip>.tracks.json when that sidecar exists, else runs OpenCV's YuNet face detector
+(faces only, CPU) with the ONNX file named by --yunet or, failing that, the CENSOR_YUNET environment variable. A
+sidecar wins over YuNet; --yunet wins over CENSOR_YUNET. With neither, or a model file that is missing, `run` exits 2.
 
 `score` is the go/no-go gate. A labeled face or plate box is covered when at least COVER_MIN of its area lies
 inside the rects masked on that frame; frames the engine declared blind (it froze the last vouched frame) count as
@@ -26,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -185,10 +189,26 @@ def _live_size(clip: str, height: int) -> tuple[int, int]:
     return int(round(info.width * height / info.height / 2)) * 2, height
 
 
+def _stub_source(a: argparse.Namespace) -> tuple[str, Optional[str]]:
+    """What masks a --stub run: ("sidecar", None) when <clip>.tracks.json exists, else ("yunet", onnx path) from
+    --yunet or CENSOR_YUNET, else ("none", None)."""
+    if Path(f"{a.clip}.tracks.json").is_file():
+        return "sidecar", None
+    onnx = a.yunet or os.environ.get("CENSOR_YUNET")
+    return ("yunet", onnx) if onnx else ("none", None)
+
+
 def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int]) -> "Detect":
     from censor.live import egoblur_detect, sidecar_detect
     w, h = size
     if a.stub:
+        kind, onnx = _stub_source(a)
+        if kind == "yunet":
+            from censor.live import yunet_detect
+            try:
+                return yunet_detect(onnx)
+            except FileNotFoundError as e:  # the message names the path and where to get opencv_zoo's model
+                raise die(str(e))
         return sidecar_detect(Path(f"{a.clip}.tracks.json"), src_h=src.height, live_h=h, n_frames=src.n_frames)
     from censor.vision.specialist import EgoBlurDetector
     det = EgoBlurDetector()
@@ -277,8 +297,11 @@ def cmd_run(a: argparse.Namespace) -> int:
         raise die(f"clip not found: {a.clip}")
     if not a.stub and not egoblur_available():
         raise die("EgoBlur models not found; live replay needs them (run with --stub for a GPU-free replay)")
-    if a.stub and not Path(f"{a.clip}.tracks.json").is_file():
-        raise die(f"--stub needs the sidecar {a.clip}.tracks.json")
+    if a.yunet and not a.stub:
+        raise die("--yunet only applies with --stub (a real run uses EgoBlur)")
+    if a.stub and _stub_source(a)[0] == "none":
+        raise die(f"--stub needs the sidecar {a.clip}.tracks.json next to the clip, or CENSOR_YUNET=<onnx> / "
+                  f"--yunet <onnx> for faces")
     if shutil.which(FFMPEG) is None:
         raise die(f"ffmpeg not found ({FFMPEG}); set CENSOR_FFMPEG or put it on PATH")
     size = _live_size(a.clip, a.height)
@@ -322,7 +345,10 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--delay", type=float, default=1.0)
     r.add_argument("--out", required=True)
     r.add_argument("--report", required=True)
-    r.add_argument("--stub", action="store_true", help="replay <clip>.tracks.json instead of running EgoBlur")
+    r.add_argument("--stub", action="store_true",
+                   help="no GPU: replay <clip>.tracks.json if present, else detect faces with YuNet (--yunet / CENSOR_YUNET)")
+    r.add_argument("--yunet", metavar="ONNX", help="with --stub: YuNet model for a clip without a sidecar "
+                   "(default: $CENSOR_YUNET; from opencv_zoo, face_detection_yunet_2023mar.onnx)")
     r.set_defaults(fn=cmd_run)
     s = sub.add_parser("score", help="check a run report against ground-truth labels "
                                      "(exit 1 below the recall floors or above the blind ceiling)")

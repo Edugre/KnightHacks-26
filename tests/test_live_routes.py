@@ -411,6 +411,46 @@ def test_stub_mode_skips_the_egoblur_check_but_needs_a_sidecar(client, fake, mon
     assert fake[0][2] is True  # stub=True reached the factory
 
 
+STUB_NEEDS = "stub mode needs demo.mp4.tracks.json next to the clip, or CENSOR_YUNET=<onnx> for faces"
+
+
+def test_stub_clip_without_sidecar_or_yunet_is_400_with_the_hint(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    r = _start(client)
+    assert r.status_code == 400 and r.json()["detail"] == STUB_NEEDS
+    assert live_routes._state["phase"] == "idle" and not fake
+
+
+def test_stub_clip_without_sidecar_but_with_yunet_starts_and_reports_yunet(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    r = _start(client)
+    assert r.status_code == 202 and r.json()["detector_kind"] == "yunet"
+    assert _wait_phase(client, "running")["detector_kind"] == "yunet"
+    assert fake[0][2] is True
+
+
+def test_stub_clip_with_a_sidecar_reports_sidecar_even_when_yunet_is_set(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    (live_routes.SAMPLES_DIR / "demo.mp4.tracks.json").write_text("{}")
+    assert _start(client).json()["detector_kind"] == "sidecar"
+    assert _wait_phase(client, "running")["detector_kind"] == "sidecar"
+
+
+def test_a_failed_clip_start_forgets_the_stub_detector_kind(client, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_YUNET", "/nope.onnx")
+
+    def boom(clip, height, stub):
+        raise FileNotFoundError("YuNet model not found: /nope.onnx")
+
+    monkeypatch.setattr(live_routes, "make_replay", boom)
+    assert _start(client).status_code == 202
+    s = _wait_phase(client, "idle")
+    assert "YuNet model not found" in s["error"] and "detector_kind" not in s
+
+
 def test_auto_stop_after_no_polls(client, fake, monkeypatch):
     _start(client)
     _wait_phase(client, "running")
@@ -773,6 +813,54 @@ def test_make_replay_camera_stub_with_a_missing_yunet_file_raises(camera_engine,
     monkeypatch.setenv("CENSOR_YUNET", "/nope.onnx")
     with pytest.raises(FileNotFoundError):
         live_routes.make_replay("camera", 540, True)
+
+
+@pytest.fixture()
+def stub_clip(camera_engine, monkeypatch, tmp_path):
+    """A clip path in stub mode for make_replay, with sidecar_detect and yunet_detect recorded."""
+    calls = []
+    mod = sys.modules["censor.live"]
+    mod.sidecar_detect = lambda path, src_h, live_h, n_frames: calls.append(("sidecar", Path(path).name)) or "SIDECAR"
+    mod.yunet_detect = lambda path, score=0.6: calls.append(("yunet", path)) or "YUNET"
+    mod.LiveReplay = lambda path, detect, height: types.SimpleNamespace(path=path, detect=detect, height=height)
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"")
+    return clip, calls
+
+
+def test_make_replay_stub_clip_without_sidecar_uses_yunet_from_the_env(stub_clip, monkeypatch):
+    clip, calls = stub_clip
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    r = live_routes.make_replay(str(clip), 540, True)
+    assert r.detect == "YUNET" and (r.path, r.height) == (str(clip), 540)
+    assert calls == [("yunet", "/models/yunet.onnx")]
+
+
+def test_make_replay_stub_clip_sidecar_wins_over_yunet(stub_clip, monkeypatch):
+    clip, calls = stub_clip
+    Path(f"{clip}.tracks.json").write_text("{}")
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    assert live_routes.make_replay(str(clip), 540, True).detect == "SIDECAR"
+    assert calls == [("sidecar", "c.mp4.tracks.json")]
+
+
+def test_make_replay_stub_clip_with_nothing_to_detect_with_raises_the_hint(stub_clip):
+    clip, calls = stub_clip
+    with pytest.raises(FileNotFoundError, match="CENSOR_YUNET=<onnx>"):
+        live_routes.make_replay(str(clip), 540, True)
+    assert calls == []
+
+
+def test_make_replay_stub_clip_with_a_missing_yunet_file_raises(stub_clip, monkeypatch):
+    clip, _ = stub_clip
+
+    def missing(path, score=0.6):
+        raise FileNotFoundError(f"YuNet model not found: {path}")
+
+    sys.modules["censor.live"].yunet_detect = missing
+    monkeypatch.setenv("CENSOR_YUNET", "/nope.onnx")
+    with pytest.raises(FileNotFoundError, match="/nope.onnx"):
+        live_routes.make_replay(str(clip), 540, True)
 
 
 def test_make_replay_for_clips_is_unchanged(real_mode):
