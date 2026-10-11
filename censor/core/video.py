@@ -1,8 +1,14 @@
-"""Video probing and frame iteration (OpenCV; no ffprobe needed)."""
+"""Video probing and frame iteration (OpenCV; no ffprobe needed).
+
+A photo goes through the same three readers as a one-frame video (frame 0, fps 1), so tracking, detection, the
+VLM crops and the renderer's FrameMasker need no photo case of their own. cv2.imread applies the EXIF rotation,
+as browsers do, so the boxes match what the UI shows.
+"""
 from __future__ import annotations
 
 import queue
 import threading
+from pathlib import Path
 from typing import Iterator
 
 import cv2
@@ -10,8 +16,24 @@ import numpy as np
 
 from censor.core.timeline import VideoInfo
 
+IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}  # what cv2 reads everywhere; no HEIC
+
+
+def is_image(path: str | Path) -> bool:
+    return Path(path).suffix.lower() in IMAGE_EXT
+
+
+def read_image(path: str | Path) -> np.ndarray:
+    img = cv2.imread(str(path), cv2.IMREAD_COLOR)  # BGR, 8-bit, alpha dropped, EXIF rotation applied
+    if img is None:
+        raise IOError(f"cannot open image {path}")
+    return img
+
 
 def probe(path: str) -> VideoInfo:
+    if is_image(path):
+        h, w = read_image(path).shape[:2]
+        return VideoInfo(kind="image", fps=1.0, width=w, height=h, n_frames=1)
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise IOError(f"cannot open video {path}")
@@ -29,6 +51,9 @@ def frames(path: str, every: int = 1, prefetch: int = 0) -> Iterator[tuple[int, 
     """Frames (index, BGR) in order; with every=n only every n-th frame. Skipped frames are grabbed but not
     converted, which is cheaper. With prefetch > 0 a CPU thread decodes up to that many frames ahead, so the
     GPU doesn't wait for the decoder (OpenCV releases the GIL while it decodes)."""
+    if is_image(path):
+        yield 0, read_image(path)
+        return
     if prefetch > 0:
         yield from _prefetched(path, every, prefetch)
         return
@@ -85,6 +110,10 @@ def _prefetched(path: str, every: int, depth: int) -> Iterator[tuple[int, np.nda
 
 
 def read_frame(path: str, index: int) -> np.ndarray:
+    if is_image(path):
+        if index != 0:
+            raise IndexError(f"frame {index} not readable in {path}: a photo has only frame 0")
+        return read_image(path)
     cap = cv2.VideoCapture(str(path))
     cap.set(cv2.CAP_PROP_POS_FRAMES, index)
     ok, frame = cap.read()

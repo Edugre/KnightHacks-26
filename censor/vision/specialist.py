@@ -23,7 +23,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from censor.core.tracks import Keyframe, Track, TrackStore
-from censor.core.video import frames, read_frame
+from censor.core.video import frames, is_image, read_frame
 
 EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets" / "egoblur"))
 # Which model file each category uses. Gen2 files (ego_blur_face_gen2.jit, ego_blur_lp_gen2.jit) load too; see
@@ -86,6 +86,24 @@ CONFIRM = {"license plate": {
     "wide_min_conf": float(os.environ.get("CENSOR_FACE_WIDE_CONF", "0.5")),
 }}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
+
+
+
+def photo_rule(rule: Optional[dict]) -> Optional[dict]:
+    """The confirmation rule for a photo: one frame is all the evidence there will be, so a single detection
+    counts. Confident ones still need the confident shape, weak ones the plate shape; the rest of the rule (big
+    faint faces, wide faint faces) is unchanged. Weak keepers are marked uncertain (see photo_uncertain), so
+    they're padded more and listed under Check: on a photo a false alarm costs one click, a miss a leak."""
+    if rule is None or "min_conf" not in rule:
+        return rule
+    return {**rule, "min_confident": 1, "min_frames": 1, "weak_min_mean": 0.0}
+
+
+def photo_uncertain(kfs: list[Keyframe], rule: Optional[dict]) -> list[Keyframe]:
+    if rule is None or "min_conf" not in rule:
+        return kfs
+    return [k.model_copy(update={"state": "uncertain"}) if k.conf < rule["min_conf"] else k for k in kfs]
+
 
 # What people (or the LLM) type, mapped to the specialist category that handles it.
 ALIASES = {"face": "face", "faces": "face", "human face": "face", "person's face": "face",
@@ -367,8 +385,14 @@ class EgoBlurDetector:
                 per_cat[cat].append((f, dets))
         found = []
         self.dropped = {}
+        photo = is_image(video)
         for q, cat in wanted.items():
-            kept, dropped = build_tracks(per_cat[cat], self.confirm.get(cat), frame_h, self.uncertain_below, frame_w)
+            rule = photo_rule(self.confirm.get(cat)) if photo else self.confirm.get(cat)
+            kept, dropped = build_tracks(per_cat[cat], rule, frame_h, self.uncertain_below, frame_w)
+            if photo:  # no frames around a blip to recheck
+                kept = [photo_uncertain(kfs, rule) for kfs in kept]
+                self._keep(q, kept, dropped, cat, store, found)
+                continue
 
             def detect_at(f: int, cat=cat) -> list[tuple[Box, float]]:
                 return [(b, s) for b, s in self.infer[cat](read_frame(video, f)) if s >= self.conf]
@@ -377,15 +401,19 @@ class EgoBlurDetector:
             if rescued:
                 kept += rescued
                 dropped = [t for t in dropped if not any(k in r for r in rescued for k in t[:1])]
-            if dropped:
-                self.dropped[cat] = self.dropped.get(cat, 0) + len(dropped)
-            for kfs in kept:
-                t = Track(track_id=store.next_id(), label=q, source="detector", keyframes=kfs)
-                store.add(t)
-                found.append(t)
+            self._keep(q, kept, dropped, cat, store, found)
         if self.dropped:
             print(f"[egoblur] {video}: dropped unconfirmed tracks {self.dropped}", file=sys.stderr)
         return found
+
+    def _keep(self, q: str, kept: list[list[Keyframe]], dropped: list[list[Keyframe]], cat: str,
+              store: TrackStore, found: list[Track]) -> None:
+        if dropped:
+            self.dropped[cat] = self.dropped.get(cat, 0) + len(dropped)
+        for kfs in kept:
+            t = Track(track_id=store.next_id(), label=q, source="detector", keyframes=kfs)
+            store.add(t)
+            found.append(t)
 
 
 class RoutedDetector:

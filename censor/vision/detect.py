@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Protocol
 
 from censor.core.tracks import Keyframe, Track, TrackStore
+from censor.core.video import is_image, read_image
 from censor.vision import stitch as stitch_mod
 
 DETECT_IMGSZ = int(os.environ.get("CENSOR_IMGSZ", "1280"))
@@ -82,6 +83,8 @@ class YoloeDetector:
         model = self._model()
         model.predictor = None  # new predictor, so tracker state from the last video can't leak in
         model.set_classes(queries, model.get_text_pe(queries))
+        if is_image(video):
+            return self._run_image(model, video, queries, store)
         by_key: dict[tuple[int, int], list[Keyframe]] = {}
         hists: dict[tuple[int, int], list] = {}  # colors at each track's first and last few boxes, for stitching
         untracked: list[tuple[int, Keyframe]] = []
@@ -120,6 +123,21 @@ class YoloeDetector:
                       keyframes=[kf.model_copy(update={"state": "uncertain"})])
             store.add(t)
             found.append(t)
+        return found
+
+    def _run_image(self, model, video: str, queries: list[str], store: TrackStore) -> list[Track]:
+        """A photo: one detection pass, each box its own one-keyframe track. Nothing to track or stitch. The decoded
+        pixels, not the path, so YOLOE sees the photo rotated as the boxes are drawn (read_image applies EXIF)."""
+        found = []
+        for r in model.predict(source=read_image(video), device=self.device, imgsz=DETECT_IMGSZ, conf=MIN_CONF, verbose=False):
+            if r.boxes is None:
+                continue
+            for box, conf, cls in zip(r.boxes.xyxy.tolist(), r.boxes.conf.tolist(), r.boxes.cls.tolist()):
+                state = "detected" if conf >= UNCERTAIN_BELOW else "uncertain"
+                t = Track(track_id=store.next_id(), label=queries[int(cls)], source="detector",
+                          keyframes=[Keyframe(f=0, box=tuple(box), conf=float(conf), state=state)])
+                store.add(t)
+                found.append(t)
         return found
 
 

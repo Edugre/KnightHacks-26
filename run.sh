@@ -27,7 +27,8 @@ case "${1:-gpu}" in
   stub)
     export CENSOR_STUB=1
     unset CENSOR_MODEL_URL || true
-    echo "stub mode: upload a clip from scripts/make_test_clip.py plus its .tracks.json sidecar"
+    [ -f bench/photos/synthetic.png ] || python3 scripts/make_test_clip.py --image bench/photos/synthetic.png
+    echo "stub mode: upload a clip from scripts/make_test_clip.py plus its .tracks.json sidecar, or pick the synthetic photo"
     exec python3 -m uvicorn censor.server.app:app --host 0.0.0.0 --port "$PORT" ;;
   gpu)
     offline
