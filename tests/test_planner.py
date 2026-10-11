@@ -88,6 +88,29 @@ def test_except_one_person_spares_only_the_best_match():
     assert masked[False] == ["t3"]        # "but the women": every match stays visible
 
 
+def test_except_one_person_breaks_a_tie_by_screen_presence():
+    """street_talk, "everyone except the woman": she and a passer-by seen for 1 s both answered 1.0, and the passer-by
+    was spared while she was blurred. A tie goes to the track that fills more of the video."""
+    from types import SimpleNamespace as NS
+    kf = lambda n, size: [NS(f=f, box=(0, 0, size, size)) for f in range(n)]  # noqa: E731
+    tracks = {"t1": NS(keyframes=kf(25, 80)), "t2": NS(keyframes=kf(500, 400)), "t3": NS(keyframes=kf(500, 400))}
+    s = FakeSession()
+    s.tracks = NS(get=tracks.get)
+    masked = []
+
+    def call(name, args):
+        if name == "find_objects":
+            return [{"track_id": t} for t in ("t1", "t2", "t3")]
+        if name == "check_attribute":
+            p = {"t1": 1.0, "t2": 0.997, "t3": 0.0}
+            return [{"track_id": i, "answer": "yes" if p[i] > 0.65 else "no", "p_yes": p[i]} for i in args["track_ids"]]
+        if name == "add_masks":
+            masked.extend(args["track_ids"])
+        return "op"
+    planner.execute(planner.Plan(targets=[planner.Target("person", exclude=["Is this a woman?"], one=True)]), s, call)
+    assert masked == ["t1", "t3"]  # the woman on screen the whole clip (t2) stays visible, not the 1 s passer-by
+
+
 def test_a_time_phrase_after_in_is_not_clothing():
     from censor.agent import intents
     assert intents.parse("blur the woman in the first 3 seconds").attribute_questions == ["Is this a woman?"]

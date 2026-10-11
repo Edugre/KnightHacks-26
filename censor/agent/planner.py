@@ -177,10 +177,19 @@ def _filter(s: Session, call, t: Target, ids: list[str]) -> tuple[list[str], str
         got = answers(t.exclude)
         spared = {a for a, res in got.items() if any(x == "yes" for x, _ in res)}  # unknown stays masked: fail closed
         if t.one and spared:  # "but the lady": only the most likely one, not every passer-by who might be
-            spared = {max(spared, key=lambda a: max(p for _, p in got[a]))}
+            # A tie (the VLM saturates at 1.0) goes to the person the video is about, the most screen time x size,
+            # not a passer-by seen for a second: on street_talk the woman and a 1 s background track both got 1.0
+            spared = {max(spared, key=lambda a: (round(max(p for _, p in got[a]), 2), _presence(s, a)))}
         keep = {i for i in keep if (owner.get(i) or i) not in spared}
     left = [i for i in ids if i in keep]
     return left, f"{len(left)} of {len(ids)} {t.object} track(s) matched."
+
+
+def _presence(s: Session, track_id: str) -> float:
+    """How much of the video a track takes up: its box area summed over its keyframes (0 if unknown)."""
+    tracks = getattr(s, "tracks", None)
+    t = tracks.get(track_id) if tracks is not None else None
+    return sum((k.box[2] - k.box[0]) * (k.box[3] - k.box[1]) for k in t.keyframes) if t else 0.0
 
 
 def _for(question: str, owner: dict) -> str:
