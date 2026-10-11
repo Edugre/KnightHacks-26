@@ -21,7 +21,7 @@ Measured Sun Oct 11, ~00:30-01:00 ET. Anything not listed here is not measured y
 | EgoBlur | Re-upload `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` to `~/datasets/egoblur/` on every fresh server: Meta's CDN refuses AUP hosts (upload gotchas: README, "If the Dublin hub is down") |
 | `scripts/setup.sh` | Ran clean once the MobileCLIP download completed. The first run was cut off mid-download by a browser disconnect; rerunning fixed it (the script is idempotent) |
 | `./run.sh test` | 114 passed, 1 failed: `tests/test_e2e_stub.py::test_sample_clips_load_without_a_file_picker` (OSError opening a copied clip under pytest's temp dir). **Fixed Sun (Alex):** reopening a video took the first `source.*` in its folder, and on this Linux filesystem that can be the stub sidecar `source.mp4.tracks.json`; the same bug made loading **synthetic** in the app fail with a 500. Test: `test_reopening_a_video_skips_its_sidecar` |
-| Offline | Model server `/health` says `"offline": true`; `logs/egress.log` was never created, so nothing tried to connect out |
+| Offline | Model server `/health` says `"offline": true`. `logs/egress.log` gets nothing from a `./run.sh` start (checked 07:58 and 08:19 UTC). Its only entries (05:38-07:04 UTC, 5 starts) are Ultralytics' startup internet check, two DNS lookups each, from apps started by hand with `CENSOR_OFFLINE=1` but not `YOLO_OFFLINE`: all refused |
 | Not an option | Radeon 890M node: 4 GB can't hold Qwen3-VL-8B |
 
 | Measurement (Strix Halo) | Result |
