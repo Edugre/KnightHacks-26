@@ -91,7 +91,8 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 - The taxi's round sticker on `street_plates` is blurred as a plate (EgoBlur 0.97): find a rule with `bench/review.py` that drops it without losing real plates (scored with `score`).
 - An 11x7 px plate on `street_walk` stays visible 0.16 s.
-- YOLOE `half=True` for the person scan: compare tracks with and without on a CUDA laptop (accuracy first; speed counts only on the R9700).
+- ~~YOLOE `half=True` for the person scan~~ done Sat evening: slightly worse, keep fp32. ~~YOLOE-26~~ tried: misses real people in the night crowd, dropped (DETECTOR_OPTIONS.md item 2, `bench/compare_people.py`).
+- EgoBlur Gen2 (DETECTOR_OPTIONS.md item 1): once someone gets the files from Meta's form, score it with `bench/review.py score <clip> --cat plate` on `street_plates` and `street_walk` against Gen1 (100% / 94.6% masked, 3% plate over-blur).
 
 ## Who touches what
 

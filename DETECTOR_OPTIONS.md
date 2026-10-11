@@ -56,7 +56,17 @@ Constraints any candidate must meet: runs on PyTorch ROCm 7.13 / gfx1201 without
 
 ### 2. YOLOE-26 (open vocabulary)
 
-**Status:** not tried.
+**Status:** tried Sat Oct 10 evening on a laptop (RTX 3050 Ti, Ultralytics 8.4.175, branch `A/detector-tests`, `bench/compare_people.py`): **dropped, keep YOLOE-11.** It fragments less, but it misses real people in blurry or night scenes, which is the unsafe direction. Person tracks with the app's settings (prompt "person", imgsz 1280, conf 0.15, BoT-SORT):
+
+| Clip | YOLOE-11 tracks (under 1 s) | YOLOE-26 tracks (under 1 s) | YOLOE-11 boxes that YOLOE-26 misses | the reverse |
+| --- | --- | --- | --- | --- |
+| `street_walk` | 15 (8) | 10 (3) | 113 | 47 |
+| `street_talk` | 14 (5) | 11 (2) | 61 | 102 |
+| `street_plates` (night crowd) | 59 (35) | 53 (30) | **393** | 119 |
+
+Drawn on `street_plates` frames 191-194, the boxes only YOLOE-11 finds are real people (the woman in the costume dress, the man in yellow, people in the crowd), not junk. Lowering YOLOE-26's threshold doesn't bring them back: at conf 0.1 and 0.05 it still misses 371 of them, and at 0.05 it fragments more (90 tracks). Both models keep the 3 people in focus on `street_walk` and `street_talk` as one whole-clip track each. Fragmentation stays a tracker problem: Worker 1's stitcher (WORKPLAN_LOCAL.md) or SAM 3's tracker.
+
+**Also measured (YOLOE-11 `half=True`):** 17 tracks (10 under 1 s) and 880 detections on `street_walk`, against 15 (8) and 906 in fp32. Slightly worse, for a small speed gain on a scan step that is not the bottleneck: keep fp32.
 
 **What:** YOLOE built on the YOLO26 architecture (Ultralytics). Published text-prompted LVIS gains over YOLOE-11 of +3.3 / +2.4 / +2.6 AP at the s / m / l sizes, same prompting modes.
 
