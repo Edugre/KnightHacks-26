@@ -62,7 +62,7 @@ def parse(text: str) -> Optional[Plan]:
     if UNDO.match(t):
         return Plan(action="undo")
     action = "remove" if REMOVE.match(t) else "mask"
-    effect = "pixelate" if "pixel" in t else "box" if re.search(r"black ?box|cover|black out", t) else "blur"
+    effect = effect_of(t)
 
     people = list(PERSON.finditer(t))
     # Objects named inside a description are attributes, not targets: "the man holding a phone" blurs the man,
@@ -92,6 +92,11 @@ def parse(text: str) -> Optional[Plan]:
     return Plan(action=action, queries=queries, effect=effect, attribute_question=questions[0] if questions else None,
                 attribute_questions=questions, time_phrase=tm[0] if tm else None,
                 times=_bind_time(t, tm, queries, positions))
+
+
+def effect_of(text: str) -> str:
+    t = text.lower()
+    return "pixelate" if "pixel" in t else "box" if re.search(r"black ?box|cover|black out", t) else "blur"
 
 
 PLURAL = {"men", "guys", "males", "boys", "women", "ladies", "females", "girls", "children", "kids", "persons", "people",

@@ -6,6 +6,8 @@ Path 2 (planner): anything else, such as exceptions ("everyone except the guy in
 doesn't know, goes to Qwen3-VL once: it writes the whole plan as JSON (censor/agent/planner.py), and plain code
 runs it with the toolbox. One call of a few seconds, where the old step-by-step loop took over two minutes.
 Path 3 (clarify): neither understood the request, so ask the user. Never guess silently.
+Path 4 (reference): the request comes with a target the user pointed at in the UI ("blur everyone except this
+person"); the pointer replaces the description (Agent._run_ref).
 
 CLI (stub detector, no GPU): CENSOR_STUB=1 python -m censor.agent.agent clip.mp4 "blur all plates"
 """
@@ -19,12 +21,15 @@ import time
 import urllib.request
 import uuid
 from dataclasses import asdict
+from typing import Optional
 
 from censor.agent import intents, planner
 from censor.agent.tools import Session, ToolError, call_tool
 
 # Wording the template parser would misread ("everyone except the guy in red"), so it goes to the planner.
 NEEDS_LLM = re.compile(r"\b(except|but|not|unless|only|without|instead|other than|besides|apart from|other)\b", re.I)
+# With a reference, these words mean "everything but it" ("blur everyone except this person"); without, "only it"
+REF_EXCEPT = re.compile(r"\b(except|but|not|unless|without|other than|besides|apart from|aside from|else|others?)\b", re.I)
 MODEL_URL = os.environ.get("CENSOR_MODEL_URL")
 CLARIFY = "I couldn't tell what to hide. Try e.g. \"blur all license plates\" or draw a box."
 
@@ -40,10 +45,12 @@ class Agent:
     def __init__(self, session: Session):
         self.s = session
 
-    def run(self, text: str) -> dict:
+    def run(self, text: str, ref: Optional[dict] = None) -> dict:
         rid = f"r_{uuid.uuid4().hex[:6]}"
         calls: list[dict] = []
         tp = intents.parse(text)
+        if ref is not None and not (tp is not None and tp.action == "undo"):
+            return self._run_ref(text, tp, ref, rid, calls)
         if tp is not None and not (MODEL_URL and NEEDS_LLM.search(text)):
             msg = self._execute(planner.from_template(tp), rid, calls)
             if msg is not None:
@@ -100,9 +107,34 @@ class Agent:
                              {"role": "user", "content": f"That is not a usable plan: {e}. Reply with the JSON plan only."}]
         raise RuntimeError("no usable plan after a retry")
 
-    def _execute(self, plan: planner.Plan, rid: str, calls: list[dict]):
+    def _run_ref(self, text: str, tp, ref: dict, rid: str, calls: list[dict]) -> dict:
+        """Path 4 (reference): the user pointed at someone (a target they picked, or a box drawn on Source) and
+        said what to do about them: "blur everyone except this person", "pixelate this face". The pointer stands
+        in for the description, so no yes/no questions and no LLM: the words say what kind of thing, the effect,
+        when, and whether it's "only this" or "all but this"."""
+        objects = list(tp.queries) if tp is not None else []
+        t0 = time.perf_counter()
         try:
-            return planner.execute(plan, self.s, lambda name, args: self._call(name, args, rid, calls))
+            r = self.s.resolve_ref(prefer=objects or None, **ref)
+        except ToolError as e:
+            calls.append({"tool": "resolve_ref", "args": ref, "error": str(e)})
+            return self._result(rid, "reference", calls, f"Couldn't use the reference: {e}")
+        calls.append({"tool": "resolve_ref", "args": ref, "result": r, "ms": round(1000 * (time.perf_counter() - t0))})
+        mode = "except" if REF_EXCEPT.search(text) else "only"
+        if r["label"] == "user box" and mode == "only":
+            objects = ["user box"]  # nothing detected there: hide the drawn box itself
+        elif not objects:  # "blur everything but this": things of the reference's kind
+            objects = [r["label"] if r["label"] != "user box" else "person"]
+        action = "remove" if intents.REMOVE.match(text.lower()) else "mask"
+        plan = planner.Plan(action=action, effect=intents.effect_of(text),
+                            targets=[planner.Target(object=q, time=tp.times.get(q) if tp is not None else None)
+                                     for q in objects])
+        msg = self._execute(plan, rid, calls, ref={**r, "mode": mode})
+        return self._result(rid, "reference", calls, msg if msg is not None else "That didn't work with the reference.")
+
+    def _execute(self, plan: planner.Plan, rid: str, calls: list[dict], ref: Optional[dict] = None):
+        try:
+            return planner.execute(plan, self.s, lambda name, args: self._call(name, args, rid, calls), ref=ref)
         except ToolError as e:
             if "detector failed" in str(e):
                 return f"Detection failed, so nothing was changed: {e}"

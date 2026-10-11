@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from censor.agent import intents
-from censor.agent.tools import EFFECTS, Session, ToolError
+from censor.agent.tools import EFFECTS, REF_MIN_IOU, Session, ToolError, _iou
 
 OBJECT_ALIASES = {"plate": "license plate", "plates": "license plate", "license plates": "license plate",
                   "licence plate": "license plate", "number plate": "license plate", "car plate": "license plate",
@@ -120,8 +120,10 @@ def _questions(v) -> list[str]:
     return [str(q).strip() for q in (v if isinstance(v, list) else [v]) if str(q).strip()]
 
 
-def execute(plan: Plan, s: Session, call: Callable[[str, dict], object]) -> str:
-    """Run a plan with the toolbox. `call(tool, args)` runs one tool and records it (Agent._call)."""
+def execute(plan: Plan, s: Session, call: Callable[[str, dict], object], ref: Optional[dict] = None) -> str:
+    """Run a plan with the toolbox. `call(tool, args)` runs one tool and records it (Agent._call).
+    `ref` is a track the user pointed at ({"track_id", "label", "mode"}): mode "only" keeps just what is that
+    track (its face, for faces of a person), "except" keeps everything else. It replaces the yes/no questions."""
     if plan.action == "clarify":
         return plan.message or "What should I hide? For example faces, license plates or a person."
     if plan.action == "undo":
@@ -134,9 +136,17 @@ def execute(plan: Plan, s: Session, call: Callable[[str, dict], object]) -> str:
             tr = [float(t.time[0]), float(t.time[1])]
         elif t.time:
             tr = call("resolve_time", {"phrase": str(t.time)})
-        found = call("find_objects", {"query": t.object, **({"time_range": tr} if tr else {})})
-        ids = [o["track_id"] for o in found]
-        if ids and (t.only or t.exclude):
+        if ref and t.object == ref["label"] == "user box":  # a box no detector found: only itself to go on
+            ids = [ref["track_id"]] if ref["mode"] == "only" else []
+        else:
+            found = call("find_objects", {"query": t.object, **({"time_range": tr} if tr else {})})
+            ids = [o["track_id"] for o in found]
+        if ref and ids:
+            mine = _ref_ids(s, t.object, ref, ids)
+            n = len(ids)
+            ids = [i for i in ids if (i in mine) == (ref["mode"] == "only")]
+            notes.append(f"{len(ids)} of {n} {t.object} track(s) {'are' if ref['mode'] == 'only' else 'are not'} the reference.")
+        elif ids and (t.only or t.exclude):
             ids, note = _filter(s, call, t, ids)
             notes.append(note)
         if not ids:
@@ -183,6 +193,31 @@ def _filter(s: Session, call, t: Target, ids: list[str]) -> tuple[list[str], str
         keep = {i for i in keep if (owner.get(i) or i) not in spared}
     left = [i for i in ids if i in keep]
     return left, f"{len(left)} of {len(ids)} {t.object} track(s) matched."
+
+
+def _ref_ids(s: Session, obj: str, ref: dict, ids: list[str]) -> set[str]:
+    """Which of `ids` (tracks of `obj`) are the reference: the track itself; for faces of a referenced person,
+    the faces that belong to them; for the person of a referenced face, its owner; otherwise the tracks that
+    overlap the reference's box over most of the frames they share (a drawn box around someone)."""
+    rid, rlabel = ref["track_id"], ref["label"]
+    if obj == rlabel:
+        return {rid}
+    if obj == "face" and rlabel == "person":
+        return {f for f, p in s.person_for(ids).items() if p == rid}
+    if obj == "person" and rlabel == "face":
+        return {p for p in s.person_for([rid]).values() if p}
+    tracks = getattr(s, "tracks", None)
+    r = tracks.get(rid) if tracks is not None else None
+    if r is None:
+        return set()
+    rb = {k.f: k.box for k in r.keyframes}
+    out = set()
+    for i in ids:
+        t = tracks.get(i)
+        shared = [_iou(k.box, rb[k.f]) for k in t.keyframes if k.f in rb] if t else []
+        if shared and sum(shared) / len(shared) >= REF_MIN_IOU:
+            out.add(i)
+    return out
 
 
 def _presence(s: Session, track_id: str) -> float:
