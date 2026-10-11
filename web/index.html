@@ -343,8 +343,40 @@
   .hRow .id { font:800 17px/1.2 var(--h-font); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .hRow .meta { font-size:12px; color:var(--h-n400); }
   .hEmpty { font-size:12px; color:var(--h-n400); padding:12px 0; }
-  #homeStub { align-self:flex-start; margin-top:12px; position:relative; overflow:hidden; }
-  #homeStub input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  /* folders (design_handoff_home_folders: 2c while there are none, 1c once there are) */
+  .hSamples .th { display:flex; align-items:baseline; }
+  .thLink { margin-left:auto; display:flex; align-items:center; gap:6px; padding:0; font:800 12px/1.2 var(--h-font); letter-spacing:0; text-transform:none; }
+  .hKind.hasFolders .drop:not(.photo) { min-height:160px; }
+  .hFolders { display:flex; flex-direction:column; }
+  .hFolders .th { display:flex; align-items:baseline; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); padding-bottom:8px; border-bottom:2px solid var(--h-n700); }
+  .fGrid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border-left:1px solid var(--h-n700); }
+  .fCell { display:flex; flex-direction:column; align-items:flex-start; gap:18px; padding:14px; min-width:0; border:0; border-right:1px solid var(--h-n700);
+    border-bottom:1px solid var(--h-n700); border-radius:0; background:none; color:var(--h-bg); font:inherit; text-align:left; cursor:pointer; }
+  .fCell:hover:not(:disabled), .fCell.over { background:var(--h-acc900); color:var(--h-acc400); }
+  .fCell.over { outline:1px solid var(--h-acc400); outline-offset:-1px; }
+  .fCell svg { color:var(--h-acc); flex:none; }
+  .fCell .nm { display:flex; flex-direction:column; gap:2px; min-width:0; width:100%; }
+  .fCell .nm b { font:800 15px/1.2 var(--h-font); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fCell .nm small { font-size:12px; color:var(--h-n400); }
+  .fCell.new, .fCell.new svg { color:var(--h-acc400); }
+  .fCell.new b { font:800 15px/1.2 var(--h-font); }
+  .fCell.naming { cursor:default; }
+  .fCell.naming:hover { background:none; color:var(--h-bg); }
+  .fCell input { width:100%; min-width:0; border:0; border-bottom:2px solid var(--h-acc400); background:none; color:var(--h-bg); padding:2px 0; font:800 15px/1.2 var(--h-font); outline:0; border-radius:0; }
+  .fCell input::placeholder { color:var(--h-n600); }
+  #home .fCell input:focus-visible { outline:none; }  /* the underline is its focus */
+  .fHead { display:flex; align-items:baseline; gap:12px; letter-spacing:0; text-transform:none; }
+  .fHead b { font:800 22px/1.15 var(--h-font); letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .fHead small { margin-left:auto; font-size:12px; color:var(--h-n400); white-space:nowrap; }
+  .fActs { display:flex; gap:4px; margin-left:16px; letter-spacing:0; text-transform:none; }
+  .fActs .hLink { padding:2px 6px; font-size:12px; }
+  .fHead input { flex:1; min-width:0; border:0; border-bottom:2px solid var(--h-acc400); background:none; color:var(--h-bg); padding:0; font:800 22px/1.15 var(--h-font); letter-spacing:-.01em; border-radius:0; }
+  #home .fHead input:focus-visible { outline:none; }
+  .fConfirm { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; padding:12px 0; border-bottom:1px solid var(--h-n700); font-size:13px; color:var(--h-n400); }
+  .fConfirm span { flex:1 1 220px; }
+  .fConfirm .danger { background:var(--h-acc); color:var(--h-bg); padding:6px 12px; }
+  .fConfirm .danger:hover:not(:disabled) { background:#c42810; }
+  @media (max-width:640px) { .fGrid { grid-template-columns:repeat(2, minmax(0,1fr)); } }
   @media (max-width:1100px) {
     .homeGrid { grid-template-columns:minmax(0,1fr); }
     .statement { min-height:360px; }
@@ -363,18 +395,18 @@
     </section>
     <section class="select">
       <div class="hStatus"><button class="hLink" id="homeBack" hidden></button><span id="homeMsg" role="status"><i></i><span id="homeMsgText"></span></span></div>
-      <div class="hKind video">
+      <div class="hKind video" id="homeVideo">
         <div class="th"><b>Video</b></div>
         <label class="drop" id="drop">
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-          <span class="title">Drop a video</span>
+          <span class="title" id="dropTitle">Drop a video</span>
           <span class="sub">or <u>browse files</u>. Landscape MP4 works best.</span>
           <input type="file" accept="video/*" id="dropInput" aria-label="Choose a video">
         </label>
-        <div class="hSamples">
-          <div class="th">Or start from a sample</div>
+        <div class="hFolders" id="homeFolders" hidden></div>
+        <div class="hSamples" id="homeSamples">
+          <div class="th"><span id="samplesHead">Or start from a sample</span><button class="hLink thLink" id="newFolderLink" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>New folder</button><button class="hLink thLink" id="samplesAll" hidden></button></div>
           <div id="homeRows"><div class="hEmpty">Looking for sample clips…</div></div>
-          <label class="hLink" id="homeStub" hidden title="Stub mode: ground-truth tracks from scripts/make_test_clip.py"><span id="homeStubText">Attach .tracks.json</span><input type="file" accept=".json" id="stubInput"></label>
         </div>
       </div>
       <div class="hKind photo">
@@ -716,19 +748,13 @@ async function loadSample(id, kind = 'video', file = `${id}.mp4`) {
   try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}${kind === 'image' ? '?kind=image' : ''}`), file); homeMsg(''); }
   catch (e) { homeMsg(`Couldn't load ${id}: ${errText(e)}`, true); }
 }
-async function uploadFile(file) {
-  homeMsg(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)…`);
+async function uploadFile(file, folder = null) {
+  homeMsg(`Uploading ${file.name} (${(file.size / 1e6).toFixed(1)} MB)${folder ? ` into ${folder.name}` : ''}…`);
   const fd = new FormData(); fd.append('file', file);
+  if (folder) fd.append('folder', folder.id);
   try {
     await openVideo(await api('api/videos', { method: 'POST', body: fd }), file.name); homeMsg('');
-    if (S.pendingSidecar) { const sc = S.pendingSidecar; S.pendingSidecar = null; await uploadSidecar(sc); }
   } catch (e) { homeMsg(`Upload failed: ${errText(e)}`, true); }
-}
-async function uploadSidecar(file) {
-  if (!S.vid) { S.pendingSidecar = file; return renderPicker(); }
-  const fd = new FormData(); fd.append('file', file);
-  try { await api(`api/videos/${S.vid}/tracks-sidecar`, { method: 'POST', body: fd }); S.picker = false; renderPicker(); notice(`Attached ground-truth tracks from ${file.name} (stub mode).`); }
-  catch (e) { notice(`Sidecar upload failed: ${errText(e)}`, true); }
 }
 function notice(msg, err = false) { $('notice').textContent = msg || ''; $('notice').classList.toggle('err', !!err); }
 
@@ -744,11 +770,9 @@ function renderPicker() {
   $('openBtn').hidden = !S.vid;
   $('homeBack').hidden = !S.vid;
   if (S.vid) $('homeBack').textContent = `← Back to ${S.name}`;
-  // Stub mode only: a sidecar does nothing with real detectors. Attaches to the open clip, else to the next upload.
-  $('homeStub').hidden = document.body.dataset.stub !== '1';
-  $('homeStubText').textContent = S.pendingSidecar ? `${S.pendingSidecar.name} attaches to the next upload` : 'Attach .tracks.json';
   if (show && !$('homeMsg').classList.contains('busy')) homeMsg('');
   if (show && !samplesListed) listSamples();
+  if (show) listFolders();
 }
 // The status slot: where the clip runs, or what's loading, or what went wrong
 function homeMsg(msg, err = false) {
@@ -760,6 +784,7 @@ function listSamples() {
   samplesListed = true;
   const rows = $('homeRows');
   api('api/samples').then(cl => {
+    H.samples = cl; renderFolders();
     rows.replaceChildren(...(cl.length ? cl.map(c => {
       const meta = c.duration ? `${c.duration.toFixed(1)} s · ${c.sidecar ? 'stub' : `${c.height}p`}` : `${c.mb} MB`;
       const b = el('button', { class: 'hRow', title: `Open ${c.id}`, onclick: () => loadSample(c.id) },
@@ -776,14 +801,11 @@ function listSamples() {
       el('span', { class: 'meta' }, c.width ? `${c.width}×${c.height}${c.sidecar ? ' · stub' : ''}` : `${c.mb} MB`))));
   }).catch(() => thumbs.replaceChildren());
 }
-$('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f); };
-$('photoInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f); };
-$('stubInput').onchange = e => {
-  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  if (S.vid) uploadSidecar(f); else { S.pendingSidecar = f; renderPicker(); }
-};
+$('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, H.open); };
+$('photoInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, H.open); };
 $('homeBack').onclick = () => { S.picker = false; renderPicker(); layoutMonitors(); };
 // Drag a file anywhere on the home screen; the drop area lights up while one is over the page
+let resetDrag = () => {};
 (function dropTarget() {
   let depth = 0;
   const VIDEO = /\.(mp4|mov|m4v|webm|mkv|avi)$/i, PHOTO = /\.(jpe?g|png|webp|bmp|heic|heif)$/i;
@@ -793,6 +815,7 @@ $('homeBack').onclick = () => { S.picker = false; renderPicker(); layoutMonitors
     $('photoDrop').classList.toggle('over', on && kind !== 'video');
   };
   const files = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
+  resetDrag = () => { depth = 0; over(false); };
   const kindOf = e => { const it = [...(e.dataTransfer.items || [])].find(i => i.kind === 'file'), t = it ? it.type : '';
     return t.startsWith('image/') ? 'image' : t.startsWith('video/') ? 'video' : ''; };
   window.addEventListener('dragenter', e => { if (!homeShown() || !files(e)) return; depth++; over(true, kindOf(e)); });
@@ -803,9 +826,151 @@ $('homeBack').onclick = () => { S.picker = false; renderPicker(); layoutMonitors
     e.preventDefault(); depth = 0; over(false);
     const f = [...e.dataTransfer.files].find(x => /^(video|image)\//.test(x.type) || VIDEO.test(x.name) || PHOTO.test(x.name));
     if (!homeShown()) return;
-    if (f) uploadFile(f); else homeMsg('That isn\'t a video or a photo.', true);
+    if (f) uploadFile(f, H.open); else homeMsg('That isn\'t a video or a photo.', true);
   });
 })();
+
+
+// ---------- home: folders ----------
+// No folders: the home screen is as it was, plus "New folder" in the samples header (2c). Once there is one, a
+// "Your folders" row sits between the drop area and the samples (1c): the three most recently used folders and a
+// New folder cell. Click a folder for its clips; drop a video or photo on one to upload it there.
+const FOLDER_IC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>', FOLDER_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>';
+const H = { folders: [], all: false, naming: false, open: null, samples: [], allSamples: false };
+// A refresh in the background (the home screen re-renders when a scan or request finishes) mustn't throw away a
+// folder name being typed: the data updates, the redraw waits
+const typingName = () => $('homeFolders').contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
+function listFolders() {
+  api('api/folders').then(fs => {
+    H.folders = fs;
+    if (H.open && !fs.some(f => f.id === H.open.id)) H.open = null;
+    if (!typingName()) renderFolders();
+    if (H.open && !H.open.mode) refreshOpenFolder();  // back from the workspace: a clip may have been filed here since
+  })
+    .catch(() => { H.folders = []; renderFolders(); });
+}
+const nClips = n => `${n} clip${n === 1 ? '' : 's'}`;
+function renderFolders() {
+  const box = $('homeFolders'), has = H.folders.length > 0, open = H.open;
+  $('homeVideo').classList.toggle('hasFolders', has || H.naming || !!open);
+  $('newFolderLink').hidden = has || H.naming || !!open;
+  $('dropTitle').textContent = open ? `Drop a video into ${open.name}` : 'Drop a video';
+  // While the folder row shows, the samples list keeps two rows (and offers the rest)
+  const trim = (has || H.naming) && !open && !H.allSamples && H.samples.length > 2;
+  [...$('homeRows').children].forEach((r, i) => { r.hidden = trim && i >= 2; });
+  $('samplesAll').hidden = !((has || H.naming) && !open && H.samples.length > 2);
+  $('samplesAll').textContent = H.allSamples ? 'Fewer' : `All ${H.samples.length}`;
+  $('homeSamples').hidden = !!open;
+  if (open) return renderFolderView(box);
+  box.hidden = !has && !H.naming;
+  if (box.hidden) return box.replaceChildren();
+  const shown = H.all ? H.folders : H.folders.slice(0, 3);
+  const cells = shown.map(f => {
+    const b = el('button', { class: 'fCell', title: `Open ${f.name}. Drop a video or photo here to upload it into this folder.`, onclick: () => openFolder(f) });
+    b.insertAdjacentHTML('beforeend', FOLDER_IC);
+    b.append(el('span', { class: 'nm' }, el('b', {}, f.name), el('small', {}, nClips(f.clipCount))));
+    dropOn(b, file => uploadFile(file, f));
+    return b;
+  });
+  if (H.naming) cells.unshift(namingCell());
+  const add = el('button', { class: 'fCell new', title: 'New folder', onclick: startNaming });
+  add.insertAdjacentHTML('beforeend', FOLDER_PLUS); add.append(el('b', {}, 'New folder'));
+  box.replaceChildren(
+    el('div', { class: 'th' }, 'Your folders', H.folders.length > 3 ? el('button', { class: 'hLink thLink', onclick: () => { H.all = !H.all; renderFolders(); } }, H.all ? 'Fewer' : `All ${H.folders.length}`) : null),
+    el('div', { class: 'fGrid' }, ...cells, H.naming ? null : add));
+}
+// Naming a new folder: an inline field in a new cell. Enter creates it, Esc (or leaving it empty) cancels.
+function startNaming() { H.naming = true; renderFolders(); const i = $('homeFolders').querySelector('input'); if (i) i.focus(); }
+function namingCell() {
+  const input = el('input', { type: 'text', placeholder: 'Folder name', maxlength: '60', 'aria-label': 'New folder name' });
+  let done = false;
+  const finish = async save => {
+    if (done) return; done = true;
+    const name = input.value.trim();
+    if (!save || !name) { H.naming = false; return renderFolders(); }
+    try { const f = await post('api/folders', { name }); H.naming = false; H.folders.unshift(f); renderFolders(); homeMsg(`Made the folder ${f.name}. Drop a video on it to file it there.`); }
+    catch (e) { done = false; homeMsg(`Couldn't make the folder: ${errText(e)}`, true); input.focus(); }
+  };
+  input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } };
+  input.onblur = () => finish(!!input.value.trim());
+  const c = el('div', { class: 'fCell naming' }); c.insertAdjacentHTML('beforeend', FOLDER_IC);
+  c.append(el('span', { class: 'nm' }, input, el('small', {}, 'Enter to create')));
+  return c;
+}
+// A folder's clips, in place of the folder row and the samples (the drop area above uploads into it)
+async function refreshOpenFolder() {
+  const id = H.open.id;
+  try { const got = await api(`api/folders/${id}`); if (H.open && H.open.id === id) { H.open = { ...got, mode: H.open.mode }; if (!typingName()) renderFolders(); } } catch {}
+}
+async function openFolder(f) {
+  H.open = { id: f.id, name: f.name, clips: null }; renderFolders();
+  try { const got = await api(`api/folders/${f.id}`); if (H.open && H.open.id === f.id) { H.open = got; renderFolders(); } }
+  catch (e) { H.open = null; renderFolders(); homeMsg(`Couldn't open ${f.name}: ${errText(e)}`, true); }
+}
+function renderFolderView(box) {
+  const o = H.open, when = t => { const d = new Date(t * 1000); return d.toDateString() === new Date().toDateString()
+    ? `today ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); };
+  const rows = !o.clips ? [el('div', { class: 'hEmpty' }, 'Opening…')]
+    : o.clips.length ? o.clips.map(c => {
+      const b = el('button', { class: 'hRow', title: `Open ${c.name}`, onclick: () => openFiled(c) },
+        el('span', { class: 'id' }, c.name), el('span', { class: 'meta' }, `${c.kind === 'image' ? 'photo · ' : ''}${when(c.added)}`));
+      b.insertAdjacentHTML('beforeend', ARROW); return b;
+    }) : [el('div', { class: 'hEmpty' }, 'Nothing filed here yet. Drop a video above, or a photo below.')];
+  box.hidden = false;
+  // The name, or the field renaming it; Rename and Delete on the right; Delete asks first
+  const n = o.clips ? o.clips.length : 0;
+  let title;
+  if (o.mode === 'rename') {
+    const input = el('input', { type: 'text', value: o.name, maxlength: '60', 'aria-label': 'Folder name' });
+    let done = false;
+    const finish = async save => {
+      if (done) return; done = true;
+      const name = input.value.trim();
+      if (!save || !name || name === o.name) { o.mode = null; return renderFolders(); }
+      try { const f = await api(`api/folders/${o.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        o.name = f.name; o.mode = null; renderFolders(); homeMsg(`Renamed the folder to ${f.name}.`); }
+      catch (e) { done = false; homeMsg(`Couldn't rename it: ${errText(e)}`, true); input.focus(); }
+    };
+    input.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); finish(true); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); } };
+    input.onblur = () => finish(true);
+    title = input;
+  } else title = el('b', {}, o.name);
+  const acts = o.mode ? null : el('span', { class: 'fActs' },
+    el('button', { class: 'hLink', title: 'Rename this folder', onclick: () => { o.mode = 'rename'; renderFolders(); } }, 'Rename'),
+    el('button', { class: 'hLink', title: 'Delete this folder (its clips stay)', onclick: () => { o.mode = 'delete'; renderFolders(); } }, 'Delete'));
+  const confirm = o.mode !== 'delete' ? null : el('div', { class: 'fConfirm', role: 'alert' },
+    el('span', {}, `Delete ${o.name}? ${n ? `Its ${nClips(n)} ${n === 1 ? 'stays' : 'stay'} on this machine, just not in a folder.` : 'It\'s empty.'}`),
+    el('button', { class: 'hLink danger', onclick: async () => {
+      try { await api(`api/folders/${o.id}`, { method: 'DELETE' }); H.open = null; homeMsg(`Deleted the folder ${o.name}.${n ? ' Its clips are still on this machine.' : ''}`); listFolders(); }
+      catch (e) { homeMsg(`Couldn't delete it: ${errText(e)}`, true); }
+    } }, 'Delete folder'),
+    el('button', { class: 'hLink', onclick: () => { o.mode = null; renderFolders(); } }, 'Cancel'));
+  box.replaceChildren(...[
+    el('button', { class: 'hLink', style: 'align-self:flex-start;padding:4px;margin:0 0 8px -4px', onclick: () => { H.open = null; listFolders(); } }, '← All folders'),
+    el('div', { class: 'th' }, el('span', { class: 'fHead', style: 'flex:1;min-width:0' }, title, el('small', {}, o.clips ? nClips(n) : '')), acts),
+    confirm,
+    el('div', {}, ...rows)].filter(Boolean));
+  if (o.mode === 'delete') box.querySelector('.danger').focus();
+  if (o.mode === 'rename') { const i = box.querySelector('.fHead input'); i.focus(); i.select(); }
+}
+async function openFiled(c) {
+  homeMsg(`Opening ${c.name}…`);
+  try { const j = await api(`api/videos/${c.video_id}`); await openVideo({ video_id: c.video_id, info: j.info, prescan: [] }, c.name); homeMsg(''); }
+  catch (e) { homeMsg(`Couldn't open ${c.name}: ${errText(e)}`, true); }
+}
+// Drop a file on one element (a folder cell): it takes the drop, so the page-wide handler doesn't upload it again
+function dropOn(node, take) {
+  let n = 0;
+  node.addEventListener('dragenter', () => { n++; node.classList.add('over'); });
+  node.addEventListener('dragleave', () => { if (n && !--n) node.classList.remove('over'); });
+  node.addEventListener('drop', e => {
+    e.preventDefault(); e.stopPropagation(); n = 0; node.classList.remove('over'); resetDrag();
+    const f = [...e.dataTransfer.files].find(x => /^(video|image)\//.test(x.type) || /\.(mp4|mov|m4v|webm|mkv|avi|jpe?g|png|webp|bmp)$/i.test(x.name));
+    if (f) take(f); else homeMsg('That isn\'t a video or a photo.', true);
+  });
+}
+$('newFolderLink').onclick = startNaming;
+$('samplesAll').onclick = () => { H.allSamples = !H.allSamples; renderFolders(); };
 
 // ---------- the agent's steps, in plain words ----------
 function describe(calls, path) {

@@ -1,7 +1,14 @@
 """Main API (role D's UI talks to this). Sessions persist under DATA_DIR/<video_id>/.
 
-  POST /api/videos                      multipart file (a video or a photo) -> {video_id, info, prescan}  (starts a
-                                        background scan). A photo is a one-frame video: info.kind is "image".
+  POST /api/videos                      multipart file (a video or a photo), optional form field folder=<id>
+                                        -> {video_id, info, prescan}  (starts a background scan). A photo is a one-frame
+                                        video: info.kind is "image". With folder, the clip is filed in that folder.
+  GET  /api/folders                     the user's folders, most recently used first -> [{id, name, clipCount, lastUsed}]
+  POST /api/folders                     {"name": str} -> a new, empty folder
+  GET  /api/folders/{id}                one folder and its clips, newest first -> {id, name, clips: [{video_id, name,
+                                        kind, added}]}  (counts as using it)
+  PATCH  /api/folders/{id}              {"name": str} -> renamed
+  DELETE /api/folders/{id}              removes the folder only; its clips stay on this machine, unfiled
   GET  /api/config                      -> {offline, stub}: what a separately hosted page can't get injected into it
   GET  /api/samples[?kind=image]        clips in bench/clips, or photos in bench/photos -> [{id, mb, ...}]
   GET  /api/samples/{id}/photo          a sample photo, for the home screen's thumbnails
@@ -36,6 +43,7 @@ Run: uvicorn censor.server.app:app --host 0.0.0.0 --port 8000   (see run.sh)
 """
 from __future__ import annotations
 
+import json
 import mimetypes
 import os
 import re
@@ -50,7 +58,7 @@ from typing import Literal, Optional
 
 import cv2
 import yaml
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
@@ -168,10 +176,8 @@ def index():
     if not page.exists():
         return "<p>censor agent API. See /docs</p>"
     html = page.read_text(encoding="utf-8")
-    # The header says "network off" only when netguard is actually refusing outbound connections; the home screen
-    # offers "Attach .tracks.json" only in stub mode, the one place a sidecar does anything
-    flags = (' data-offline="1"' if netguard.active() else '') + (' data-stub="1"' if os.environ.get("CENSOR_STUB") == "1" else '')
-    return html.replace("<body>", f"<body{flags}>", 1) if flags else html
+    # The header says "network off" only when netguard is actually refusing outbound connections
+    return html.replace("<body>", '<body data-offline="1">', 1) if netguard.active() else html
 
 
 @app.get("/api/config")
@@ -181,20 +187,130 @@ def config():
 
 
 @app.post("/api/videos")
-async def upload(file: UploadFile = File(...)):
+async def upload(file: UploadFile = File(...), folder: Optional[str] = Form(None)):
     suffix = Path(file.filename or "x.mp4").suffix.lower() or ".mp4"
     if suffix in UNSUPPORTED_PHOTO:
         raise HTTPException(415, f"{UNSUPPORTED_PHOTO[suffix]} photos aren't supported yet. Save it as JPEG or PNG and "
                                  "upload that.")
+    if folder:
+        _folder(_load_folders(), folder)  # 404 before saving anything
     vid, d = _new_video_dir()
     src = d / f"source{suffix}"
     with src.open("wb") as f:
         shutil.copyfileobj(file.file, f)
     try:
-        return _start(vid)
+        out = _start(vid)
     except IOError as e:  # not a video or photo OpenCV can read: don't keep it around as a broken session
         shutil.rmtree(d, ignore_errors=True)
         raise HTTPException(400, f"Can't open {file.filename}: {e}")
+    if folder:
+        with _folders_lock:
+            fs = _load_folders()
+            f = _folder(fs, folder)
+            f["clips"].append({"video_id": vid, "name": Path(file.filename or f"clip{suffix}").name,
+                               "kind": out["info"].get("kind", "video"), "added": time.time()})
+            f["last_used"] = time.time()
+            _save_folders(fs)
+    return out
+
+
+# ---- folders: the user's clips, filed by name. One small JSON file next to the sessions (DATA_DIR/folders.json);
+# a folder lists the video ids filed in it, and a clip whose session is gone is left out when listed.
+_folders_lock = threading.Lock()
+FOLDER_NAME_MAX = 60
+
+
+class FolderIn(BaseModel):
+    name: str
+
+
+def _folders_path() -> Path:
+    return DATA_DIR / "folders.json"
+
+
+def _load_folders() -> list[dict]:
+    try:
+        return json.loads(_folders_path().read_text())
+    except FileNotFoundError:
+        return []
+
+
+def _save_folders(fs: list[dict]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = _folders_path().with_suffix(".tmp")
+    tmp.write_text(json.dumps(fs, indent=1))
+    tmp.replace(_folders_path())  # atomic: a crash mid-write never leaves half a file
+
+
+def _folder(fs: list[dict], fid: str) -> dict:
+    f = next((f for f in fs if f["id"] == fid), None)
+    if f is None:
+        raise HTTPException(404, f"no folder {fid!r}")
+    return f
+
+
+def _live_clips(f: dict) -> list[dict]:
+    return [c for c in f["clips"] if (DATA_DIR / c["video_id"]).is_dir()]
+
+
+@app.get("/api/folders")
+def list_folders():
+    fs = sorted(_load_folders(), key=lambda f: f["last_used"], reverse=True)
+    return [{"id": f["id"], "name": f["name"], "clipCount": len(_live_clips(f)), "lastUsed": f["last_used"]} for f in fs]
+
+
+def _folder_name(raw: str) -> str:
+    name = " ".join(raw.split())
+    if not name:
+        raise HTTPException(400, "A folder needs a name.")
+    if len(name) > FOLDER_NAME_MAX:
+        raise HTTPException(400, f"Folder names are at most {FOLDER_NAME_MAX} characters.")
+    return name
+
+
+@app.post("/api/folders")
+def new_folder(body: FolderIn):
+    name = _folder_name(body.name)
+    now = time.time()
+    f = {"id": uuid.uuid4().hex[:8], "name": name, "created": now, "last_used": now, "clips": []}
+    with _folders_lock:
+        fs = _load_folders()
+        fs.append(f)
+        _save_folders(fs)
+    return {"id": f["id"], "name": name, "clipCount": 0, "lastUsed": now}
+
+
+@app.get("/api/folders/{fid}")
+def get_folder(fid: str):
+    with _folders_lock:
+        fs = _load_folders()
+        f = _folder(fs, fid)
+        f["last_used"] = time.time()
+        _save_folders(fs)
+    clips = sorted(_live_clips(f), key=lambda c: c["added"], reverse=True)
+    return {"id": f["id"], "name": f["name"], "clips": clips}
+
+
+@app.patch("/api/folders/{fid}")
+def rename_folder(fid: str, body: FolderIn):
+    name = _folder_name(body.name)
+    with _folders_lock:
+        fs = _load_folders()
+        f = _folder(fs, fid)
+        f["name"] = name
+        _save_folders(fs)
+    return {"id": fid, "name": name, "clipCount": len(_live_clips(f)), "lastUsed": f["last_used"]}
+
+
+@app.delete("/api/folders/{fid}")
+def delete_folder(fid: str):
+    """Only the folder goes: the clips filed in it are sessions of their own and stay (reopen them with ?video=)."""
+    with _folders_lock:
+        fs = _load_folders()
+        f = _folder(fs, fid)
+        fs.remove(f)
+        _save_folders(fs)
+    return {"deleted": fid, "clips_kept": len(_live_clips(f))}
 
 
 @app.get("/api/samples")
