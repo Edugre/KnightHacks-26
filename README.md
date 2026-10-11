@@ -23,6 +23,12 @@ Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 - **EgoBlur has to be uploaded by hand** to `~/datasets/egoblur/`: drag the files into the VS Code Explorer and wait for the "Uploading..." status to finish before moving them. They're about 420 MB each, and a half-uploaded file fails to load with "failed finding central directory".
 - **A check script that loads the EgoBlur TorchScript files must `import torchvision` first.** Otherwise loading fails with `_assert_has_ops` even though the file is fine.
 - If `bash scripts/setup.sh` is cut off (a browser disconnect stopped our first run mid-way through the MobileCLIP download), run it again: it's idempotent.
+- **If the app answers "found nothing" for every request on a real clip, it is running in stub mode** (`CENSOR_STUB=1`, which only replays the synthetic clip's ground truth). It happened Sun morning after a UI test. Check with `tr '\0' '\n' < /proc/$(pgrep -f 'port 8000')/environ | grep CENSOR`, then restart it with the real detectors (the model server on :8100 keeps running):
+  ```bash
+  pkill -f 'uvicorn censor.server.app:app --host 0.0.0.0 --port 8000'
+  PYTHONPATH=$PWD CENSOR_MODEL_URL=http://127.0.0.1:8100 CENSOR_OFFLINE=1 nohup python3 -m uvicorn censor.server.app:app --host 0.0.0.0 --port 8000 >> logs/app8000.log 2>&1 &
+  ```
+  Try a UI change in stub mode on another port (`PORT=8001 ./run.sh stub`), so the demo app on :8000 keeps its detectors.
 
 **Using the app** (one workspace: Request and Export on the left, two monitors in the middle, Agent on the right, Timeline along the bottom):
 1. Pick a clip in the middle of the screen (the clips in `bench/clips`; Claude's in-app browser can't open a file picker, so this is the reliable way) or upload your own. **Open clip** in the header switches clips later, or attaches a `.tracks.json` in stub mode.
