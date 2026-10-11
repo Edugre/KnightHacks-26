@@ -20,6 +20,7 @@
   button { cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); }
   .obj { display:grid; grid-template-columns:14px 1fr auto; gap:6px; align-items:center; padding:4px; border-radius:6px; cursor:pointer; }
   .obj.active { background:#2a2a2a; }
+  button.armed { background:var(--accent); border-color:var(--accent); }
   .obj input { width:100%; box-sizing:border-box; padding:3px 6px; margin-top:3px; }
   .sw { width:14px; height:14px; border-radius:3px; }
   small, .muted { color:var(--muted); }
@@ -73,7 +74,21 @@ let L = null, sampled = [], idx = 0, active = null, dirty = false, drag = null;
 const cur = () => sampled[idx];
 const entry = f => byF.get(f);
 const ensure = f => { if (!byF.has(f)) byF.set(f, { f, boxes: [], reviewed: false }); return byF.get(f); };
-const color = id => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 85% 60%)`; };
+// Saturated colors that stand out on street footage; each box also gets a dark halo (see outlined()).
+const PALETTE = ['#ff2bd6', '#00e5ff', '#39ff14', '#ffe600', '#ff7a00', '#ff1744', '#7c4dff', '#00ffa3', '#ffffff', '#2979ff'];
+const color = id => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) % PALETTE.length; return PALETTE[h]; };
+const outlined = (x, y, w, h, lw, stroke) => {
+  ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = lw + 4 * Math.max(1, lw / 3); ctx.strokeRect(x, y, w, h);
+  ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h);
+};
+// Click-twice confirmation: window.confirm() is blocked in some embedded browsers, where it returns false at once.
+const ARM_MS = 3000;
+const armed = (btn, label, text) => {
+  if (btn.classList.contains('armed')) { btn.classList.remove('armed'); btn.textContent = label; return true; }
+  btn.classList.add('armed'); btn.textContent = 'Sure?'; setStatus(text);
+  setTimeout(() => { btn.classList.remove('armed'); btn.textContent = label; }, ARM_MS);
+  return false;
+};
 const setStatus = (text, err) => { $('status').textContent = text; $('status').style.color = err ? 'var(--accent)' : ''; };
 
 async function load() {
@@ -112,14 +127,13 @@ function draw() {
   for (const b of e?.boxes || []) {
     const [x1, y1, x2, y2] = b.box;
     ctx.setLineDash(e.reviewed ? [] : [5 * lw, 3 * lw]);
-    ctx.lineWidth = b.gt_id === active ? lw * 2.5 : lw;
-    ctx.strokeStyle = ctx.fillStyle = color(b.gt_id);
-    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-    ctx.fillText(b.gt_id, x1 + lw, Math.max(lw * 8, y1 - lw * 2));
+    outlined(x1, y1, x2 - x1, y2 - y1, b.gt_id === active ? lw * 2.5 : lw, color(b.gt_id));
+    const ty = Math.max(lw * 8, y1 - lw * 2), tw = ctx.measureText(b.gt_id).width;
+    ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(x1, ty - lw * 7, tw + lw * 2, lw * 8.5);
+    ctx.fillStyle = color(b.gt_id); ctx.fillText(b.gt_id, x1 + lw, ty);
   }
   if (drag?.mode === 'draw') {
-    ctx.setLineDash([]); ctx.lineWidth = lw; ctx.strokeStyle = color(active);
-    ctx.strokeRect(drag.x0, drag.y0, drag.x1 - drag.x0, drag.y1 - drag.y0);
+    ctx.setLineDash([]); outlined(drag.x0, drag.y0, drag.x1 - drag.x0, drag.y1 - drag.y0, lw, color(active));
   }
   const state = e?.reviewed ? 'confirmed' : e?.boxes.length ? 'draft' : 'not labeled';
   $('pos').textContent = `frame ${cur()} (${idx + 1} / ${sampled.length}), ${state}`;
@@ -227,8 +241,8 @@ function renderObjects() {
     input.value = o.desc;
     input.onchange = () => { o.desc = input.value.trim(); touch(); };
     row.onclick = ev => { if (!['INPUT', 'BUTTON'].includes(ev.target.tagName)) { active = id; renderObjects(); draw(); } };
-    row.querySelector('button').onclick = () => {
-      if (!confirm(`Delete ${id} and its ${counts[id] || 0} boxes?`)) return;
+    row.querySelector('button').onclick = ev => {
+      if (!armed(ev.currentTarget, '\u00d7', `Click again to delete ${id} and its ${counts[id] || 0} boxes`)) return;
       delete L.objects[id];
       for (const e of byF.values()) e.boxes = e.boxes.filter(b => b.gt_id !== id);
       if (active === id) active = null;
@@ -252,7 +266,8 @@ $('add').onclick = () => {
 $('merge').onclick = () => {
   const into = $('mergeInto').value;
   if (!active || !into) return;
-  if (L.objects[active].category !== L.objects[into].category && !confirm('These objects have different categories. Merge anyway?')) return;
+  if (L.objects[active].category !== L.objects[into].category
+      && !armed($('merge'), 'Merge', 'These objects have different categories. Click Merge again to merge anyway')) return;
   let moved = 0, dropped = 0;
   for (const e of byF.values()) {
     const src = e.boxes.find(b => b.gt_id === active);
