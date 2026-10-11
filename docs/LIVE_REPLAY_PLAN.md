@@ -379,6 +379,23 @@ inline error. Bandwidth: 960-wide q0.6 ≈ 30-40 KB × 12 fps ≈ 3-4 Mbit/s ups
 `face_detection_yunet_2023mar.onnx` from opencv_zoo (~230 KB; the laptop may fetch it, the server never needs it).
 This exists so the camera demo works on a laptop with no GPU; on the server EgoBlur is mandatory as before.
 
+**Camera-mode review (05:10, folded):** (SEV-1) the big-faint-face rule (car backs) would drop every webcam face
+scoring < 0.8, since all of them are "big" at 540p → push mode runs with `face_rule=None` (every face at or above
+EGOBLUR_CONF is masked); the clip path keeps the rule. (SEV-2) uploads get an 800 ms timeout each and 3 in flight
+(a half-dead link must not hold the slots; frames that arrive late get a late `f` from arrival time, and a long-held
+frame would mis-time the hold speed); `push()` reads the JPEG's SOF size before decoding and rejects > 4096×2304
+(a 600-byte JPEG with patched dimensions made `imdecode` allocate 1.2 GB); the badge says "{delay} s buffer +
+network" and the page measures camera→screen from the `/push` answer to the shown frame (the server's
+`frame_age_ms` omits both network legs; expect ~1.3-1.8 s); privacy wording: frames leave the laptop **unmasked**
+over HTTPS through the hub to the server, which stores nothing (footer, README, DEVPOST; never say "nothing leaves
+the machine" in the camera segment of the demo). Camera acceptance: ≥ 8 fps shown and ≤ 1.8 s camera→screen (the 12
+fps upload loop is a ceiling, 2-3 uploads in flight at ~150-200 ms each). Bind the live server to **127.0.0.1** on
+the GPU box (the hub proxy reaches localhost; 0.0.0.0 would expose unauthenticated `/push` to the cluster). Check
+`getUserMedia` once in the console on the real proxy URL before the demo (a cross-origin iframe or a
+Permissions-Policy header would show as NotAllowedError). Keep the camera page in its own window: a hidden tab's
+timers throttle and the 30 s watchdog would stop the run. Deferred: warm EgoBlur at the page's real canvas size (a
+4:3 camera gives 720×540, only the first passes are slow); `gaps_in` is noisy at 12 fps against the nominal 30.
+
 **Gate for camera mode:** visual. The owner sits in front of the camera on the server page and must never see
 their own face bare on the Program monitor while moving, turning and walking in from the side; blind frames freeze
 with the badge as before. The clip gate (`score`) is unchanged and still decides the go/no-go for the feature.
