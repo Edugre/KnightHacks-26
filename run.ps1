@@ -1,7 +1,7 @@
 # Windows launcher for laptop work. Mirrors the stub and test modes of run.sh, which needs bash.
 # GPU mode only exists in run.sh because the models run on the Linux R9700 server.
 #
-#   .\run.ps1 stub          stub detector, no models; API + test UI on http://localhost:8000
+#   .\run.ps1 stub          stub detector, no models; API + web UI on http://localhost:8000
 #   .\run.ps1 stub 8010     same, on another port (use this if 8000 is taken)
 #   .\run.ps1 test          run the pytest suite
 #   .\run.ps1 bench         benchmark with the stub detector; writes bench\report.md and bench\report.json

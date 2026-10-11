@@ -123,7 +123,7 @@ class BoxIn(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 def index():
     page = WEB_DIR / "index.html"
-    return page.read_text() if page.exists() else "<p>censor agent API. See /docs</p>"
+    return page.read_text(encoding="utf-8") if page.exists() else "<p>censor agent API. See /docs</p>"
 
 
 @app.post("/api/videos")

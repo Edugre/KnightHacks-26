@@ -20,16 +20,18 @@ Faces and plates use Meta's EgoBlur models (Apache 2.0), which `setup.sh` can't 
 Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 
 **Using the app:**
-1. Pick a clip in **Load a sample clip** (the clips in `bench/clips`; Claude's in-app browser can't open a file picker, so this is the reliable way) or upload your own.
-2. Type a request, e.g. `blur all faces and plates`, `blur the woman`, `blur everyone except the guy in the red hoodie` or `pixelate all faces but mine, I'm the one in the black t-shirt`, and press Enter. Plain requests are parsed instantly; the rest take one LLM call for the plan (about 2 s) plus a VLM check per person (a few seconds). The status line says what it's doing; the first request on a new clip waits for the background scan (about 30 s for a short clip), and Export stays disabled until the request finishes.
-3. **Preview masked frame** shows the current frame with the masks; drag on that preview to blur anything by hand (it gets tracked through the clip).
-4. Click **Export**. When it's done, the player switches to the blurred video and a download link appears. Export waits for a request that is still running and says so if there are no masks yet. `?video=<id>` in the URL reopens a video later.
+1. Pick a clip on the start screen (the clips in `bench/clips`; Claude's in-app browser can't open a file picker, so this is the reliable way) or upload your own.
+2. Type a request in the box at the bottom, e.g. `blur all faces and plates`, `blur the woman`, `blur everyone except the guy in the red hoodie` or `pixelate all faces but mine, I'm the one in the black t-shirt`, and press Enter (Shift+Enter for a new line; **?** lists examples). Plain requests are parsed instantly; the rest take one LLM call for the plan (about 2 s) plus a VLM check per person (a few seconds). The first request on a new clip waits for the background scan (about 30 s for a short clip). Each reply lists what the agent did in plain words (what it looked for, each yes/no question with how many people were yes / no / unsure, what it masked), then shows a masked frame and one coverage bar per target: click the bars to scrub the frame. The raw tool calls are under **Tool calls**.
+3. **Targets** (left) lists everything masked; click one to outline it on the frame. **Versions** (right) lists every change; **Undo** reverts the latest request as a whole. **Draw box**, then drag on the latest frame, blurs anything by hand (it gets tracked through the clip).
+4. **Timeline** (top bar, or **Open timeline** under a reply) opens the player with one row per target (label and effect); click a row to seek there.
+5. Click **Export**. When it's done, the Timeline drawer plays the blurred video and a download link appears in the top bar. Export waits for a request that is still running and says so if there are no masks yet. `?video=<id>` in the URL reopens a video later.
 
 `setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
 
 **Laptop, no GPU (stub detector, no models):**
 ```bash
-pip install -r requirements.txt
+uv venv --python 3.12 .venv && source .venv/bin/activate     # or any venv; run.sh uses whatever python3 is first on PATH
+uv pip install -r requirements.txt
 python3 scripts/make_test_clip.py bench/clips/synthetic.mp4    # clip + ground-truth tracks sidecar
 ./run.sh stub                                                   # http://localhost:8000
 ```
@@ -42,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File .\run.ps1 stub    # http://localhost:80
 powershell -ExecutionPolicy Bypass -File .\run.ps1 test
 ```
 
-In the test UI, pick **synthetic** in **Load a sample clip** (its ground-truth sidecar comes along, so the stub detector finds the shapes), then type a request such as `blur all plates`. Uploading `synthetic.mp4` plus its `synthetic.mp4.tracks.json` through the two file pickers also works.
+In the app, pick **synthetic** on the start screen (its ground-truth sidecar comes along, so the stub detector finds the shapes), then type a request such as `blur all plates and the woman`. Uploading `synthetic.mp4` and then attaching its `synthetic.mp4.tracks.json` on the start screen also works. With no models, requests the template can't parse get a "clarify" reply, and person questions are always "unsure", so every person is blurred (fail closed).
 
 **Tests:** `./run.sh test` runs the suite in about 15 s with no GPU. It covers the schema, fold/undo, the fail-closed renderer, the request templates, upload → request → export end to end, and the benchmark scoring.
 
@@ -83,7 +85,8 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
 | `censor/agent/` | `tools.py` (the toolbox), `agent.py` (routing), `planner.py` (one LLM call -> JSON plan -> toolbox), `intents.py` (template parser, no LLM) | B |
 | `censor/render/` | `render.py` (fail-closed renderer, ffmpeg out) | C |
 | `censor/server/` | `app.py` (main API), `model_server.py` (resident Qwen3-VL) | D / B |
-| `web/index.html` | test UI: sample clips, request + status, preview, draw-a-box, undo, export playback | D |
+| `web/index.html` | the editor (conversation-first layout): requests with the agent's steps, coverage strips, targets, versions, timeline + player, draw-a-box, undo, export. One file, no build step | D |
+| `docs/` | `STACK.md` (measured stack), `DEMO.md` (3-minute demo script and backup plan), `DEVPOST.md` (write-up draft) | all / D |
 | `schema/` | generated JSON schema + hand-written examples | C |
 | `scripts/` | setup, smoke tests, synthetic clip, `fetch_clips.sh`, `check_offline.py` | A |
 | `bench/` | `run_bench.py` (scores + report), `review.py` (detections, masks and per-plate scores on a clip), `profile_scan.py` + `egoblur_speed.py` (GPU timing), `compare_people.py` + `stitch_review.py` + `trackers/` (person tracks per detector and tracker, stitcher joins), `pp4av.py` (face/plate recall), `gt.py`, `label_server.py` + `label.html` (labeling tool), clips manifest, labels, requests | D |
