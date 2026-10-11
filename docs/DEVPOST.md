@@ -76,7 +76,7 @@ Keep the model out of the pixels. A typed mask timeline between the agent and th
 ## What's next
 
 - Fewer vision-model checks per request in crowds, where most person tracks are different people seen briefly.
-- Live mode: a standing rule ("blur any plate that appears") on a stream behind a short delay buffer, then an OBS virtual camera.
+- Live mode: a standing rule ("blur any plate that appears") on a stream behind a short delay buffer, then an OBS virtual camera. Live replay (stretch): the same engine runs a recorded clip as a stream behind a 1.0 s delay with a standing rule, fail-closed (a frame goes out only when the detector has vouched for both sides of it); measured on the Strix Halo in docs/STACK.md.
 - Pixel-accurate masks with SAM 3 instead of boxes.
 - More categories: screens, on-screen text, documents.
 

@@ -49,9 +49,11 @@ censor/
     intents.py         # template parser (no LLM): objects, person descriptions -> VLM questions, time phrases
   render/
     render.py          # timeline -> OpenCV masks -> ffmpeg; fail-closed rules
-    live.py            # (stretch, not started) delay buffer + standing rules
+    live.py            # live replay engine: source/detector/emitter threads, 1.0 s delay buffer, one standing rule, fail-closed
+    live_cli.py        # headless live replay: `run` (real-time clip to MP4 + JSON report) and `score` (labels, go/no-go)
   server/
     app.py             # FastAPI: upload, request, timeline, preview, export
+    live_routes.py     # /api/live/* live replay page and routes, included only with CENSOR_LIVE=1
     model_server.py    # resident Qwen3-VL for the agent and VLM checks (port 8100)
 schema/
   timeline.schema.json # generated from core/timeline.py, the shared contract
@@ -313,8 +315,12 @@ Owner: D, with everyone helping.
 
 ### M6 (stretch): Live replay
 Owner: C. Starts only after M4 passes.
-- Replay a recorded clip through `live.py` with a delay buffer (default 2 s) and one standing rule ("blur any plate").
-- Show the buffer delay and the per-frame latency on screen. Label it honestly as a replay.
+
+Built Sun 04:00-05:00 on branch `feat/live-replay` (plan: docs/LIVE_REPLAY_PLAN.md).
+- Plays a recorded clip at its own frame rate through the same detectors behind a 1.0 s delay buffer, with one standing rule (faces and plates), labeled as a replay; the page shows the delay and per-frame age.
+- Fail closed: a frame goes out only when a detection exists on both sides of it; otherwise the last vouched frame is repeated with a DETECTOR LATE badge, and before the first vouched frame the whole frame is blurred.
+- Tests: `tests/test_live.py`, `tests/test_live_cli.py`, `tests/test_live_routes.py`.
+- GPU gate run: pending (C5 of the plan); go/no-go 08:30.
 
 **Cut line:** if M6 isn't working by Sun 05:00, drop it from the demo.
 
@@ -357,7 +363,7 @@ Owner: C. Starts only after M4 passes.
 | M3 | Agent < 14/20 | Make template intents the primary path and the LLM a bonus. |
 | M3 | VLM > 1 s per crop | Use HSV color heuristics for clothing color; keep the VLM only for questions color can't answer. |
 | M4 | Fewer than 10 clips labeled | Report on what we have, with the clip count stated. |
-| Sun 05:00 | Live replay not stable | Cut it. |
+| Sun 05:00 | Live replay not stable | Cut it. Overridden Sun 04:00: built on a branch after the clean livestream benchmark; new cut line 08:30 (docs/LIVE_REPLAY_PLAN.md). |
 
 ---
 
