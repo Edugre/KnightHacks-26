@@ -204,8 +204,8 @@ class Session:
 
     def move_box(self, track_id: str, frame: int, box: list[float], request_id: str = "manual") -> dict:
         """The user corrected a mask's box at `frame`: from that frame on, mask a track followed from the corrected
-        box instead of the old one (same label, effect and padding), for as long as the new track lasts. Two ops
-        under one request id, so the UI's Undo reverts both. Before `frame` nothing changes. Not offered to the LLM: it's a hand edit from the UI."""
+        box instead of the old one (same label, effect, padding and hidden), for as long as the new track lasts. Two
+        ops (three for a hidden mask) under one request id, so the UI's Undo reverts them together. Before `frame` nothing changes. Not offered to the LLM: it's a hand edit from the UI."""
         self._check_ids([track_id])
         old = self.timeline.targets.get(track_id)
         if old is None:
@@ -220,13 +220,24 @@ class Session:
         removed = self.remove_masks([track_id], request_id=request_id, time_range=window)
         added = self.add_masks([new["track_id"]], effect=old.effect, padding=old.padding, time_range=window,
                                request_id=request_id)
-        return {"track": new, "op_ids": [removed, added]}
+        ops = [removed, added]
+        if old.hidden:  # moving a hidden mask doesn't show it
+            ops.append(self.set_hidden([new["track_id"]], True, request_id=request_id))
+        return {"track": new, "op_ids": ops}
 
     def set_effect(self, track_ids: list[str], effect: str, request_id: str = "manual") -> str:
         self._check_ids(track_ids)
         if effect not in EFFECTS:
             raise ToolError(f"effect must be one of {EFFECTS}")
         return self._append(request_id, kind="set_effect", targets=track_ids, effect=effect)
+
+    def set_hidden(self, track_ids: list[str], hidden: bool, request_id: str = "manual") -> str:
+        """Switch masks off (hidden) or back on without removing them. Not offered to the LLM: a hand edit."""
+        self._check_ids(track_ids)
+        missing = [t for t in track_ids if t not in self.timeline.targets]
+        if missing:
+            raise ToolError(f"{missing} aren't masked, so there is nothing to {'hide' if hidden else 'show'}")
+        return self._append(request_id, kind="hide_targets" if hidden else "show_targets", targets=track_ids)
 
     def add_rule(self, category: str, effect: str = "blur", request_id: str = "manual") -> str:
         if category not in RULE_CATEGORIES:
@@ -240,7 +251,8 @@ class Session:
         for t in tl.targets.values():
             by_label[t.label] = by_label.get(t.label, 0) + 1
             uncertain += sum(1 for k in t.keyframes if k.state == "uncertain")
-        return {"n_targets": len(tl.targets), "by_label": by_label, "uncertain_keyframes": uncertain,
+        return {"n_targets": len(tl.targets), "n_hidden": sum(t.hidden for t in tl.targets.values()),
+                "by_label": by_label, "uncertain_keyframes": uncertain,
                 "n_ops": len(self.log.ops), "n_redo": len(self.log.undone)}
 
     def undo(self) -> Optional[str]:

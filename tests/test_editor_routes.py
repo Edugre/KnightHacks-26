@@ -1,4 +1,4 @@
-"""The editor's Redo, and requests that point at a target ("blur everyone except this person")."""
+"""The editor's Redo, hiding a mask, and requests that point at a target ("blur everyone except this person")."""
 import shutil
 
 import pytest
@@ -44,6 +44,31 @@ def test_a_new_edit_clears_redo(clip, client):
     c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates"})
     assert c.get(f"/api/videos/{vid}").json()["summary"]["n_redo"] == 0
     assert c.post(f"/api/videos/{vid}/redo").json()["redone"] is None
+
+
+def test_hide_keeps_the_mask_but_skips_it(clip, client):
+    c, _, vid = _load(client, clip)
+    c.post(f"/api/videos/{vid}/request", json={"text": "blur all people"})
+    one = sorted(_targets(c, vid))[0]
+    before = c.get(f"/api/videos/{vid}/preview/10.jpg").content
+    r = c.post(f"/api/videos/{vid}/targets", json={"action": "hide", "track_ids": [one]}).json()
+    assert r["summary"]["n_hidden"] == 1 and _targets(c, vid)[one]["hidden"]
+    m = c.get(f"/api/videos/{vid}/masks").json()["targets"][one]
+    assert m["hidden"] and m["frames"]  # still outlined on Source
+    assert c.get(f"/api/videos/{vid}/preview/10.jpg").content != before  # not rendered
+    c.post(f"/api/videos/{vid}/targets", json={"action": "show", "track_ids": [one]})
+    assert not _targets(c, vid)[one]["hidden"]
+    assert c.get(f"/api/videos/{vid}/preview/10.jpg").content == before
+    c.post(f"/api/videos/{vid}/undo")  # undo the show: hidden again
+    assert _targets(c, vid)[one]["hidden"]
+    c.post(f"/api/videos/{vid}/request", json={"text": "blur all people"})  # asked again: it shows
+    assert not _targets(c, vid)[one]["hidden"]
+
+
+def test_hide_needs_a_mask(clip, client):
+    c, _, vid = _load(client, clip)
+    c.post(f"/api/videos/{vid}/request", json={"text": "unblur the people"})
+    assert c.post(f"/api/videos/{vid}/targets", json={"action": "hide", "track_ids": [_blue(c, vid)]}).status_code == 400
 
 
 def test_everyone_except_a_drawn_box(clip, client):

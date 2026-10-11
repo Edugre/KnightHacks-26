@@ -12,11 +12,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from censor.core.tracks import Keyframe, TrackStore
 
-SCHEMA_VERSION = 3  # 2: remove_targets honors time_range (unmask only that window); used to move a mask by hand
+SCHEMA_VERSION = 4  # 2: remove_targets honors time_range (unmask only that window); used to move a mask by hand
 # 3: VideoInfo.kind, so a photo is a one-frame "video" (fps 1, n_frames 1)
+# 4: hide_targets / show_targets and Target.hidden: a mask switched off without removing it
 
 Effect = Literal["blur", "pixelate", "box"]
-OpKind = Literal["add_targets", "remove_targets", "set_effect", "add_rule"]
+OpKind = Literal["add_targets", "remove_targets", "set_effect", "hide_targets", "show_targets", "add_rule"]
 Source = Literal["detector", "user_box", "rule"]
 
 
@@ -48,7 +49,7 @@ class Op(BaseModel):
     @classmethod
     def _targets_for_kind(cls, v, info):
         kind = info.data.get("kind")
-        if kind in ("add_targets", "remove_targets", "set_effect") and not v:
+        if kind in ("add_targets", "remove_targets", "set_effect", "hide_targets", "show_targets") and not v:
             raise ValueError(f"{kind} needs at least one target id")
         return v
 
@@ -58,6 +59,7 @@ class Target(BaseModel):
     source: Source
     effect: Effect = "blur"
     padding: float = 0.15
+    hidden: bool = False  # switched off by hand: kept in the timeline, but neither rendered nor exported
     keyframes: list[Keyframe]
 
 
@@ -122,6 +124,7 @@ def fold(ops: list[Op], tracks: TrackStore, video: VideoInfo) -> Timeline:
                     merged.update({k.f: k for k in kfs})
                     tl.targets[tid].keyframes = [merged[f] for f in sorted(merged)]
                     tl.targets[tid].effect, tl.targets[tid].padding = op.effect, op.padding
+                    tl.targets[tid].hidden = False  # asked to mask it again: it shows
                 else:
                     tl.targets[tid] = Target(label=track.label, source=track.source,
                                              effect=op.effect, padding=op.padding, keyframes=list(kfs))
@@ -140,6 +143,10 @@ def fold(ops: list[Op], tracks: TrackStore, video: VideoInfo) -> Timeline:
             for tid in op.targets:
                 if tid in tl.targets:
                     tl.targets[tid].effect = op.effect
+        elif op.kind in ("hide_targets", "show_targets"):
+            for tid in op.targets:
+                if tid in tl.targets:
+                    tl.targets[tid].hidden = op.kind == "hide_targets"
         elif op.kind == "add_rule":
             pass  # standing rules are applied by the live pipeline (stretch), not here
     return tl

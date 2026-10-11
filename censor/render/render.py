@@ -154,6 +154,8 @@ class FrameMasker:
         n = timeline.video.n_frames
         self.per_frame: dict[int, list[tuple[Box, float, str]]] = {}
         for target in timeline.targets.values():
+            if target.hidden:
+                continue
             for f, (box, pad) in expand_target(target, n).items():
                 self.per_frame.setdefault(f, []).append((box, pad, target.effect))
 

@@ -124,6 +124,8 @@
   .refChip b { font:600 10px/1.4 var(--mono); letter-spacing:.08em; background:var(--text); color:var(--ink-dark); padding:0 5px; border-radius:3px; flex:none; }
   .refChip .what { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border:0; padding:2px 0; text-align:left; border-radius:0; }
   .refChip .what:hover:not(:disabled) { background:none; color:var(--ink); }
+  .refChip.auto { border-style:dashed; }
+  .refChip.auto b { background:none; color:var(--text); border:1px solid var(--text); }
   .refChip .x { border:0; padding:2px 6px; color:var(--mute); }
   .refChip .x:hover:not(:disabled) { color:var(--ink); }
   .try { display:flex; flex-direction:column; margin-top:4px; }
@@ -204,10 +206,10 @@
   #notice:empty { display:none; }
   #notice.err { color:var(--err); }
   .tlist { display:flex; flex-direction:column; min-height:0; flex:1; }
-  .trow { display:grid; grid-template-columns:32px minmax(0,1fr) 48px 48px 20px; gap:6px; align-items:center; font:400 12.5px/1.3 var(--font); color:#CFCFCF;
+  .trow { display:grid; grid-template-columns:32px minmax(0,1fr) 48px 48px 20px 20px; gap:6px; align-items:center; font:400 12.5px/1.3 var(--font); color:#CFCFCF;
     padding:7px 8px; margin:0 -8px; border-bottom:1px solid var(--hair); }
   .trow.head { font:500 10px/1.4 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--faint); padding:0 0 6px; margin:0; border-bottom:1px solid #2A2A2A; flex:none; }
-  .tbody { overflow:auto; min-height:84px; }  /* three rows at least: the steps card never squeezes the list away */
+  .tbody { overflow:auto; min-height:84px; padding:0 8px; margin:0 -8px; }  /* room for the rows' -8px margins, or focusing a row's button scrolls the list sideways */  /* three rows at least: the steps card never squeezes the list away */
   .trow:not(.head) { cursor:pointer; }
   .trow:not(.head):hover { background:rgba(255,255,255,.04); border-radius:5px; }
   .trow .id { font:600 11.5px/1.3 var(--mono); color:var(--text); }
@@ -223,6 +225,8 @@
   .trow .xb { width:20px; height:20px; display:grid; place-items:center; border:0; border-radius:4px; padding:0; color:var(--mute); opacity:0; }
   .trow:hover .xb, .trow.sel .xb, .trow .xb:focus-visible { opacity:1; }
   .trow .xb:hover:not(:disabled) { color:var(--ink); background:rgba(255,255,255,.08); }
+  .trow .xb.eye.off { opacity:1; }
+  .trow.hid .nm, .trow.hid .t { color:var(--faint); }
   .tempty { font-size:12px; color:var(--mute); padding:8px 0; }
   #lowconf { display:flex; gap:8px; padding:8px 0 0; font:400 11.5px/1.4 var(--font); color:var(--mute); align-items:flex-start; flex:none; }
   #lowconf i { width:8px; height:8px; margin-top:4px; background:var(--acc); flex:none; }
@@ -239,6 +243,8 @@
   .seg button + button { border-left:1px solid var(--divider); }
   .seg button.on { background:var(--primary-bg); color:var(--primary-fg); }
   .seg button.on:hover:not(:disabled) { background:#E6E6E6; }
+  #hideBtn { margin-left:auto; border-color:#3A3A3A; padding:5px 10px; font:600 12px/1.2 var(--font); color:var(--text); }
+  #hideBtn + #removeBtn { margin-left:0; }
   #removeBtn { margin-left:auto; border-color:#3A3A3A; padding:5px 12px; font:600 12px/1.2 var(--font); color:var(--text); }
   .refUse { align-self:flex-start; border:0; padding:0; font:500 11.5px/1.4 var(--font); color:var(--text); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--seg); }
   .refUse:hover:not(:disabled) { background:none; color:var(--ink); }
@@ -264,6 +270,7 @@
   .lane { position:relative; height:21px; border-bottom:1px solid #1C1C1C; cursor:ew-resize; touch-action:none; }
   .lane.sel { background:rgba(255,255,255,.035); }
   .lane .s { position:absolute; top:5px; bottom:5px; background:var(--seg); border-radius:2px; }
+  .lane .s.hid { background:none !important; border:1px dashed var(--seg); }
   .lane .x { position:absolute; top:10px; height:1px; background:#262626; }
   .lane .u { position:absolute; top:3px; bottom:3px; min-width:3px; margin-left:-1px; background:var(--acc); }
   #ph { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--acc); pointer-events:none; z-index:3; }
@@ -272,7 +279,7 @@
   /* a photo (body[data-kind=image]): one frame, so no transport, timeline or in/out times */
   body[data-kind="image"] #app { grid-template-rows:52px minmax(0,1fr); }
   body[data-kind="image"] #transport, body[data-kind="image"] #timeline, body[data-kind="image"] .trow .t { display:none; }
-  body[data-kind="image"] .trow { grid-template-columns:32px minmax(0,1fr) 20px; }
+  body[data-kind="image"] .trow { grid-template-columns:32px minmax(0,1fr) 20px 20px; }
 
   /* hidden decoders: the monitors draw their frames on canvases */
   .decoder { position:fixed; left:0; top:0; width:2px; height:2px; opacity:0; pointer-events:none; }
@@ -560,6 +567,8 @@ const pct = s => `${Math.max(0, Math.min(100, s / dur() * 100))}%`;
 const ICON = {
   play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
   pause: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="3" width="5" height="18"/><rect x="14" y="3" width="5" height="18"/></svg>',
+  eye: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>',
+  eyeOff: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.2 3.2M6.6 6.6A17.6 17.6 0 0 0 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><line x1="2" y1="2" x2="22" y2="22"/></svg>',
   download: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>',
 };
 const svg = name => { const t = document.createElement('template'); t.innerHTML = ICON[name]; return t.content.firstChild; };
@@ -619,7 +628,7 @@ function runs(kfs, pick = () => true) {
 function targetList() {
   if (!S.timeline) return [];
   const out = Object.entries(S.timeline.targets).map(([id, t]) => ({
-    id, chip: tid(id), label: t.label, name: tname(id, t.label), effect: t.effect, padding: t.padding, keyframes: t.keyframes,
+    id, chip: tid(id), label: t.label, name: tname(id, t.label), effect: t.effect, padding: t.padding, keyframes: t.keyframes, hidden: !!t.hidden,
     segs: runs(t.keyframes), unc: runs(t.keyframes, k => k.state === 'uncertain'), ext: [], spared: false,
   }));
   for (const tr of S.trackList || []) {
@@ -641,13 +650,14 @@ function rowsModel() {
     const key = `${t.spared ? 'spared:' : ''}${t.label}`;
     const k = kinds.get(key) || { id: `g:${key}`, key, group: true, label: t.label, n: 0, segs: [], ext: [], unc: [], spared: t.spared, effects: new Set(), ids: [], members: [] };
     k.n++; k.segs.push(...t.segs); k.ext.push(...t.ext); k.unc.push(...t.unc); if (t.effect) k.effects.add(t.effect);
-    k.members.push(t); if (!t.spared) k.ids.push(t.id);
+    k.members.push(t); if (!t.spared) k.ids.push(t.id); if (t.hidden) k.nHidden = (k.nHidden || 0) + 1;
     kinds.set(key, k);
   }
   const rows = [];
   for (const k of kinds.values()) {
     const open = S.open.has(k.key);
     rows.push({ ...k, segs: union(k.segs), ext: union(k.ext), unc: union(k.unc), chip: '', open, all: k.members.map(t => t.id),
+      hidden: !!k.ids.length && k.nHidden === k.ids.length,
       effect: [...k.effects].join('/') || null,
       name: `${k.n} ${k.n === 1 ? (ONE[k.label] || k.label) : plural[k.label] || k.label}${k.spared ? ' · spared' : ''}` });
     if (open) rows.push(...k.members.map(t => ({ ...t, child: true })));
@@ -1053,11 +1063,16 @@ function workingSteps(text, first) {
 function pushVersion(v) { S.versions.push(v); S.redo = []; }
 // The reference as the server takes it: the target picked, or the box drawn and its frame
 const refBody = r => r && (r.track_id ? { track_id: r.track_id } : { frame: r.frame, box: r.box });
+// With no "this" set, the selected target is "this" for a request that says so ("blur this person", "pixelate
+// everyone but her"). Only then: "blur all plates" with a face selected must not shrink to that face.
+const REF_WORDS = /\b(this|him|her|selected)\b/i;
+const autoRef = () => !S.ref && S.selected && !isGroup(S.selected) && S.timeline
+  && (S.timeline.targets[S.selected] || (S.trackList || []).some(t => t.track_id === S.selected)) ? { track_id: S.selected, auto: true } : null;
 async function sendRequest(text) {
   if (!S.vid || S.busy || !text.trim()) return;
   if (/^\s*undo\s*$/i.test(text)) { $('text').value = ''; return undoLast(); }
   if (/^\s*redo\s*$/i.test(text)) { $('text').value = ''; return redoLast(); }
-  const first = S.versions.length === 1, ref = refBody(S.ref);
+  const first = S.versions.length === 1, ref = refBody(S.ref || (REF_WORDS.test(text) ? autoRef() : null));
   S.reqStart = Date.now(); S.steps = workingSteps(text, first); notice('');
   setBusy('request');
   let j;
@@ -1172,7 +1187,8 @@ async function editTargets(action, ids, effect = 'blur') {
   const kinds = new Set(ids.map(labelOf)), k = [...kinds][0];
   const names = ids.length <= 3 ? ids.map(i => `${tid(i)} (${tname(i, labelOf(i))})`).join(', ')
     : `${ids.length} ${kinds.size === 1 ? plural[k] || k : 'targets'}`;
-  const text = action === 'remove' ? `Unmasked ${names}` : action === 'add' ? `Masked ${names} with ${effect}` : `Changed ${names} to ${effect}`;
+  const text = action === 'remove' ? `Unmasked ${names}` : action === 'add' ? `Masked ${names} with ${effect}`
+    : action === 'hide' ? `Hid ${names}` : action === 'show' ? `Showed ${names}` : `Changed ${names} to ${effect}`;
   setBusy('edit');
   try {
     const j = await post(`api/videos/${S.vid}/targets`, { action, track_ids: ids, effect });
@@ -1202,7 +1218,7 @@ async function moveTarget(id, frame, box) {
 function select(id) {
   S.selected = id && S.selected === id ? null : id;
   if (S.selected && !isGroup(S.selected)) tid(S.selected);
-  renderAgent(); renderTimeline(); drawAll();
+  renderAgent(); renderTimeline(); renderRef(); drawAll();
 }
 // Select a row of the list or timeline and bring the playhead inside its time, if it isn't already
 function pickRow(r) {
@@ -1222,7 +1238,7 @@ function checkSpot() {
   S.spotIdx = (S.spotIdx + 1) % sp.length;
   const u = sp[S.spotIdx];
   S.selected = u.id; seek((u.a + u.b) / 2);
-  renderAgent(); renderTimeline();
+  renderAgent(); renderTimeline(); renderRef();
 }
 
 // ---------- rendering the panels ----------
@@ -1282,7 +1298,16 @@ function renderRequest() {
 const CROSSHAIR = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>';
 // "this": who the next request means, picked from the targets or drawn on Source
 function renderRef() {
-  const rr = $('refRow'), r = S.ref, busy = !!S.busy;
+  const rr = $('refRow'), busy = !!S.busy, r = S.ref || (S.drawMode === 'ref' ? null : autoRef());
+  if (r && r.auto && S.info) {
+    const tr = (S.trackList || []).find(t => t.track_id === r.track_id), lab = ((S.timeline.targets[r.track_id] || tr || {}).label);
+    rr.replaceChildren(el('div', { class: 'refChip auto', title: 'The selected target is "this" when your request says this, him or her ("blur everyone except this person")' },
+      el('b', {}, 'THIS'),
+      el('button', { class: 'what', title: 'Show it on the video', onclick: showRef }, `${tid(r.track_id)} · ${tname(r.track_id, lab)} (selected)`),
+      el('button', { class: 'x', title: 'Deselect it, or point at someone else', 'aria-label': 'Deselect', disabled: busy ? '' : null,
+        onclick: () => select(null) }, '×')));
+    return;
+  }
   if (r && S.info) {
     const id = r.track_id || r.guess, tr = id && (S.trackList || []).find(t => t.track_id === id);
     const what = id ? `${tid(id)} · ${tname(id, tr ? tr.label : '')}${r.track_id ? '' : ' (from your box)'}` : isPhoto() ? 'Your box' : `Your box on ${fmtF(r.frame / S.info.fps)}`;
@@ -1299,7 +1324,7 @@ function renderRef() {
   rr.replaceChildren(b);
 }
 function showRef() {
-  const r = S.ref; if (!r) return;
+  const r = S.ref || autoRef(); if (!r) return;
   const id = r.track_id || r.guess, tr = id && (S.trackList || []).find(t => t.track_id === id);
   if (r.box) seek((r.frame + 0.5) / S.info.fps);
   else if (tr && !trackBox(tr, P.frame)) seek((tr.keyframes[0].f + 0.5) / S.info.fps);
@@ -1328,7 +1353,7 @@ function setRef(frame, box) {
   $('text').focus();
 }
 function renderExport() {
-  const n = S.timeline ? Object.keys(S.timeline.targets).length : 0, p = $('expPanel');
+  const n = S.timeline ? Object.values(S.timeline.targets).filter(t => !t.hidden).length : 0, p = $('expPanel');
   const targets = `${n} target${n === 1 ? '' : 's'}`;
   const head = (title, meta, mute) => el('div', { class: 'exHead' }, el('span', { class: `exTitle${mute ? ' mute' : ''}` }, title), el('span', { class: 'exMeta' }, meta || ''));
   const photo = isPhoto();
@@ -1348,7 +1373,7 @@ function renderExport() {
       el('a', { class: 'primary', href: `${S.exportUrl}&download=1`, download: file }, 'Download', svg('download')));
   } else {
     p.replaceChildren(head('Export', S.vid ? `v${vNum(curVersion())} · ${targets}` : '', !n),
-      el('span', { class: 'exSub' }, n || !S.vid ? sub : 'Nothing masked yet. Send a request or draw a box first.'), btn(!S.vid || !n || !!S.busy));
+      el('span', { class: 'exSub' }, n || !S.vid ? sub : S.timeline && Object.keys(S.timeline.targets).length ? 'Every mask is hidden. Show one to export.' : 'Nothing masked yet. Send a request or draw a box first.'), btn(!S.vid || !n || !!S.busy));
   }
 }
 function renderAgentHead() {
@@ -1402,11 +1427,15 @@ function renderAgent() {
     const sp = span(r), sel = r.id === S.selected, rm = r.group ? r.ids : r.spared ? [] : [r.id];
     const id = r.group ? el('span', { class: `chev${r.open ? ' open' : ''}`, title: r.open ? 'Collapse' : 'Show each one',
       onclick: e => { e.stopPropagation(); toggleOpen(r.key); } }, '›') : r.chip;
-    return el('div', { class: `trow${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.group ? ' group' : ''}${r.child ? ' child' : ''}`,
+    const eye = rm.length ? el('button', { class: `xb eye${r.hidden ? ' off' : ''}`, disabled: busy ? '' : null,
+      title: r.hidden ? 'Hidden: not in Program or the export. Click to show it again (H)' : 'Hide: keep it, but leave it out of Program and the export (H)',
+      'aria-label': `${r.hidden ? 'Show' : 'Hide'} ${r.group ? r.name : r.chip}`, 'aria-pressed': String(!!r.hidden),
+      onclick: e => { e.stopPropagation(); editTargets(r.hidden ? 'show' : 'hide', rm); } }, svg(r.hidden ? 'eyeOff' : 'eye')) : el('span');
+    return el('div', { class: `trow${sel ? ' sel' : ''}${r.spared ? ' spared' : ''}${r.hidden ? ' hid' : ''}${r.group ? ' group' : ''}${r.child ? ' child' : ''}`,
       title: r.group ? `${r.name}: select to change or remove them all; › lists each one` : `${r.chip} ${r.name}${r.effect ? ` · ${r.effect}` : ''}`,
       onclick: () => pickRow(r), onmouseenter: () => hoverRow(r) },
       el('span', { class: 'id' }, id), el('span', { class: 'nm' }, r.name),
-      el('span', { class: 't' }, sp ? fmtF(sp[0]) : '–'), el('span', { class: 't' }, sp ? fmtF(sp[1]) : '–'),
+      el('span', { class: 't' }, sp ? fmtF(sp[0]) : '–'), el('span', { class: 't' }, sp ? fmtF(sp[1]) : '–'), eye,
       rm.length ? el('button', { class: 'xb', disabled: busy ? '' : null, title: rm.length > 1 ? `Remove all ${rm.length} masks` : 'Remove this mask (Delete)',
         'aria-label': rm.length > 1 ? `Remove all ${rm.length} masks` : `Remove ${r.chip}`,
         onclick: e => { e.stopPropagation(); editTargets('remove', rm); } }, '×') : el('span'));
@@ -1434,6 +1463,7 @@ function renderAgent() {
         ? el('div', { class: 'selRow' }, el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect for all of them' }, fxs.map(([fx, nm]) =>
             el('button', { class: fx === one ? 'on' : '', 'aria-pressed': String(fx === one), disabled: busy ? '' : null,
               onclick: () => fx !== one && editTargets('effect', g.ids, fx) }, nm))),
+            hideBtn(g.hidden, g.ids),
             el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking all of them (Delete key)', onclick: () => editTargets('remove', g.ids) }, 'Remove all'))
         : el('div', { class: 'selRow' }, el('span', { class: 'mute' }, 'Mask them all with'), el('div', { class: 'seg' }, fxs.map(([fx, nm]) =>
             el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', g.all, fx) }, nm)))),
@@ -1448,8 +1478,8 @@ function renderAgent() {
     return;
   }
   const refBtn = el('button', { class: 'refUse', disabled: busy || (S.ref && S.ref.track_id === id) ? '' : null,
-    title: 'Make it "this" in your next request: "blur everyone except this person"', onclick: () => useAsRef(id) },
-    S.ref && S.ref.track_id === id ? 'It\'s "this" in your next request' : 'Use as "this" in a request');
+    title: 'Keep it as "this" for your next request even after you select something else', onclick: () => useAsRef(id) },
+    S.ref && S.ref.track_id === id ? 'It\'s "this" in your next request' : S.ref ? 'Use as "this" instead' : 'Keep as "this"');
   const label = (t || tr).label, masked = t && !t.spared;
   const range = t ? span(t) : (tr.keyframes.length ? [tr.keyframes[0].f / S.info.fps, (tr.keyframes[tr.keyframes.length - 1].f + 1) / S.info.fps] : null);
   const head = el('div', { class: 'selHead' }, el('span', { class: 'sid' }, tid(id)), el('span', { class: 'snm' }, t ? t.name : tname(id, label)),
@@ -1458,7 +1488,7 @@ function renderAgent() {
     const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect' }, fxs.map(([fx, nm]) =>
       el('button', { class: fx === t.effect ? 'on' : '', 'aria-pressed': String(fx === t.effect), disabled: busy ? '' : null,
         onclick: () => fx !== t.effect && editTargets('effect', [id], fx) }, nm)));
-    sp2.replaceChildren(head, el('div', { class: 'selRow' }, seg,
+    sp2.replaceChildren(head, el('div', { class: 'selRow' }, seg, hideBtn(t.hidden, [id]),
       el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Remove')),
       el('span', { class: 'selHint' }, isPhoto() ? 'In the wrong place? Drag the box or a corner on the photo. × on the photo removes it.'
         : 'In the wrong place? Drag the box or a corner on the video; from that frame on, a new track follows it. × on the video removes it.'),
@@ -1470,14 +1500,19 @@ function renderAgent() {
         el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, nm)))), refBtn);
   }
 }
+// Hide keeps a mask (its row, lane and outline on Source) but leaves it out of Program and the export; Show
+// puts it back. Unlike Remove, nothing has to be found or asked for again.
+const hideBtn = (hidden, ids) => el('button', { id: 'hideBtn', disabled: S.busy ? '' : null, 'aria-pressed': String(!!hidden),
+  title: hidden ? 'Put it back in Program and the export (H)' : 'Leave it out of Program and the export, without removing it (H)',
+  onclick: () => editTargets(hidden ? 'show' : 'hide', ids) }, hidden ? 'Show' : 'Hide');
 function renderTimeline() {
   const g = $('tlGrid');
   if (!S.info) { g.replaceChildren(); $('tlNote').textContent = ''; return; }
   const { rows, ts } = rowsModel(), d = dur();
-  const nMasked = ts.filter(t => !t.spared).length, nSpared = ts.filter(t => t.spared).length, nSpots = spots().length;
+  const nMasked = ts.filter(t => !t.spared && !t.hidden).length, nHidden = ts.filter(t => t.hidden).length, nSpared = ts.filter(t => t.spared).length, nSpots = spots().length;
   $('tlNote').textContent = S.busy === 'request' ? `v${S.versions.length + 1} in progress` : S.drawMode === 'ref' ? 'pointing at "this" on Source'
     : S.drawMode ? `drawing T${Object.keys(S.ids).length + 1} on Source`
-    : [`${nMasked} masked`, nSpared ? `${nSpared} spared` : '', nSpots ? `${nSpots} low-confidence spot${nSpots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
+    : [`${nMasked} masked`, nHidden ? `${nHidden} hidden` : '', nSpared ? `${nSpared} spared` : '', nSpots ? `${nSpots} low-confidence spot${nSpots === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ');
   const step = d > 300 ? 60 : d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
   const ruler = el('div', { class: 'ruler', title: 'Click or drag to seek' });
   for (let s = 0; s < d - 1e-6; s += step) ruler.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
@@ -1491,7 +1526,7 @@ function renderTimeline() {
     const lane = el('div', { class: `lane${sel ? ' sel' : ''}`, title: r.group ? r.name : `${r.chip} ${r.name}` });
     const color = sel ? 'var(--text)' : r.effect === 'box' ? 'var(--mute)' : 'var(--seg)';
     r.ext.forEach(([a, b]) => lane.append(el('span', { class: 'x', style: `left:${pct(a)};width:${pct(b - a)}` })));
-    r.segs.forEach(([a, b]) => lane.append(el('span', { class: 's', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px);background:${color}` })));
+    r.segs.forEach(([a, b]) => lane.append(el('span', { class: `s${r.hidden ? ' hid' : ''}`, style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px);background:${color}` })));
     r.unc.forEach(([a, b]) => lane.append(el('span', { class: 'u', style: `left:${pct(a)};width:${pct(b - a)}` })));
     lane.onpointerdown = ev => scrub(ev, lane, r.id !== S.selected ? r.id : null);
     kids.push(lane);
@@ -1616,7 +1651,7 @@ function indexLayers(tracks, masks) {
   for (const [id, m] of Object.entries(masks.targets || {}))
     for (const [f, x1, y1, x2, y2] of m.frames) {
       let l = byFrame.get(f); if (!l) byFrame.set(f, l = []);
-      l.push({ id, effect: m.effect, r: [x1, y1, x2, y2] });
+      l.push({ id, effect: m.effect, hidden: !!m.hidden, r: [x1, y1, x2, y2] });
     }
   S.maskFrames = byFrame;
 }
@@ -1663,7 +1698,7 @@ function drawSource() {
   const maskNow = new Map(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => [m.id, m]));
   const items = [], sel = selIds();
   // Masked targets at their exact export rectangle; spared and other detected tracks at the detector's box
-  for (const [id, m] of maskNow) items.push({ id, r: m.r, kind: sel.has(id) ? 'sel' : m.effect === 'box' ? 'user' : 'mask', effect: m.effect });
+  for (const [id, m] of maskNow) items.push({ id, r: m.r, kind: sel.has(id) ? 'sel' : m.hidden ? 'hidden' : 'mask', effect: m.effect, hidden: m.hidden });
   for (const t of S.trackList || []) {
     if (maskNow.has(t.track_id)) continue;
     const k = trackBox(t, f); if (!k) continue;
@@ -1677,25 +1712,19 @@ function drawSource() {
     if (it.kind === 'found' || it.kind === 'selOpen') return `${chip} · ${ONE[lab] || lab} · not masked`;
     const what = lab === 'user box' ? 'your box' : S.desc[it.id] || ONE[lab] || lab;
     const kf = tl && trackBox({ keyframes: [...tl.keyframes].sort((a, b) => a.f - b.f) }, f);
-    return `${chip} · ${what}${kf && kf.state === 'uncertain' ? ' · low conf' : ''}`;
+    return `${chip} · ${what}${it.hidden ? ' · hidden' : kf && kf.state === 'uncertain' ? ' · low conf' : ''}`;
   };
-  const many = items.length > 30;  // a crowd: skip the frosted fill, it's 127 blurs a frame
   P.hits = [];
   const boxes = items.map(it => ({ ...it, x: it.r[0] * s, y: it.r[1] * s, w: (it.r[2] - it.r[0]) * s, h: (it.r[3] - it.r[1]) * s }));
   // Unlabeled found boxes first, the selected one last, so it sits on top
-  const order = { found: 0, spared: 1, mask: 2, user: 2, selOpen: 3, sel: 3 };
+  const order = { found: 0, spared: 1, hidden: 1, mask: 2, selOpen: 3, sel: 3 };
   boxes.sort((a, b) => order[a.kind] - order[b.kind]);
   for (const b of boxes) {
     P.hits.push({ id: b.id, r: b.r });
     g.save();
-    if ((b.kind === 'mask' || b.kind === 'sel') && !many && ready) {
-      g.beginPath(); g.rect(b.x, b.y, b.w, b.h); g.clip();
-      g.filter = 'blur(8px)'; g.drawImage(v, 0, 0, cw, ch); g.filter = 'none';
-      g.restore(); g.save();
-    }
-    if (b.kind === 'mask') { g.fillStyle = 'rgba(255,255,255,.10)'; g.fillRect(b.x, b.y, b.w, b.h); g.setLineDash([4, 3]); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; }
-    else if (b.kind === 'sel') { g.fillStyle = 'rgba(229,72,77,.14)'; g.fillRect(b.x, b.y, b.w, b.h); g.strokeStyle = '#E5484D'; g.lineWidth = 1.5; }
-    else if (b.kind === 'user') { g.fillStyle = '#111111'; g.fillRect(b.x, b.y, b.w, b.h); g.setLineDash([4, 3]); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1; }
+    if (b.kind === 'mask') { g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1.5; }
+    else if (b.kind === 'sel') { g.strokeStyle = '#E5484D'; g.lineWidth = 1.5; if (b.hidden) g.setLineDash([4, 3]); }
+    else if (b.kind === 'hidden') { g.setLineDash([4, 3]); g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = 1; }
     else if (b.kind === 'selOpen') { g.setLineDash([4, 3]); g.strokeStyle = '#E5484D'; g.lineWidth = 1.5; }
     else if (b.kind === 'spared') { g.setLineDash([2, 3]); g.strokeStyle = 'rgba(255,255,255,.45)'; g.lineWidth = 1; }
     else { g.setLineDash([2, 3]); g.strokeStyle = 'rgba(255,255,255,.3)'; g.lineWidth = 1; }
@@ -1709,7 +1738,7 @@ function drawSource() {
     if (b.kind === 'found' && b.w < 40) continue;  // unasked, unmasked detections stay quiet unless they're big
     if ((b.kind === 'sel' || b.kind === 'selOpen') && sel.size > 12 && !(S.hover && S.hover.has(b.id))) continue;  // a whole crowd selected
     const text = label(b), L = placeLabel(g, text, b.x, b.y, b.x + b.w, b.y + b.h, placed, cw, ch);
-    const [bg, fg] = b.kind === 'sel' || b.kind === 'selOpen' ? ['#E5484D', '#fff'] : b.kind === 'spared' || b.kind === 'found' ? ['rgba(17,17,17,.85)', '#EDEDED'] : ['#EDEDED', '#111111'];
+    const [bg, fg] = b.kind === 'sel' || b.kind === 'selOpen' ? ['#E5484D', '#fff'] : b.kind === 'spared' || b.kind === 'found' || b.kind === 'hidden' ? ['rgba(17,17,17,.85)', '#EDEDED'] : ['#EDEDED', '#111111'];
     g.fillStyle = bg; g.fillRect(L.x, L.y, L.w, L.h);
     g.fillStyle = fg; g.fillText(text, L.x + 4, L.y + L.h / 2 + .5);
   }
@@ -1755,7 +1784,7 @@ function drawProgram() {
   // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
   // the monitor looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and mirrored
   // border) at that size, bilinear back up; pixelate = INTER_LINEAR shrink to 1/12, nearest back up.
-  const s = cw / S.info.width, rects = (S.maskFrames && S.maskFrames.get(P.frame)) || [];
+  const s = cw / S.info.width, rects = ((S.maskFrames && S.maskFrames.get(P.frame)) || []).filter(m => !m.hidden);
   const live = rects.filter(m => m.effect !== 'box' && m.r[2] > m.r[0] && m.r[3] > m.r[1]);
   const fp = live.length ? framePixels(v, P.frame, live) : null;
   for (const m of rects) {
@@ -2044,7 +2073,7 @@ function renderExamples() {
   $('examples').replaceChildren(...EXAMPLES[isPhoto() ? 'image' : 'video'].map(t => el('button', { type: 'button', onclick: () => {
     if (!S.vid) return;
     $('text').value = t; $('text').focus();
-    if (/\bthis\b/.test(t) && !S.ref) toggleDraw('ref');  // it needs a "this": point at them first
+    if (/\bthis\b/.test(t) && !S.ref && !autoRef()) toggleDraw('ref');  // it needs a "this": point at them first
   } }, t)));
 }
 renderExamples();
@@ -2084,6 +2113,10 @@ document.addEventListener('keydown', e => {
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && maskedSel().length) { e.preventDefault(); editTargets('remove', maskedSel()); return; }
   if (!e.metaKey && !e.ctrlKey && !e.altKey && !typing) {
+    if (e.key.toLowerCase() === 'h' && S.selected && S.timeline && maskedSel().length) {
+      e.preventDefault(); const ids = maskedSel();
+      editTargets(ids.every(i => S.timeline.targets[i].hidden) ? 'show' : 'hide', ids); return;
+    }
     if (e.key === '[' || e.key === ']') { e.preventDefault(); togglePanel(e.key === '[' ? 'l' : 'r'); return; }
     if (e.key === '/') { e.preventDefault(); togglePanel('l', true); $('text').focus(); return; }  // jump to the request field
   }
