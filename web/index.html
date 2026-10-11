@@ -323,7 +323,9 @@
   .hLink:hover:not(:disabled) { background:color-mix(in srgb, var(--h-acc) 18%, transparent); }
   #homeBack { padding:4px; margin-left:-4px; }
   .hKind { display:flex; flex-direction:column; gap:16px; min-width:0; }
-  .hKind.video { flex:1; }
+  .hKind.video { flex:1; min-height:0; }
+  .hKind.video .drop { min-height:160px; }  /* a usable target on short windows; below it the column scrolls */
+  .hKind.photo, .hFolders { flex:none; }
   .hKind > .th { display:flex; align-items:baseline; gap:12px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); }
   .hKind > .th b { font:800 13px/1.2 var(--h-font); letter-spacing:.08em; color:var(--h-bg); }
   .hKind > .th span { margin-left:auto; letter-spacing:0; text-transform:none; text-align:right; }
@@ -339,15 +341,6 @@
   .drop.photo { flex:none; min-height:0; flex-direction:row; align-items:center; gap:16px; padding:20px 24px; }
   .drop.photo .title { font-size:22px; }
   .drop.photo .sub { margin-left:auto; text-align:right; }
-  .hThumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; }
-  .hThumb { display:flex; flex-direction:column; gap:6px; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; min-width:0; }
-  .hThumb img { display:block; width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--h-n900); outline:1px solid var(--h-n700); }
-  .hThumb:hover:not(:disabled) { background:none; color:var(--h-acc400); }
-  .hThumb:hover img { outline:2px solid var(--h-acc400); }
-  .hThumb .id { font:800 14px/1.2 var(--h-font); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .hThumb .meta { font-size:12px; color:var(--h-n400); }
-  .hSamples { display:flex; flex-direction:column; }
-  .hSamples .th { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); padding-bottom:8px; border-bottom:2px solid var(--h-n700); }
   .hRow { display:grid; grid-template-columns:minmax(0,1fr) 120px 20px; align-items:center; gap:12px; padding:12px 0; width:100%;
     border:0; border-bottom:1px solid var(--h-n700); background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; border-radius:0; }
   .hRow:hover:not(:disabled) { color:var(--h-acc400); background:none; }
@@ -355,10 +348,9 @@
   .hRow .meta { font-size:12px; color:var(--h-n400); }
   .hEmpty { font-size:12px; color:var(--h-n400); padding:12px 0; }
   /* folders (design_handoff_home_folders: 2c while there are none, 1c once there are) */
-  .hSamples .th { display:flex; align-items:baseline; }
   .thLink { margin-left:auto; display:flex; align-items:center; gap:6px; padding:0; font:800 12px/1.2 var(--h-font); letter-spacing:0; text-transform:none; }
-  .hKind.hasFolders .drop:not(.photo) { min-height:160px; }
   .hFolders { display:flex; flex-direction:column; }
+  .hFolders.viewing { max-height:45vh; overflow:auto; }  /* a long clip list scrolls; the drops stay in view */
   .hFolders .th { display:flex; align-items:baseline; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); padding-bottom:8px; border-bottom:2px solid var(--h-n700); }
   .fGrid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border-left:1px solid var(--h-n700); }
   .fCell { display:flex; flex-direction:column; align-items:flex-start; gap:18px; padding:14px; min-width:0; border:0; border-right:1px solid var(--h-n700);
@@ -414,11 +406,6 @@
           <span class="sub">or <u>browse files</u>. Landscape MP4 works best.</span>
           <input type="file" accept="video/*" id="dropInput" aria-label="Choose a video">
         </label>
-        <div class="hFolders" id="homeFolders" hidden></div>
-        <div class="hSamples" id="homeSamples">
-          <div class="th"><span id="samplesHead">Or start from a sample</span><button class="hLink thLink" id="newFolderLink" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>New folder</button><button class="hLink thLink" id="samplesAll" hidden></button></div>
-          <div id="homeRows"><div class="hEmpty">Looking for sample clips…</div></div>
-        </div>
       </div>
       <div class="hKind photo">
         <div class="th"><b>Photo</b><span>Faces, plates, screens. Exported without its location data.</span></div>
@@ -428,8 +415,8 @@
           <span class="sub">or <u>browse files</u>. JPEG, PNG or WebP.</span>
           <input type="file" accept="image/jpeg,image/png,image/webp,image/bmp" id="photoInput" aria-label="Choose a photo">
         </label>
-        <div class="hThumbs" id="photoRows"></div>
       </div>
+      <div class="hFolders" id="homeFolders"></div>
     </section>
   </div>
 </main>
@@ -491,13 +478,13 @@
 
   <div class="sideCol" id="colR">
   <div class="rail" id="railR" hidden>
-    <button class="railBtn" data-panel="r" title="Show Agent  ]" aria-controls="agent" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m10 15-3-3 3-3"/></svg></button>
-    <span class="railLbl" data-panel="r">Agent</span>
+    <button class="railBtn" data-panel="r" title="Show Targets  ]" aria-controls="agent" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m10 15-3-3 3-3"/></svg></button>
+    <span class="railLbl" data-panel="r">Targets</span>
     <span class="railStat" id="railMasked" title="Targets masked"><span id="railMaskedN">0</span><small>masked</small></span>
     <span class="railStat" id="railCheck" hidden title="Low-confidence spots, masked with extra padding"><i></i><small id="railCheckN"></small></span>
   </div>
   <aside id="agent" class="panel">
-    <div class="h"><button class="collapseBtn" data-panel="r" title="Hide Agent  ]" aria-controls="agent" aria-expanded="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></button>Agent<span class="meta" id="planMeta"></span>
+    <div class="h"><button class="collapseBtn" data-panel="r" title="Hide Targets  ]" aria-controls="agent" aria-expanded="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></button>Targets<span class="meta" id="planMeta"></span>
       <button id="undoBtn" class="hist" hidden title="Revert the latest change as a whole (⌘Z / Ctrl+Z)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>Undo</button>
       <button id="redoBtn" class="hist" hidden title="Put back what Undo took (⇧⌘Z / Ctrl+Y)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg>Redo</button></div>
     <div id="steps"></div>
@@ -779,7 +766,6 @@ function notice(msg, err = false) { $('notice').textContent = msg || ''; $('noti
 // workspace on that clip.
 const homeShown = () => !S.vid || S.picker;
 const ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
-let samplesListed = false;
 function renderPicker() {
   const show = homeShown();
   $('home').hidden = !show; $('app').hidden = show;
@@ -787,7 +773,6 @@ function renderPicker() {
   $('homeBack').hidden = !S.vid;
   if (S.vid) $('homeBack').textContent = `← Back to ${S.name}`;
   if (show && !$('homeMsg').classList.contains('busy')) homeMsg('');
-  if (show && !samplesListed) listSamples();
   if (show) listFolders();
 }
 // The status slot: where the clip runs, or what's loading, or what went wrong
@@ -795,27 +780,6 @@ function homeMsg(msg, err = false) {
   const m = $('homeMsg');
   m.classList.toggle('err', !!err); m.classList.toggle('busy', !!msg && !err);
   $('homeMsgText').textContent = msg || (document.body.dataset.offline === '1' ? 'on-device · nothing leaves this machine' : 'on-device');
-}
-function listSamples() {
-  samplesListed = true;
-  const rows = $('homeRows');
-  api('api/samples').then(cl => {
-    H.samples = cl; renderFolders();
-    rows.replaceChildren(...(cl.length ? cl.map(c => {
-      const meta = c.duration ? `${c.duration.toFixed(1)} s · ${c.sidecar ? 'stub' : `${c.height}p`}` : `${c.mb} MB`;
-      const b = el('button', { class: 'hRow', title: `Open ${c.id}`, onclick: () => loadSample(c.id) },
-        el('span', { class: 'id' }, c.id), el('span', { class: 'meta' }, meta));
-      b.insertAdjacentHTML('beforeend', ARROW);
-      return b;
-    }) : [el('div', { class: 'hEmpty' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
-  }).catch(e => { samplesListed = false; rows.replaceChildren(el('div', { class: 'hEmpty' }, `Couldn't list samples: ${errText(e)}`)); });
-  // Sample photos from bench/photos, as thumbnails; none is fine, the drop area is enough
-  const thumbs = $('photoRows');
-  api('api/samples?kind=image').then(ps => {
-    thumbs.replaceChildren(...ps.map(c => el('button', { class: 'hThumb', title: `Open ${c.id}`, onclick: () => loadSample(c.id, 'image', `${c.id} (photo)`) },
-      el('img', { src: url(c.url), alt: '', loading: 'lazy' }), el('span', { class: 'id' }, c.id),
-      el('span', { class: 'meta' }, c.width ? `${c.width}×${c.height}${c.sidecar ? ' · stub' : ''}` : `${c.mb} MB`))));
-  }).catch(() => thumbs.replaceChildren());
 }
 $('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, H.open); };
 $('photoInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, H.open); };
@@ -852,7 +816,7 @@ let resetDrag = () => {};
 // "Your folders" row sits between the drop area and the samples (1c): the three most recently used folders and a
 // New folder cell. Click a folder for its clips; drop a video or photo on one to upload it there.
 const FOLDER_IC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>', FOLDER_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>';
-const H = { folders: [], all: false, naming: false, open: null, samples: [], allSamples: false };
+const H = { folders: [], all: false, naming: false, open: null };
 // A refresh in the background (the home screen re-renders when a scan or request finishes) mustn't throw away a
 // folder name being typed: the data updates, the redraw waits
 const typingName = () => $('homeFolders').contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
@@ -867,19 +831,11 @@ function listFolders() {
 }
 const nClips = n => `${n} clip${n === 1 ? '' : 's'}`;
 function renderFolders() {
-  const box = $('homeFolders'), has = H.folders.length > 0, open = H.open;
-  $('homeVideo').classList.toggle('hasFolders', has || H.naming || !!open);
-  $('newFolderLink').hidden = has || H.naming || !!open;
+  const box = $('homeFolders'), open = H.open;
   $('dropTitle').textContent = open ? `Drop a video into ${open.name}` : 'Drop a video';
-  // While the folder row shows, the samples list keeps two rows (and offers the rest)
-  const trim = (has || H.naming) && !open && !H.allSamples && H.samples.length > 2;
-  [...$('homeRows').children].forEach((r, i) => { r.hidden = trim && i >= 2; });
-  $('samplesAll').hidden = !((has || H.naming) && !open && H.samples.length > 2);
-  $('samplesAll').textContent = H.allSamples ? 'Fewer' : `All ${H.samples.length}`;
-  $('homeSamples').hidden = !!open;
+  box.classList.toggle('viewing', !!open);
   if (open) return renderFolderView(box);
-  box.hidden = !has && !H.naming;
-  if (box.hidden) return box.replaceChildren();
+  // Always shown, at the bottom of the column: with no folders yet it's just the New folder cell
   const shown = H.all ? H.folders : H.folders.slice(0, 3);
   const cells = shown.map(f => {
     const b = el('button', { class: 'fCell', title: `Open ${f.name}. Drop a video or photo here to upload it into this folder.`, onclick: () => openFolder(f) });
@@ -985,8 +941,6 @@ function dropOn(node, take) {
     if (f) take(f); else homeMsg('That isn\'t a video or a photo.', true);
   });
 }
-$('newFolderLink').onclick = startNaming;
-$('samplesAll').onclick = () => { H.allSamples = !H.allSamples; renderFolders(); };
 
 // ---------- the agent's steps, in plain words ----------
 function describe(calls, path) {
@@ -1250,7 +1204,7 @@ function checkSpot() {
 
 // ---------- rendering the panels ----------
 // ---------- collapsible side panels ----------
-// [ toggles Request, ] toggles Agent; each side remembers its state for this viewer. On narrow screens the panels
+// [ toggles Request, ] toggles Targets (the #agent panel); each side remembers its state for this viewer. On narrow screens the panels
 // are stacked and these do nothing.
 S.panels = (() => { try { return { l: true, r: true, ...JSON.parse(localStorage.getItem('blurr:panels') || '{}') }; } catch { return { l: true, r: true }; } })();
 const WIDE = matchMedia('(min-width:1101px)');
