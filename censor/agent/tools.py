@@ -195,17 +195,19 @@ class Session:
 
     def move_box(self, track_id: str, frame: int, box: list[float], request_id: str = "manual") -> dict:
         """The user corrected a mask's box at `frame`: from that frame on, mask a track followed from the corrected
-        box instead of the old one (same label, effect and padding). Two ops under one request id, so the UI's Undo
-        reverts both. Before `frame` nothing changes. Not offered to the LLM: it's a hand edit from the UI."""
+        box instead of the old one (same label, effect and padding), for as long as the new track lasts. Two ops
+        under one request id, so the UI's Undo reverts both. Before `frame` nothing changes. Not offered to the LLM: it's a hand edit from the UI."""
         self._check_ids([track_id])
         old = self.timeline.targets.get(track_id)
         if old is None:
             raise ToolError(f"{track_id} isn't masked, so there is nothing to move")
-        fps, end = self.info.fps, self.info.n_frames / self.info.fps
+        fps = self.info.fps
         if not 0 <= frame < self.info.n_frames:
             raise ToolError(f"frame {frame} is outside the video (0-{self.info.n_frames - 1})")
         new = self.track_box(frame, box, label=old.label)
-        window = [frame / fps, end]
+        # Unmask the old track only while the new one follows the object: the box tracker stops when it loses it
+        # (or after MAX_TRACK_FRAMES), and from there the old mask must come back, or the object shows (fail closed)
+        window = [frame / fps, self.tracks.get(new["track_id"]).end / fps]
         removed = self.remove_masks([track_id], request_id=request_id, time_range=window)
         added = self.add_masks([new["track_id"]], effect=old.effect, padding=old.padding, time_range=window,
                                request_id=request_id)

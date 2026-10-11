@@ -74,8 +74,10 @@ def test_move_retracks_from_the_corrected_box(clip, client):
     new = r.json()["track"]["track_id"]
     assert len(r.json()["op_ids"]) == 2
     tl = _targets(c, vid)
-    assert max(k["f"] for k in tl[plate]["keyframes"]) == f - 1         # the old box stops before the frame
+    end = max(k["f"] for k in tl[new]["keyframes"])
     assert min(k["f"] for k in tl[new]["keyframes"]) == f                # the new one starts there
+    assert not any(f <= k["f"] <= end for k in tl[plate]["keyframes"])  # the old box is off while it runs
+    assert max(k["f"] for k in tl[plate]["keyframes"] if k["f"] < f) == f - 1
     assert tl[new]["keyframes"][0]["box"] == box and tl[new]["label"] == "license plate"
     assert tl[new]["effect"] == tl[plate]["effect"]
     # both ops share a request id, so the UI undoes them together; two undos restore the old mask
@@ -83,6 +85,30 @@ def test_move_retracks_from_the_corrected_box(clip, client):
     assert ops[-1]["request_id"] == ops[-2]["request_id"] != ops[-3]["request_id"]
     c.post(f"/api/videos/{vid}/undo"); c.post(f"/api/videos/{vid}/undo")
     assert set(_targets(c, vid)) == {plate} and len(_targets(c, vid)[plate]["keyframes"]) > f
+
+
+def test_move_keeps_the_old_mask_where_the_new_track_stops(clip, client, monkeypatch):
+    """The box tracker can lose the object early; past that point the old mask must come back (fail closed)."""
+    c, app_mod, vid = _load(client, clip)
+    c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates"})
+    (plate,) = _targets(c, vid)
+    import censor.agent.tools as tools_mod
+    real = tools_mod.track_mod.track_box
+
+    def short(video, f, box, store, label):  # a track that gives up after 10 frames
+        t = real(video, f, box, store, label)
+        t.keyframes = t.keyframes[:11]
+        return t
+    monkeypatch.setattr(tools_mod.track_mod, "track_box", short)
+    f = 30
+    old_box = next(k["box"] for k in _targets(c, vid)[plate]["keyframes"] if k["f"] == f)
+    r = c.post(f"/api/videos/{vid}/targets", json={"action": "move", "track_ids": [plate], "frame": f, "box": old_box})
+    assert r.status_code == 200, r.text
+    tl = _targets(c, vid)
+    new = r.json()["track"]["track_id"]
+    assert max(k["f"] for k in tl[new]["keyframes"]) == f + 10
+    old_frames = {k["f"] for k in tl[plate]["keyframes"]}
+    assert not old_frames & set(range(f, f + 11)) and f + 11 in old_frames  # back right after the new track ends
 
 
 @pytest.mark.parametrize("body", [
