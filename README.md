@@ -85,7 +85,7 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored), lab
 | `censor/agent/` | `tools.py` (the toolbox), `agent.py` (routing), `planner.py` (one LLM call -> JSON plan -> toolbox), `intents.py` (template parser, no LLM) | B |
 | `censor/render/` | `render.py` (fail-closed renderer, ffmpeg out) | C |
 | `censor/server/` | `app.py` (main API), `model_server.py` (resident Qwen3-VL) | D / B |
-| `web/index.html` | the editor (conversation-first layout from `design_handoff_conversation_editor/`): requests with the agent's steps, coverage strips, targets, versions, timeline + player, draw-a-box, undo, export. One file, no build step | D |
+| `web/index.html` | the editor (conversation-first layout): requests with the agent's steps, coverage strips, targets, versions, timeline + player, draw-a-box, undo, export. One file, no build step | D |
 | `docs/` | `STACK.md` (measured stack), `DEMO.md` (3-minute demo script and backup plan), `DEVPOST.md` (write-up draft) | all / D |
 | `schema/` | generated JSON schema + hand-written examples | C |
 | `scripts/` | setup, smoke tests, synthetic clip, `fetch_clips.sh`, `check_offline.py` | A |
