@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "video": {"fps": 30, "width": 1280, "height": 720, "n_frames": 180},
   "targets": {
     "trk_1": {

@@ -85,6 +85,11 @@
             "title": "Padding",
             "type": "number"
           },
+          "hidden": {
+            "default": false,
+            "title": "Hidden",
+            "type": "boolean"
+          },
           "keyframes": {
             "items": {
               "$ref": "#/$defs/Keyframe"
@@ -141,7 +146,7 @@
     },
     "properties": {
       "version": {
-        "default": 3,
+        "default": 4,
         "title": "Version",
         "type": "integer"
       },
@@ -178,6 +183,8 @@
           "add_targets",
           "remove_targets",
           "set_effect",
+          "hide_targets",
+          "show_targets",
           "add_rule"
         ],
         "title": "Kind",

@@ -18,15 +18,17 @@
   POST /api/videos/{id}/request         {"text": str, "ref"?: {"track_id": str} | {"frame": int, "box": [x1,y1,x2,y2]}}
                                         -> agent result; ref is what "this person" means ("blur everyone except this person")
   POST /api/videos/{id}/box             {"frame": int, "box": [x1,y1,x2,y2], "effect": "blur"} -> track + op
-  POST /api/videos/{id}/targets         {"action": "add"|"remove"|"effect", "track_ids": [...], "effect": "blur"}
-                                        mask, unmask or restyle chosen tracks by hand -> {op_id, summary};
+  POST /api/videos/{id}/targets         {"action": "add"|"remove"|"effect"|"hide"|"show", "track_ids": [...], "effect": "blur"}
+                                        mask, unmask, restyle, or switch off / on (kept, not exported) chosen tracks by
+                                        hand -> {op_id, summary};
                                         {"action": "move", "track_ids": [one], "frame": f, "box": [x1,y1,x2,y2]}
                                         re-tracks from the corrected box from frame f on -> {op_ids, track, summary}
   POST /api/videos/{id}/undo            -> {undone, summary}
   POST /api/videos/{id}/redo            put back the op the latest undo took -> {redone, summary}  (summary.n_redo: how many can)
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
-  GET  /api/videos/{id}/masks           per-frame masked rectangles, exactly as the renderer applies them (UI preview)
+  GET  /api/videos/{id}/masks           per-frame masked rectangles, exactly as the renderer applies them (UI preview);
+                                        a hidden target's are listed with hidden: true (the renderer skips them)
   GET  /api/videos/{id}/preview/{f}.jpg masked frame f
   POST /api/videos/{id}/export          render -> {url, kind, stats}  (waits for a running request; 409 if it takes too long)
   GET  /api/videos/{id}/export.<ext>    rendered video (.mp4) or photo (the source's format, no metadata); the url
@@ -157,7 +159,7 @@ class RequestIn(BaseModel):
 
 
 class TargetsIn(BaseModel):
-    action: Literal["add", "remove", "effect", "move"]
+    action: Literal["add", "remove", "effect", "hide", "show", "move"]
     track_ids: list[str]
     effect: str = "blur"
     frame: Optional[int] = None  # move only
@@ -471,7 +473,7 @@ def box(vid: str, body: BoxIn):
 @app.post("/api/videos/{vid}/targets")
 def targets(vid: str, body: TargetsIn):
     """Hand edits from the UI on tracks the user picked: mask a detected track that wasn't (add), unmask one
-    (remove), or change its effect. Same toolbox calls as the agent, so each is one op that Undo reverts."""
+    (remove), change its effect, or switch its mask off and on (hide, show). Same toolbox calls as the agent, so each is one op that Undo reverts."""
     s = session(vid)
     try:
         with turn(vid, f"a hand edit ({body.action})"):
@@ -484,6 +486,8 @@ def targets(vid: str, body: TargetsIn):
                 op = s.add_masks(body.track_ids, effect=body.effect, request_id="ui_edit")
             elif body.action == "remove":
                 op = s.remove_masks(body.track_ids, request_id="ui_edit")
+            elif body.action in ("hide", "show"):
+                op = s.set_hidden(body.track_ids, body.action == "hide", request_id="ui_edit")
             else:
                 op = s.set_effect(body.track_ids, body.effect, request_id="ui_edit")
     except ToolError as e:
@@ -514,15 +518,16 @@ def timeline(vid: str):
 def masks(vid: str):
     """Every masked rectangle per frame, from the renderer's own FrameMasker (interpolation, lead-in, hold after
     loss, padding), so the UI's live preview shows exactly where the export will blur. Integer pixels, grouped
-    by target: {track_id: {effect, frames: [[f, x1, y1, x2, y2], ...]}}."""
+    by target: {track_id: {effect, hidden, frames: [[f, x1, y1, x2, y2], ...]}}."""
     tl = session(vid).timeline
     v = tl.video
     out: dict[str, dict] = {}
     for tid, target in tl.targets.items():
-        one = Timeline(video=v, targets={tid: target})
+        # A hidden target's rectangles too, so the editor can still outline it on Source
+        one = Timeline(video=v, targets={tid: target.model_copy(update={"hidden": False})})
         frames = [[f, *_padded(box, pad, v.width, v.height)]
                   for f, items in sorted(FrameMasker(one).per_frame.items()) for box, pad, _ in items]
-        out[tid] = {"effect": target.effect, "frames": frames}
+        out[tid] = {"effect": target.effect, "hidden": target.hidden, "frames": frames}
     return {"fps": v.fps, "n_frames": v.n_frames, "width": v.width, "height": v.height, "targets": out}
 
 
