@@ -8,7 +8,7 @@ Live on the R9700 through the AUP proxy, with `street_walk` as the main clip and
 2. Open the app, pick `street_walk` and `street_plates` once each, so the detectors are warm and the clips are scanned, then reload the page with no `?video=` so you start from the start screen.
 3. Open a second tab with a terminal showing `logs/egress.log` (it should be empty) and `curl -s localhost:8100/health`.
 4. Have the backup video open in a third tab (see "If live fails").
-5. Browser zoom so the conversation column and both rails fit; close the Timeline drawer.
+5. Browser zoom so the conversation column and both rails fit, with the Preview open (Boxes and Masks on).
 
 ## The script
 
@@ -18,11 +18,11 @@ Live on the R9700 through the AUP proxy, with `street_walk` as the main clip and
 | 0:15 | Pick **street_walk**. | "The upload starts a background scan for faces, plates and people. A 13 s 1080p clip scans in 17 s on the Radeon AI PRO R9700: 0.76x real time, 24x the CPU." |
 | 0:30 | Type **blur all plates and the person in the red hoodie around halfway**, press Enter. | While it works: "Plain requests are parsed instantly. 'The person in the red hoodie' becomes a yes/no question for Qwen3-VL, asked about every person the detector tracked." |
 | 0:45 | Point at the reply: the steps list, the yes / no / unsure counts, the coverage strip. | "Here's what it did, in words: it found the plates, asked 'Is this a man wearing a red hoodie?', and blurred only the yes. The plates are blurred the whole clip; he's blurred only around halfway, because the time phrase belongs to him. Anything the model is unsure about stays blurred: we fail closed." |
-| 1:05 | Click his row in **Targets**, then click along the coverage strip. | "Select a target and its box lights up; click the strip and the frame jumps there." |
+| 1:05 | Press play in the **Preview**, then click his row in **Targets**. | "Every box is something the detectors found: solid ones get masked, dashed ones don't, and each person carries the vision model's answer. The blur you see is where the export will blur, frame by frame." |
 | 1:20 | Type **blur everyone except the woman**. | "Exceptions go to the local LLM: one call writes the whole plan as JSON in about 2 s, and plain code runs it. The model never touches pixels or track ids; it only edits a mask timeline through typed tools." |
 | 1:40 | Click **Draw box**, drag around something the detectors don't know (a sign, a shop window). | "And for anything else, draw a box: it's tracked through the clip." |
 | 1:55 | Click **Undo** once, show the version marked undone on the right. | "Every change is a version, and undo is one click." |
-| 2:05 | Click **Export**. The Timeline drawer opens with the blurred video; play a few seconds. | "The renderer is plain code applying that timeline." |
+| 2:05 | Click **Export**. The Preview switches to **Exact export**; play a few seconds. | "The renderer is plain code applying that timeline. This is the file you'd share." |
 | 2:20 | Switch to the terminal tab: empty `logs/egress.log`, `/health` with `"offline": true`. | "Every outbound connection is refused and logged during inference. The log is empty." |
 | 2:35 | Back to the app, or a slide with the numbers. | "On our labeled clips, 100% and 94.6% of plate frames are masked, with 3% over-blur. Detection, the 8B vision-language model and the planner all share one 32 GB R9700, at 18 GB peak." |
 | 2:50 | Close. | "Redaction you ask for in plain language, check frame by frame, and run without a cloud." |

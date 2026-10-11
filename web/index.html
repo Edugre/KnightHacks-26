@@ -155,13 +155,22 @@
   #hints .ex button small { color:var(--faint); margin-left:6px; }
   #hints p { margin:0; font-size:12px; color:var(--faint); line-height:1.5; }
 
-  /* timeline drawer */
-  #drawer { position:absolute; left:0; right:0; bottom:0; max-height:88%; background:var(--panel); border-top:2px solid var(--line); z-index:15; display:flex; flex-direction:column; }
-  .drawer-head { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--line-2); }
-  .drawer-head .seg-ctl { display:flex; } .drawer-head .seg-ctl button { font-size:12px; padding:4px 10px; }
-  .drawer-head .seg-ctl button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
-  .drawer-body { overflow:auto; padding:16px 20px 20px; display:flex; flex-direction:column; gap:14px; }
-  #player { width:100%; max-height:42vh; background:#000; display:block; }
+  /* preview stage: the video with stackable layers (boxes, masks) drawn on a canvas over it, and the timeline */
+  #stage { width:100%; background:var(--panel); border-bottom:2px solid var(--line); display:flex; flex-direction:column; flex:none; max-height:72%; }
+  .stage-head { display:flex; align-items:center; gap:10px; padding:10px 20px; border-bottom:1px solid var(--line-2); flex-wrap:wrap; }
+  .seg-ctl { display:flex; } .seg-ctl button { font-size:12px; padding:4px 10px; }
+  .seg-ctl button + button { border-left:0; }
+  .seg-ctl button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .kinds { display:flex; gap:6px; flex-wrap:wrap; }
+  .kinds button { font-size:11px; padding:3px 8px; display:flex; align-items:center; gap:6px; }
+  .kinds button i { width:8px; height:8px; display:inline-block; }
+  .kinds button:not(.on) { opacity:.45; }
+  .stage-body { overflow:auto; padding:12px 20px 14px; display:flex; flex-direction:column; gap:10px; }
+  #playerWrap { position:relative; background:#000; width:100%; height:min(32vh, 460px); }
+  #player { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; display:block; }
+  #layers { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .layer-note { font-size:11px; color:var(--faint); }
+  #tlWrap { max-height:120px; overflow:auto; }
   .tl { display:grid; grid-template-columns:200px minmax(0,1fr); gap:0 12px; font-size:13px; }
   @media (max-width:860px) { .tl { grid-template-columns:120px minmax(0,1fr); } }
   .tl .axis { position:relative; height:18px; font:10px var(--mono); color:var(--faint); }
@@ -185,7 +194,7 @@
     <div class="wordmark">CENSOR</div><div class="vrule"></div>
     <div id="fileName">No video</div><div id="fileMeta"></div>
     <div class="head-right">
-      <button class="cbtn" id="timelineBtn" disabled>Timeline</button>
+      <button class="cbtn" id="timelineBtn" disabled>Preview</button>
       <button class="rail-toggle cbtn" id="versionsToggle" aria-controls="versionsRail">Versions</button>
       <a id="dl" hidden download="export.mp4">Download</a>
       <button class="primary" id="exportBtn" disabled>Export</button>
@@ -194,6 +203,27 @@
   <div id="body">
     <aside id="targetsRail"><div class="label" style="margin-bottom:8px">Targets</div><div id="targets"></div></aside>
     <section id="center">
+      <div id="stage" hidden>
+        <div class="stage-head">
+          <div class="label">Preview</div>
+          <div class="seg-ctl" id="layerCtl" title="Layers drawn over the video; they stack">
+            <button data-layer="boxes" class="on" title="Every detected object, masked or not, with the vision model's answer when it was asked">Boxes</button>
+            <button data-layer="masks" class="on" title="Where the export will blur, from the renderer's own rectangles">Masks</button>
+          </div>
+          <div class="kinds" id="kinds"></div>
+          <div class="seg-ctl" id="srcCtl" style="margin-left:auto">
+            <button data-src="source" class="on" title="The original video with the layers drawn live">Live layers</button>
+            <button data-src="export" disabled title="The rendered export: the exact pixels that will be shared">Exact export</button>
+          </div>
+          <span id="stageTime" class="mono" style="font-size:12px;color:var(--muted)"></span>
+          <button class="cbtn" id="stageClose">Hide</button>
+        </div>
+        <div class="stage-body">
+          <div id="playerWrap"><video id="player" controls preload="auto" playsinline></video><canvas id="layers"></canvas></div>
+          <div class="layer-note" id="layerNote"></div>
+          <div id="tlWrap"><div class="tl" id="tl"></div></div>
+        </div>
+      </div>
       <div id="thread"><div id="threadInner"></div></div>
       <div id="composerWrap">
         <div id="hints" hidden>
@@ -210,18 +240,6 @@
         </form>
         <div id="status" role="status"></div>
       </div>
-      <div id="drawer" hidden>
-        <div class="drawer-head">
-          <div class="label">Timeline</div>
-          <div class="seg-ctl" id="srcCtl"><button data-src="source" class="on">Original</button><button data-src="export" disabled>Blurred export</button></div>
-          <span id="drawerTime" class="mono" style="font-size:12px;color:var(--muted)"></span>
-          <button class="cbtn" id="drawerClose" style="margin-left:auto">Close</button>
-        </div>
-        <div class="drawer-body">
-          <video id="player" controls preload="metadata"></video>
-          <div class="tl" id="tl"></div>
-        </div>
-      </div>
     </section>
     <aside id="versionsRail"><div class="label" style="margin-bottom:12px">Versions</div><div id="versions"></div></aside>
   </div>
@@ -232,6 +250,8 @@ const S = {
   vid: null, info: null, name: '', timeline: null, ops: [],
   ids: {},          // track_id -> "T1"... (stable for this video)
   desc: {},         // track_id -> what the VLM said yes to ("woman")
+  vlm: {},          // track_id -> the VLM's latest answer about it: {q, a, p}
+  trackList: null, maskFrames: null,  // the preview layers' data (GET /tracks, GET /masks)
   versions: [],     // {key, text, at, opIds, n, undone, card}
   selected: null, busy: false, exportUrl: null, cards: [],
 };
@@ -266,7 +286,7 @@ const store = {
   key: () => `censor:${S.vid}`,
   load() { try { return JSON.parse(localStorage.getItem(this.key()) || 'null'); } catch { return null; } },
   save() {
-    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc,
+    try { localStorage.setItem(this.key(), JSON.stringify({ name: S.name, ids: S.ids, desc: S.desc, vlm: S.vlm,
       versions: S.versions.map(({ card, ...v }) => v) })); } catch {}
   },
 };
@@ -322,21 +342,45 @@ function boxAt(t, f) {
 
 // ---------- loading a video ----------
 async function refreshState() {
-  const [v, tl] = await Promise.all([api(`api/videos/${S.vid}`), api(`api/videos/${S.vid}/timeline`)]);
-  S.info = v.info; S.ops = v.ops; S.timeline = tl;
+  const [v, tl, tracks, masks] = await Promise.all([api(`api/videos/${S.vid}`), api(`api/videos/${S.vid}/timeline`),
+    api(`api/videos/${S.vid}/tracks`), api(`api/videos/${S.vid}/masks`)]);
+  S.info = v.info; S.ops = v.ops; S.timeline = tl; S.queries = tracks.queries || [];
+  indexLayers(tracks, masks);
+  // An edit since the last export makes it out of date: back to the live layers until the next Export
+  const stale = S.exportUrl && S.exportSig !== S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
+  const exBtn = $('srcCtl').querySelector('[data-src=export]');
+  exBtn.disabled = !S.exportUrl || stale;
+  exBtn.title = stale ? 'Changed since the last export: Export again to see the exact pixels' : 'The rendered export: the exact pixels that will be shared';
+  if (stale && P.src === 'export') setSrc('source');
   const present = new Set(S.ops.map(o => o.op_id));
   // A version whose ops left the log was undone. Sticky: op ids are reused after an undo.
   for (const ver of S.versions) if (ver.opIds.length && !ver.undone && ver.opIds.some(o => !present.has(o))) ver.undone = true;
   targetList(); store.save();
-  renderTargets(); renderVersions(); renderTimeline();
+  renderTargets(); renderVersions(); renderTimeline(); renderKinds();
   S.cards.forEach(c => c.update());
   return v;
 }
+// The upload scan finishes in the background: refresh the boxes layer when its tracks land
+async function watchScan(vid, queries) {
+  for (let i = 0; i < 60 && queries.length; i++) {
+    await sleep(4000);
+    if (S.vid !== vid) return;
+    if (S.busy) continue;
+    try {
+      const tracks = await api(`api/videos/${vid}/tracks`);
+      if ((tracks.queries || []).length !== (S.queries || []).length) {
+        S.queries = tracks.queries || [];
+        indexLayers(tracks, { targets: {} }); await refreshState();
+      }
+      if (queries.every(q => S.queries.includes(q))) return;
+    } catch { return; }
+  }
+}
 async function openVideo(j, name) {
-  S.vid = j.video_id; S.info = j.info; S.name = name; S.ids = {}; S.desc = {}; S.versions = []; S.cards = [];
+  S.vid = j.video_id; S.info = j.info; S.name = name; S.ids = {}; S.desc = {}; S.vlm = {}; S.versions = []; S.cards = [];
   S.selected = null; S.exportUrl = null;
   const saved = store.load();
-  if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, versions: saved.versions || [] });
+  if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {}, versions: saved.versions || [] });
   if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
   history.replaceState(null, '', `?video=${S.vid}`);
   $('threadInner').replaceChildren();
@@ -345,6 +389,8 @@ async function openVideo(j, name) {
   ['timelineBtn', 'exportBtn', 'drawBtn', 'text'].forEach(id => $(id).disabled = false);
   $('text').placeholder = 'Ask for a change…';
   const v = await refreshState();
+  openStage(0);
+  watchScan(S.vid, j.prescan || []);
   if (saved && S.versions.length > 1) {
     note(`Reopened ${S.name}: ${v.summary.n_targets} target(s) masked so far. Earlier messages aren't kept, but the versions are on the right.`);
     if (v.summary.n_targets) addCard(note(''), null);
@@ -433,6 +479,7 @@ function describe(calls, path) {
         r.forEach(x => { t[x.answer] = (t[x.answer] || 0) + 1; });
         const m = /^is (?:this|it) (?:a |an |the )?(.+?)\?*$/i.exec(a.question || '');
         if (m) r.forEach(x => { if (x.answer === 'yes') S.desc[x.track_id] = m[1]; });
+        r.forEach(x => { S.vlm[x.track_id] = { q: a.question || '', a: x.answer, p: x.p_yes }; });
         items.push(el('li', {}, `Asked "${a.question}" about ${r.length} track${r.length === 1 ? '' : 's'}`, ms, ':',
           el('span', { class: 'tally yes' }, `${t.yes} yes`), el('span', { class: 'tally no' }, `${t.no} no`),
           el('span', { class: 'tally unsure' }, `${t.unknown} unsure`),
@@ -469,7 +516,7 @@ function addCard(host, focusIds) {
   const reviewBtn = el('button', { class: 'primary', hidden: '' });
   const undoBtn = el('button', { onclick: () => undoLast() }, 'Undo');
   const card = el('div', { class: 'card' }, frame, strip, legend);
-  const actions = el('div', { class: 'actions' }, reviewBtn, el('button', { onclick: () => openDrawer(c.t) }, 'Open timeline'), undoBtn);
+  const actions = el('div', { class: 'actions' }, reviewBtn, el('button', { onclick: () => openStage(c.t), title: 'Play the video from this moment, with the boxes and masks drawn over it' }, 'Play here'), undoBtn);
   host.append(card, actions);
   const c = { t: 0, live: true, targets: [], unc: [], uncIdx: -1, frame, cv, img, undoBtn, card };
   // Start on the first thing this request masked, else the middle of the clip
@@ -694,12 +741,12 @@ async function doExport() {
   setBusy('Rendering the blurred video…'); $('exportBtn').textContent = 'Rendering…';
   try {
     const j = await post(`api/videos/${S.vid}/export`);
-    S.exportUrl = j.url;
+    S.exportUrl = j.url; S.exportSig = S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
     $('dl').href = j.url; $('dl').hidden = false;
     $('srcCtl').querySelector('[data-src=export]').disabled = false;
-    const cur = S.versions.filter(v => !v.undone).length;
+    const live = S.versions.filter(v => !v.undone), cur = S.versions.indexOf(live[live.length - 1]) + 1;
     note(`Exported v${cur}: ${j.stats.masked_boxes} masked boxes over ${j.stats.frames} frames${j.stats.failed_frames ? `, ${j.stats.failed_frames} frames failed to decode` : ''}. Rendered on this machine.`);
-    setSrc('export'); openDrawer(0);
+    setSrc('export'); openStage(0);
     setBusy();
   } catch (e) { setBusy(); status(errText(e) || 'Export failed.', true); }
   $('exportBtn').textContent = 'Export';
@@ -708,7 +755,7 @@ async function doExport() {
 // ---------- rails ----------
 function select(id) {
   S.selected = S.selected === id ? null : id;
-  renderTargets(); renderTimeline(); S.cards.forEach(c => c.paint());
+  renderTargets(); renderTimeline(); S.cards.forEach(c => c.paint()); drawLayers();
 }
 function renderTargets() {
   const ts = targetList();
@@ -726,19 +773,236 @@ function renderVersions() {
       el('span', { class: 'vmeta' }, v.undone ? 'undone' : i === 0 ? ago(v.at) : `${ago(v.at)} · ${v.n} target${v.n === 1 ? '' : 's'}`))));
 }
 
-// ---------- timeline drawer ----------
-function openDrawer(t) {
-  $('drawer').hidden = false; renderTimeline();
-  if (typeof t === 'number' && isFinite(t)) $('player').currentTime = t;
+// ---------- preview stage ----------
+// The original video with two stackable layers drawn on a canvas over it, synced to the frame on screen:
+//  Boxes: every detected track (masked or not), labeled with the vision model's answer when it was asked;
+//  Masks: the renderer's own rectangles (GET /masks), blurred / pixelated / boxed the way the export does it.
+// "Exact export" swaps in the rendered file, so the pixels that will be shared can be checked too.
+const KIND = {
+  'face': { name: 'Faces', one: 'face', color: '#ffd27a' }, 'license plate': { name: 'Plates', one: 'plate', color: '#7fd4ff' },
+  'person': { name: 'People', one: 'person', color: '#9fe0b0' }, 'user box': { name: 'Drawn', one: 'drawn box', color: '#d4a6ff' },
+};
+const kindOf = label => KIND[label] || { name: label, one: label, color: '#eef1f6' };
+const P = { layers: { boxes: true, masks: true }, hiddenKinds: new Set(), src: 'source', frame: -1, small: null };
+
+function openStage(t) {
+  if (!S.vid) return;
+  $('stage').hidden = false; renderTimeline(); renderKinds(); drawLayers();
+  if (typeof t === 'number' && isFinite(t)) $('player').currentTime = Math.max(0, t);
 }
 function setSrc(which) {
+  P.src = which;
   for (const b of $('srcCtl').children) b.classList.toggle('on', b.dataset.src === which);
   const t = $('player').currentTime || 0;
   const src = which === 'export' && S.exportUrl ? S.exportUrl : S.vid ? `api/videos/${S.vid}/source` : '';
   if (src && !$('player').src.endsWith(src)) { $('player').src = src; $('player').currentTime = t; }
+  // The export is already blurred: drawing the masks again on top would hide what it really looks like
+  $('layerCtl').querySelector('[data-layer=masks]').disabled = which === 'export';
+  drawLayers();
+}
+// Per-frame lookups, rebuilt whenever the tracks or masks change
+function indexLayers(tracks, masks) {
+  S.trackList = Object.values(tracks.tracks || {}).map(t => ({ ...t, keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }));
+  const byFrame = new Map();
+  for (const [id, m] of Object.entries(masks.targets || {}))
+    for (const [f, x1, y1, x2, y2] of m.frames) {
+      let l = byFrame.get(f); if (!l) byFrame.set(f, l = []);
+      l.push({ id, effect: m.effect, r: [x1, y1, x2, y2] });
+    }
+  S.maskFrames = byFrame;
+}
+// A track's box at frame f: its keyframe, or interpolated between two keyframes up to 15 frames apart (the
+// renderer's MAX_GAP). No lead-in or hold: this layer shows what the detector saw, the masks layer the rest.
+function trackBox(t, f) {
+  const k = t.keyframes; let lo = 0, hi = k.length - 1;
+  if (!k.length || f < k[0].f || f > k[hi].f) return null;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (k[mid].f <= f) lo = mid; else hi = mid; }
+  const a = k[lo], b = k[hi];
+  if (a.f === f) return a; if (b.f === f) return b;
+  if (b.f - a.f > 15) return null;
+  const u = (f - a.f) / (b.f - a.f);
+  return { box: a.box.map((v, i) => v + (b.box[i] - v) * u), conf: a.conf, state: a.state === 'uncertain' || b.state === 'uncertain' ? 'uncertain' : a.state };
+}
+// The decoded frame's RGBA pixels inside the box around all of this frame's masks, read once per frame shown.
+// Only that box: copying a whole 720p frame to the CPU and reading it back cost 12 ms of the 15 ms per frame.
+function framePixels(v, f, rects) {
+  const key = `${v.currentSrc}|${f}`;
+  if (P.px && P.pxKey === key) return P.px;
+  let bx1 = Infinity, by1 = Infinity, bx2 = 0, by2 = 0;
+  for (const m of rects) { bx1 = Math.min(bx1, m.r[0]); by1 = Math.min(by1, m.r[1]); bx2 = Math.max(bx2, m.r[2]); by2 = Math.max(by2, m.r[3]); }
+  const bw = Math.max(1, bx2 - bx1), bh = Math.max(1, by2 - by1);
+  const c = P.full || (P.full = document.createElement('canvas'));
+  c.width = bw; c.height = bh;
+  const cg = c.getContext('2d', { willReadFrequently: true });
+  cg.drawImage(v, bx1, by1, bw, bh, 0, 0, bw, bh);
+  P.pxKey = key;
+  return P.px = { data: cg.getImageData(0, 0, bw, bh).data, x0: bx1, y0: by1, w: bw };
+}
+// 1-D INTER_AREA weights: output i averages source [i * n / m, (i + 1) * n / m), partial pixels weighted
+function areaWeights(n, m) {
+  const out = [], step = n / m;
+  for (let i = 0; i < m; i++) {
+    const a = i * step, b = a + step, ws = [];
+    for (let j = Math.floor(a); j < Math.ceil(b); j++) ws.push([Math.min(j, n - 1), (Math.min(b, j + 1) - Math.max(a, j)) / step]);
+    out.push(ws);
+  }
+  return out;
+}
+// Region (x, y, w, h) of an RGBA frame -> tw x th RGB floats, averaging every pixel (cv2.INTER_AREA)
+function shrinkArea(px, W, x, y, w, h, tw, th) {
+  const wx = areaWeights(w, tw), wy = areaWeights(h, th), rows = new Float32Array(h * tw * 3), out = new Float32Array(tw * th * 3);
+  for (let r = 0; r < h; r++) {
+    const base = ((y + r) * W + x) * 4;
+    for (let i = 0; i < tw; i++) {
+      let R = 0, G = 0, B = 0;
+      for (const [j, wgt] of wx[i]) { const o = base + j * 4; R += px[o] * wgt; G += px[o + 1] * wgt; B += px[o + 2] * wgt; }
+      const q = (r * tw + i) * 3; rows[q] = R; rows[q + 1] = G; rows[q + 2] = B;
+    }
+  }
+  for (let i = 0; i < th; i++)
+    for (let c = 0; c < tw; c++) {
+      let R = 0, G = 0, B = 0;
+      for (const [j, wgt] of wy[i]) { const q = (j * tw + c) * 3; R += rows[q] * wgt; G += rows[q + 1] * wgt; B += rows[q + 2] * wgt; }
+      const o = (i * tw + c) * 3; out[o] = R; out[o + 1] = G; out[o + 2] = B;
+    }
+  return out;
+}
+// Region -> tw x th RGB by bilinear sampling at the mapped pixel centers (cv2.INTER_LINEAR when shrinking)
+function shrinkLinear(px, W, x, y, w, h, tw, th) {
+  const out = new Float32Array(tw * th * 3);
+  for (let i = 0; i < th; i++) {
+    const sy = Math.min(h - 1, Math.max(0, (i + 0.5) * h / th - 0.5)), y0 = Math.floor(sy), y1 = Math.min(h - 1, y0 + 1), fy = sy - y0;
+    for (let c = 0; c < tw; c++) {
+      const sx = Math.min(w - 1, Math.max(0, (c + 0.5) * w / tw - 0.5)), x0 = Math.floor(sx), x1 = Math.min(w - 1, x0 + 1), fx = sx - x0;
+      for (let ch = 0; ch < 3; ch++) {
+        const p = (yy, xx) => px[((y + yy) * W + x + xx) * 4 + ch];
+        out[(i * tw + c) * 3 + ch] = (p(y0, x0) * (1 - fx) + p(y0, x1) * fx) * (1 - fy) + (p(y1, x0) * (1 - fx) + p(y1, x1) * fx) * fy;
+      }
+    }
+  }
+  return out;
+}
+// cv2.GaussianBlur(img, (ks, ks), 0) on a small RGB float image: OpenCV's kernel and BORDER_REFLECT_101
+function gaussian(img, w, h, ks) {
+  const sigma = 0.3 * ((ks - 1) * 0.5 - 1) + 0.8, r = (ks - 1) / 2, kern = [];
+  for (let i = 0; i < ks; i++) kern.push(Math.exp(-((i - r) ** 2) / (2 * sigma * sigma)));
+  const sum = kern.reduce((a, b) => a + b, 0); kern.forEach((v, i) => kern[i] = v / sum);
+  const refl = (i, n) => { if (n === 1) return 0; while (i < 0 || i >= n) i = i < 0 ? -i : 2 * n - 2 - i; return i; };
+  const pass = (src, horiz) => {
+    const out = new Float32Array(src.length);
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) for (let c = 0; c < 3; c++) {
+      let acc = 0;
+      for (let t = 0; t < ks; t++) {
+        const sx = horiz ? refl(xx + t - r, w) : xx, sy = horiz ? yy : refl(yy + t - r, h);
+        acc += src[(sy * w + sx) * 3 + c] * kern[t];
+      }
+      out[(yy * w + xx) * 3 + c] = acc;
+    }
+    return out;
+  };
+  return pass(pass(img, true), false);
+}
+function currentFrame(mediaTime) {
+  if (!S.info) return 0;
+  const t = mediaTime !== undefined ? mediaTime : $('player').currentTime || 0;
+  return Math.max(0, Math.min(S.info.n_frames - 1, Math.round(t * S.info.fps)));
+}
+function drawLayers(mediaTime) {
+  const cv = $('layers'), v = $('player');
+  if ($('stage').hidden || !S.info) return;
+  const r = cv.getBoundingClientRect(); if (!r.width) return;
+  const dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+  const W = S.info.width, H = S.info.height, s = Math.min(r.width / W, r.height / H), ox = (r.width - W * s) / 2, oy = (r.height - H * s) / 2;
+  const f = P.frame = currentFrame(mediaTime);
+  const X = x => ox + x * s, Y = y => oy + y * s;
+  const ready = v.readyState >= 2;
+  let nMasks = 0, nBoxes = 0;
+  if (P.layers.masks && P.src === 'source' && ready) {
+    const rects = S.maskFrames && S.maskFrames.get(f) || [];
+    nMasks = rects.length;
+    // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
+    // the preview looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and
+    // mirrored border) at that size, bilinear back up; pixelate = INTER_LINEAR shrink to 1/12, nearest back up.
+    // (The browser's own resampling skipped pixels: a plate's dark letters vanished and it stayed white.)
+    const live = rects.filter(m => m.effect !== 'box' && m.r[2] > m.r[0] && m.r[3] > m.r[1]);
+    const fp = live.length ? framePixels(v, f, live) : null;
+    for (const m of rects) {
+      const [x1, y1, x2, y2] = m.r, w = x2 - x1, h = y2 - y1; if (w <= 0 || h <= 0) continue;
+      if (m.effect === 'box') { g.fillStyle = '#000'; g.fillRect(X(x1), Y(y1), w * s, h * s); continue; }
+      const k = m.effect === 'pixelate' ? 12 : 24, sw = Math.max(1, Math.floor(w / k)), sh = Math.max(1, Math.floor(h / k));
+      const rx = x1 - fp.x0, ry = y1 - fp.y0;
+      let small = m.effect === 'pixelate' ? shrinkLinear(fp.data, fp.w, rx, ry, w, h, sw, sh) : shrinkArea(fp.data, fp.w, rx, ry, w, h, sw, sh);
+      if (m.effect === 'blur') small = gaussian(small, sw, sh, Math.max(3, Math.floor(Math.min(sw, sh) / 2) | 1));
+      const tiny = P.small || (P.small = document.createElement('canvas'));
+      tiny.width = sw; tiny.height = sh;
+      const id = new ImageData(sw, sh);
+      for (let i = 0, j = 0; i < sw * sh; i++, j += 3) { id.data[i * 4] = small[j]; id.data[i * 4 + 1] = small[j + 1]; id.data[i * 4 + 2] = small[j + 2]; id.data[i * 4 + 3] = 255; }
+      tiny.getContext('2d').putImageData(id, 0, 0);
+      g.imageSmoothingEnabled = m.effect !== 'pixelate';
+      g.drawImage(tiny, 0, 0, sw, sh, X(x1), Y(y1), w * s, h * s);
+    }
+  }
+  if (P.layers.boxes && S.trackList) {
+    const masked = S.timeline ? S.timeline.targets : {};
+    g.font = '600 11px ui-monospace, Menlo, monospace'; g.textBaseline = 'bottom';
+    for (const t of S.trackList) {
+      if (P.hiddenKinds.has(t.label)) continue;
+      const k = trackBox(t, f); if (!k) continue;
+      nBoxes++;
+      const [x1, y1, x2, y2] = k.box, sel = t.track_id === S.selected, on = t.track_id in masked;
+      const color = sel ? '#4d6bff' : kindOf(t.label).color;
+      g.globalAlpha = on || sel ? 1 : .7;
+      g.setLineDash(on || sel ? [] : [5, 4]); g.lineWidth = sel ? 3 : on ? 2 : 1.5; g.strokeStyle = color;
+      g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s);
+      g.setLineDash([]);
+      // Label: chip, kind, and the vision model's answer if it was asked about this track
+      const ans = S.vlm[t.track_id];
+      // With an answer, the question says what it is ("T2 · woman? yes 0.97"); otherwise the kind ("T1 · plate")
+      const lbl = [S.ids[t.track_id] || '',
+        ans ? `${ans.q.replace(/^is (this|it) (an? |the )?/i, '').replace(/\?$/, '')}? ${ans.a === 'unknown' ? 'unsure' : ans.a} ${(+ans.p).toFixed(2)}` : kindOf(t.label).one,
+        k.state === 'uncertain' ? 'low conf' : ''].filter(Boolean).join(' · ');
+      if ((x2 - x1) * s >= 14 || sel || ans) {
+        const w = g.measureText(lbl).width + 8, lx = X(x1) - (sel ? 1.5 : 1), ly = Math.max(14, Y(y1));
+        g.fillStyle = color; g.fillRect(lx, ly - 14, w, 14);
+        g.fillStyle = '#0b0d12'; g.fillText(lbl, lx + 4, ly - 1);
+      }
+      g.globalAlpha = 1;
+    }
+  }
+  $('stageTime').textContent = `${fmtF(f / S.info.fps)} · frame ${f}`;
+  const ph = $('ph'); if (ph) ph.style.left = pct(f / S.info.fps);
+  const notes = [];
+  if (P.layers.boxes) notes.push(`${nBoxes} box${nBoxes === 1 ? '' : 'es'} on this frame (solid: masked, dashed: found but not masked)`);
+  if (P.layers.masks && P.src === 'source') notes.push(`${nMasks} mask${nMasks === 1 ? '' : 's'} (a live preview; Export renders the exact pixels)`);
+  if (P.src === 'export') notes.push('Showing the rendered export: the exact pixels that will be shared');
+  $('layerNote').textContent = notes.join(' · ');
+}
+// Redraw on every frame the browser presents (frame-accurate while playing), and on seek, pause and resize
+(function syncLayers() {
+  const v = $('player');
+  if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
+    const onFrame = (_, meta) => { drawLayers(meta.mediaTime); v.requestVideoFrameCallback(onFrame); };
+    v.requestVideoFrameCallback(onFrame);
+  } else {
+    const tick = () => { if (!v.paused) drawLayers(); requestAnimationFrame(tick); }; tick();
+  }
+  ['seeked', 'pause', 'loadeddata', 'timeupdate'].forEach(e => v.addEventListener(e, () => drawLayers()));
+  new ResizeObserver(() => drawLayers()).observe($('playerWrap'));
+})();
+function renderKinds() {
+  const kinds = [...new Set((S.trackList || []).map(t => t.label))];
+  $('kinds').replaceChildren(...kinds.map(l => {
+    const n = S.trackList.filter(t => t.label === l).length;
+    return el('button', { class: P.hiddenKinds.has(l) ? '' : 'on', title: `Show or hide ${kindOf(l).name.toLowerCase()} boxes`,
+      onclick: () => { P.hiddenKinds.has(l) ? P.hiddenKinds.delete(l) : P.hiddenKinds.add(l); renderKinds(); drawLayers(); } },
+      el('i', { style: `background:${kindOf(l).color}` }), `${kindOf(l).name} ${n}`);
+  }));
+  $('kinds').hidden = !P.layers.boxes;
 }
 function renderTimeline() {
-  const tl = $('tl'); if ($('drawer').hidden || !S.info) return;
+  const tl = $('tl'); if ($('stage').hidden || !S.info) return;
   const ts = targetList(), d = dur(), step = d > 120 ? 30 : d > 40 ? 10 : d > 12 ? 2 : 1;
   const axis = el('div', { class: 'axis' });
   for (let s = 0; s <= d + 1e-6; s += step) axis.append(el('span', { style: `left:${pct(s)}` }, fmt(s)));
@@ -758,12 +1022,7 @@ function renderTimeline() {
   const labelCol = el('div', {}, el('div', { class: 'axis' }), ...labels);
   if (!ts.length) labelCol.append(el('div', { class: 'rail-empty', style: 'padding:6px 0' }, 'Nothing masked yet.'));
   tl.replaceChildren(labelCol, el('div', {}, axis, lanes));
-  movePlayhead();
-}
-function movePlayhead() {
-  const t = $('player').currentTime || 0, ph = $('ph');
-  if (ph) ph.style.left = pct(t);
-  $('drawerTime').textContent = S.info ? `${fmtF(t)} · frame ${Math.round(t * S.info.fps)}` : '';
+  drawLayers();
 }
 
 // ---------- composer ----------
@@ -797,15 +1056,19 @@ function toggleDraw(on = !S.drawMode) {
 }
 $('drawBtn').onclick = () => toggleDraw();
 $('exportBtn').onclick = doExport;
-$('timelineBtn').onclick = () => $('drawer').hidden ? openDrawer() : ($('drawer').hidden = true);
-$('drawerClose').onclick = () => $('drawer').hidden = true;
+$('timelineBtn').onclick = () => $('stage').hidden ? openStage() : ($('stage').hidden = true);
+$('stageClose').onclick = () => $('stage').hidden = true;
+$('layerCtl').onclick = e => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  P.layers[b.dataset.layer] = !P.layers[b.dataset.layer]; b.classList.toggle('on', P.layers[b.dataset.layer]);
+  renderKinds(); drawLayers();
+};
 $('srcCtl').onclick = e => { const b = e.target.closest('button'); if (b && !b.disabled) setSrc(b.dataset.src); };
-$('player').ontimeupdate = movePlayhead; $('player').onseeked = movePlayhead;
 $('targetsToggle').onclick = () => $('targetsRail').classList.toggle('open');
 $('versionsToggle').onclick = () => $('versionsRail').classList.toggle('open');
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  if (S.drawMode) toggleDraw(false); else if (!$('hints').hidden) closeHints(); else if (!$('drawer').hidden) $('drawer').hidden = true;
+  if (S.drawMode) toggleDraw(false); else if (!$('hints').hidden) closeHints();
 });
 setInterval(() => S.vid && renderVersions(), 30000);
 

@@ -10,6 +10,7 @@
   POST /api/videos/{id}/undo            -> {undone, summary}
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
+  GET  /api/videos/{id}/masks           per-frame masked rectangles, exactly as the renderer applies them (UI preview)
   GET  /api/videos/{id}/preview/{f}.jpg masked frame f
   POST /api/videos/{id}/export          render -> {url, stats}  (waits for a running request; 409 if it takes too long)
   GET  /api/videos/{id}/export.mp4      rendered video (the url from export carries ?v=<render time>)
@@ -40,8 +41,9 @@ from pydantic import BaseModel
 from censor import netguard
 from censor.agent.agent import Agent
 from censor.agent.tools import Session, ToolError
+from censor.core.timeline import Timeline
 from censor.core.video import read_frame
-from censor.render.render import FrameMasker, render_video
+from censor.render.render import FrameMasker, _padded, render_video
 
 netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
 
@@ -227,6 +229,22 @@ def undo(vid: str):
 @app.get("/api/videos/{vid}/timeline")
 def timeline(vid: str):
     return session(vid).timeline.model_dump()
+
+
+@app.get("/api/videos/{vid}/masks")
+def masks(vid: str):
+    """Every masked rectangle per frame, from the renderer's own FrameMasker (interpolation, lead-in, hold after
+    loss, padding), so the UI's live preview shows exactly where the export will blur. Integer pixels, grouped
+    by target: {track_id: {effect, frames: [[f, x1, y1, x2, y2], ...]}}."""
+    tl = session(vid).timeline
+    v = tl.video
+    out: dict[str, dict] = {}
+    for tid, target in tl.targets.items():
+        one = Timeline(video=v, targets={tid: target})
+        frames = [[f, *_padded(box, pad, v.width, v.height)]
+                  for f, items in sorted(FrameMasker(one).per_frame.items()) for box, pad, _ in items]
+        out[tid] = {"effect": target.effect, "frames": frames}
+    return {"fps": v.fps, "n_frames": v.n_frames, "width": v.width, "height": v.height, "targets": out}
 
 
 @app.get("/api/videos/{vid}/tracks")
