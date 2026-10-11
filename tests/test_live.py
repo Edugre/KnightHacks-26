@@ -322,7 +322,7 @@ def test_stats_before_any_pass_has_the_documented_keys_with_nulls_for_percentile
     s = eng.stats()
     assert set(s) == {"phase", "running", "warming", "run", "clip", "size", "fps", "n_frames", "delay_s",
                       "frames_out", "blind", "blind_share", "dropped_out", "emit_errors", "detector", "emit",
-                      "detected_share", "gap_frames", "hold_frames", "frame_age_ms", "input_fps", "gaps_in", "mode"}
+                      "detected_share", "gap_frames", "hold_frames", "frame_age_ms", "input_fps", "gaps_in", "mode", "cats"}
     assert s["phase"] == "idle" and s["size"] == [W, H] and s["hold_frames"] == HOLD_FRAMES
     assert s["mode"] == "clip" and s["input_fps"] is None and s["gaps_in"] == 0
     assert s["detector"] == {"passes": 0, "p50_ms": None, "p95_ms": None, "baseline_p95_ms": None, "errors": 0}
@@ -680,3 +680,62 @@ def test_camera_mode_keeps_a_big_faint_face_that_the_clip_rule_drops():
 def test_a_push_engine_masks_with_no_face_rule_and_a_clip_engine_keeps_it(clip):
     assert LiveReplay(None, lambda f, fr: {}, push=True)._face_rule is None
     assert LiveReplay(str(clip), lambda f, fr: {})._face_rule is not None
+
+
+# ---- per-run categories ---------------------------------------------------------------------------------------
+
+PLATE = (100.0, 400.0, 160.0, 420.0)  # a wide 60 x 20 box: passes plate_ok
+
+
+def test_mask_boxes_cats_face_only_ignores_plate_detections():
+    ready = [det(0, plate=PLATE), det(5, plate=PLATE)]
+    both = mask_boxes(2, ready, W, H)
+    assert both and any(contains(b, PLATE) for b, _, _ in both)
+    assert mask_boxes(2, ready, W, H, cats=("face",)) == []
+
+
+def test_mask_boxes_cats_plate_only_ignores_faces():
+    ready = [det(0, face=FACE, plate=PLATE), det(5, face=FACE, plate=PLATE)]
+    boxes = mask_boxes(2, ready, W, H, cats=("license plate",))
+    assert boxes and all(not contains(b, FACE) for b, _, _ in boxes)
+
+
+def test_box_cache_keys_on_cats():
+    ready = [det(0, face=FACE, plate=PLATE), det(5, face=FACE, plate=PLATE)]
+    cache = BoxCache()
+    assert len(cache.boxes(2, ready, W, H)) == 2
+    assert len(cache.boxes(2, ready, W, H, cats=("face",))) == 1
+    assert len(cache.boxes(2, ready, W, H)) == 2
+
+
+def test_egoblur_detect_cats_face_never_calls_the_plate_model():
+    calls = []
+
+    def plate_model(img):
+        calls.append("plate")
+        return []
+    infer = {"face": lambda img: [((100.0, 100.0, 140.0, 160.0), 0.9)], "license plate": plate_model}
+    out = egoblur_detect(infer, cats=("face",))(0, None)
+    assert set(out) == {"face"} and out["face"] and not calls
+
+
+def test_sidecar_and_yunet_return_only_requested_cats(tmp_path):
+    store = TrackStore()
+    for label, box in (("face", (300.0, 300.0, 330.0, 330.0)), ("license plate", (600.0, 600.0, 660.0, 630.0))):
+        store.add(Track(track_id=store.next_id(), label=label, keyframes=[Keyframe(f=0, box=box, conf=0.8)]))
+    store.save(tmp_path / "t.json")
+    out = sidecar_detect(tmp_path / "t.json", 1080, 720, 10, cats=("face",))(0, None)
+    assert set(out) == {"face"} and out["face"]
+    assert set(sidecar_detect(tmp_path / "t.json", 1080, 720, 10, cats=("face",))(5, None)) == {"face"}
+
+
+@pytest.mark.parametrize("cats", [(), ("plate",), ("face", "plate"), ("face", "face", "x")])
+def test_live_replay_rejects_bad_cats(cats):
+    with pytest.raises(ValueError):
+        LiveReplay(None, lambda f, fr: {}, push=True, cats=cats)
+
+
+def test_live_replay_stats_report_cats():
+    assert LiveReplay(None, lambda f, fr: {}, push=True).stats()["cats"] == list(LIVE_CATS)
+    r = LiveReplay(None, lambda f, fr: {}, push=True, cats=("face",))
+    assert r.cats == ("face",) and r.stats()["cats"] == ["face"]

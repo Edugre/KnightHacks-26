@@ -382,7 +382,7 @@ def test_build_detect_stub_without_sidecar_builds_yunet_from_the_flag(tmp_path, 
     import censor.live as live
     import censor.live_cli as cli
     seen = []
-    monkeypatch.setattr(live, "yunet_detect", lambda path, score=0.6: seen.append(path) or "YUNET")
+    monkeypatch.setattr(live, "yunet_detect", lambda path, score=0.6, cats=None: seen.append(path) or "YUNET")
     monkeypatch.setenv("CENSOR_YUNET", "/env.onnx")
     a = argparse.Namespace(clip=str(tmp_path / "c.mp4"), stub=True, yunet="/flag.onnx")
     src = types.SimpleNamespace(height=1080, n_frames=90)
@@ -397,8 +397,8 @@ def test_build_detect_stub_with_a_sidecar_never_loads_yunet(tmp_path, monkeypatc
     import types
     import censor.live as live
     import censor.live_cli as cli
-    monkeypatch.setattr(live, "yunet_detect", lambda path, score=0.6: pytest.fail("YuNet loaded despite a sidecar"))
-    monkeypatch.setattr(live, "sidecar_detect", lambda path, src_h, live_h, n_frames: ("SIDECAR", Path(path).name))
+    monkeypatch.setattr(live, "yunet_detect", lambda path, score=0.6, cats=None: pytest.fail("YuNet loaded despite a sidecar"))
+    monkeypatch.setattr(live, "sidecar_detect", lambda path, src_h, live_h, n_frames, cats=None: ("SIDECAR", Path(path).name))
     (tmp_path / "c.mp4.tracks.json").write_text("{}")
     a = argparse.Namespace(clip=str(tmp_path / "c.mp4"), stub=True, yunet="/flag.onnx")
     src = types.SimpleNamespace(height=1080, n_frames=90)
@@ -437,7 +437,7 @@ def test_run_stub_with_yunet_from_the_env_reaches_the_engine(tmp_path, monkeypat
     monkeypatch.setenv("CENSOR_YUNET", "/env.onnx")
     seen = []
 
-    def fake_yunet(path, score=0.6):
+    def fake_yunet(path, score=0.6, cats=None):
         seen.append(path)
         return lambda clip_f, frame: {"face": [((10.0, 10.0, 50.0, 50.0), 0.9)], "license plate": []}
 
@@ -456,3 +456,43 @@ def test_yunet_flag_without_stub_exits_2(tmp_path, capsys):
         main(["run", str(clip), "--yunet", "m.onnx", "--out", str(tmp_path / "o.mp4"), "--report", str(tmp_path / "o.json")])
     assert e.value.code == 2
     assert "--stub" in capsys.readouterr().err
+
+
+# ---- --cats -------------------------------------------------------------------------------------
+
+@pytest.mark.skipif(shutil.which(FFMPEG) is None, reason="ffmpeg not on PATH")
+def test_run_cats_face_records_cats_and_score_skips_plates(tmp_path, capsys):
+    clip = tmp_path / "synthetic.mp4"
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "make_test_clip.py"), str(clip), "3"], check=True)
+    rep = tmp_path / "live.json"
+    with pytest.raises(SystemExit) as e:
+        main(["run", str(clip), "--stub", "--seconds", "1.5", "--delay", "0.3", "--cats", "face",
+              "--out", str(tmp_path / "live.mp4"), "--report", str(rep)])
+    assert e.value.code == 0
+    assert json.loads(rep.read_text())["stats"]["cats"] == ["face"]
+    # a report with no plate rects at all, over labels that contain plates
+    doc = json.loads(_report(tmp_path / "r.json", [_frame(f, rects=[_scaled(FACE)]) for f in range(40)]).read_text())
+    doc["stats"] = {"cats": ["face"]}
+    (tmp_path / "r.json").write_text(json.dumps(doc))
+    capsys.readouterr()
+    with pytest.raises(SystemExit) as e:
+        main(["score", str(tmp_path / "r.json"), str(_labels(tmp_path / "labels.json"))])
+    out = capsys.readouterr().out
+    assert e.value.code == 0 and "FAIL" not in out and "plates were not run" in out
+
+
+def test_score_without_stats_cats_still_fails_on_missing_plates(tmp_path, capsys):
+    rep = _report(tmp_path / "r.json", [_frame(f, rects=[_scaled(FACE)]) for f in range(40)])
+    with pytest.raises(SystemExit) as e:
+        main(["score", str(rep), str(_labels(tmp_path / "labels.json"))])
+    assert e.value.code == 1 and "license plate recall" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("bad", ["", "plate", "face,bogus"])
+def test_run_rejects_bad_cats_with_exit_2(tmp_path, capsys, bad):
+    clip = tmp_path / "c.mp4"
+    clip.write_bytes(b"x")
+    with pytest.raises(SystemExit) as e:
+        main(["run", str(clip), "--stub", "--cats", bad, "--out", str(tmp_path / "o.mp4"),
+              "--report", str(tmp_path / "r.json")])
+    assert e.value.code == 2 and "--cats" in capsys.readouterr().err
