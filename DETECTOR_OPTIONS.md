@@ -42,7 +42,18 @@ Constraints any candidate must meet: runs on PyTorch ROCm 7.13 / gfx1201 without
 
 ### 1. EgoBlur Gen2 (faces + plates)
 
-**Status:** not tried.
+**Status:** tried Sat Oct 10 evening on a laptop (RTX 3050 Ti, fp16; branch `A/egoblur-gen2`): **dropped, keep Gen1.** Gen2 is a different model format (Detectron2: a list of `{"image": BGR float CHW}` in, no resizing inside, frozen so `.eval()` raises, and instances Python can't receive), so `load_egoblur` now wraps it; `CENSOR_EGOBLUR_LP` / `CENSOR_EGOBLUR_FACE` select the files and `CENSOR_EGOBLUR_GEN2_SHORT` resizes its input. Scored with `bench/review.py --tag` on every frame of the two clips with plate labels (`bench/labels/*.plate.json`), through the app's rules and raw:
+
+| Clip | Model | Plate frames masked (app) | Longest visible | Plate over-blur, mean | Raw recall at 0.1 | Raw false plates per frame at 0.1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `street_plates` | Gen1 | **100%** | **0 s** | **3.0%** | **0.987** | 3.4 |
+| | Gen2, full size | 95.5% | 0.56 s | 4.7% | 0.939 | 5.9 |
+| | Gen2, short side 800 | 96.5% | 0.44 s | 4.2% | 0.958 | **3.0** |
+| `street_walk` | Gen1 | **94.6%** | **0.16 s** | **0.1%** | **1.00** | **0.6** |
+| | Gen2, full size | 67% | 0.64 s | 8.3% | 0.893 | 4.5 |
+| | Gen2, short side 800 | 70.5% | 0.64 s | 13.9% | 0.902 | 5.4 |
+
+Raw recall is lower without any of our rules involved, so it isn't the rules being tuned to Gen1's scores (Gen2 scores lower: 0.78 vs 0.97 on the same taxi plate). Faces (no face labels yet): Gen2 finds the same faces as Gen1 (>= 0.5: 1,648 vs 1,652 on `street_plates`, none found by only one at full size), so no gain there either. Not checked: PP4AV, the driving images Gen2 might suit better; worth a run on the server only if plates become the priority again.
 
 **What:** Meta's second-generation EgoBlur face and plate models, `ego_blur_face_gen2.jit` and `ego_blur_lp_gen2.jit`, same Apache 2.0 license and TorchScript format as Gen1, same download page (projectaria.com/tools/egoblur, email form; Meta's CDN refuses the AUP server, so download on a laptop as for Gen1).
 
