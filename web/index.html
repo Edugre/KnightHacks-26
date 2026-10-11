@@ -122,6 +122,8 @@
   .bar.sel .seg { background:var(--accent-edge); }
   .bar .unc { position:absolute; top:-2px; bottom:-2px; background:var(--accent); }
   .strip .head { position:absolute; top:6px; bottom:6px; width:2px; background:var(--ink); pointer-events:none; margin-left:-1px; }
+  .card .legend { padding:0 12px 8px; background:var(--panel); font-size:11px; color:var(--faint); }
+  .card .legend:empty { display:none; }
   .actions { display:flex; gap:8px; flex-wrap:wrap; }
 
   /* empty state */
@@ -271,6 +273,16 @@ const store = {
 
 // ---------- names, segments ----------
 const LABELS = { 'license plate': 'Plate', 'face': 'Face', 'person': 'Person', 'user box': 'Drawn box' };
+const MAX_BARS = 8;  // coverage bars per result card before they're grouped by kind
+// Merge [start, end] spans that overlap or touch (within a frame)
+function union(spans) {
+  const out = [];
+  for (const [a, b] of [...spans].sort((x, y) => x[0] - y[0])) {
+    const last = out[out.length - 1];
+    if (last && a <= last[1] + 1 / S.info.fps) last[1] = Math.max(last[1], b); else out.push([a, b]);
+  }
+  return out;
+}
 const plural = { 'license plate': 'license plates', 'face': 'faces', 'person': 'people', 'user box': 'drawn boxes' };
 const tid = id => S.ids[id] || (S.ids[id] = `T${Object.keys(S.ids).length + 1}`);
 const tname = (id, label) => {
@@ -391,7 +403,8 @@ function welcome() {
 // Plain words for each tool call in a request response
 function describe(calls, path) {
   const items = [];
-  const names = ids => ids.map(i => tid(i)).join(', ');
+  // A crowd's 113 faces read as a count, not 113 ids
+  const names = ids => { const t = ids.map(i => tid(i)); return t.length <= 6 ? t.join(', ') : `${t.slice(0, 3).join(', ')} and ${t.length - 3} more`; };
   if (path === 'template') items.push(el('li', {}, 'Understood the request directly, no language model needed.'));
   for (const c of calls) {
     const a = c.args || {}, r = c.result, ms = c.ms !== undefined ? ` (${c.ms < 1000 ? c.ms + ' ms' : (c.ms / 1000).toFixed(1) + ' s'})` : '';
@@ -452,9 +465,10 @@ function addCard(host, focusIds) {
   const drawHint = el('div', { class: 'drawhint', hidden: '' }, 'drag to draw a box');
   const frame = el('div', { class: 'frame loading' }, img, cv, tc, drawHint);
   const strip = el('div', { class: 'strip', title: 'Click to see that moment' });
+  const legend = el('div', { class: 'legend' });
   const reviewBtn = el('button', { class: 'primary', hidden: '' });
   const undoBtn = el('button', { onclick: () => undoLast() }, 'Undo');
-  const card = el('div', { class: 'card' }, frame, strip);
+  const card = el('div', { class: 'card' }, frame, strip, legend);
   const actions = el('div', { class: 'actions' }, reviewBtn, el('button', { onclick: () => openDrawer(c.t) }, 'Open timeline'), undoBtn);
   host.append(card, actions);
   const c = { t: 0, live: true, targets: [], unc: [], uncIdx: -1, frame, cv, img, undoBtn, card };
@@ -477,9 +491,28 @@ function addCard(host, focusIds) {
   img.onload = () => { if (img.src.endsWith(wanted.split('/').pop())) frame.classList.remove('loading'); overlay(); };
   img.onerror = () => frame.classList.remove('loading');
   const head = el('div', { class: 'head' });
+  // One bar per target while that's readable; for a crowd (127 targets on street_plates pushed the frame off
+  // screen), one bar per kind (all faces, all plates) plus the selected target's own bar, with a legend
+  function rows() {
+    const one = t => ({ ...t, title: `${t.chip} ${t.name} (${t.effect})` });
+    if (c.targets.length <= MAX_BARS) return { rows: c.targets.map(one), grouped: false };
+    const kinds = new Map();
+    for (const t of c.targets) {
+      const k = kinds.get(t.label) || { id: `kind:${t.label}`, label: t.label, n: 0, segs: [], unc: [] };
+      k.n++; k.segs.push(...t.segs); k.unc.push(...t.unc); kinds.set(t.label, k);
+    }
+    const out = [...kinds.values()].map(k => ({ ...k, segs: union(k.segs), unc: union(k.unc),
+      title: `${k.n} ${k.n === 1 ? (LABELS[k.label] || k.label).toLowerCase() : plural[k.label] || k.label}` }));
+    const sel = c.targets.find(t => t.id === S.selected);
+    if (sel) out.push(one(sel));
+    return { rows: out, grouped: true };
+  }
   function drawStrip() {
-    const kids = c.targets.map(t => {
-      const bar = el('div', { class: `bar${t.id === S.selected ? ' sel' : ''}`, title: `${t.chip} ${t.name} (${t.effect})` });
+    const { rows: rs, grouped } = rows();
+    legend.textContent = !c.targets.length ? '' : (grouped ? `Bars, top to bottom: ${rs.map(r => r.title).join(' · ')}. ` : '') +
+      (c.targets.some(t => t.unc.length) ? 'Bright marks: the detector was less sure there; those moments are masked anyway, with extra padding.' : '');
+    const kids = rs.map(t => {
+      const bar = el('div', { class: `bar${t.id === S.selected ? ' sel' : ''}`, title: t.title });
       t.segs.forEach(([a, b]) => bar.append(el('div', { class: 'seg', style: `left:${pct(a)};width:calc(${pct(b - a)} + 1px)` })));
       t.unc.forEach(([a, b]) => bar.append(el('div', { class: 'unc', style: `left:${pct(a)};width:calc(${pct(b - a)} + 2px)` })));
       return bar;
@@ -530,7 +563,8 @@ function addCard(host, focusIds) {
     c.uncIdx = (c.uncIdx + 1) % c.unc.length;
     const u = c.unc[c.uncIdx]; S.selected = u.id; renderTargets(); S.cards.forEach(x => x.paint());
     c.seek((u.a + u.b) / 2, true);
-    status(`Uncertain ${c.uncIdx + 1} of ${c.unc.length}: ${u.chip} ${fmt(u.a)}–${fmt(u.b)}. The detector lost track here, so it stays blurred to be safe.`);
+    status(`Low-confidence spot ${c.uncIdx + 1} of ${c.unc.length}: ${u.chip} ${fmt(u.a)}–${fmt(u.b)}. The detector saw it but wasn't sure, ` +
+      `so it's masked with extra padding to be safe. Nothing to fix unless it isn't something you want hidden.`);
   };
   c.paint = () => { drawStrip(); overlay(); };
   c.update = () => {
@@ -538,7 +572,10 @@ function addCard(host, focusIds) {
     c.targets = targetList();
     c.unc = c.targets.flatMap(t => t.unc.map(([a, b]) => ({ id: t.id, chip: t.chip, a, b })));
     reviewBtn.hidden = !c.unc.length;
-    reviewBtn.textContent = `Review ${c.unc.length} uncertain`;
+    const nt = new Set(c.unc.map(u => u.id)).size;
+    reviewBtn.textContent = `Check ${c.unc.length} low-confidence spot${c.unc.length === 1 ? '' : 's'}`;
+    reviewBtn.title = `Moments where the detector saw something but wasn't sure (${nt} target${nt === 1 ? '' : 's'}). ` +
+      `They're masked anyway, with extra padding. Click to step through them.`;
     c.seek(c.t, true);
   };
   c.freeze = () => { c.live = false; card.classList.add('stale'); undoBtn.hidden = true; reviewBtn.hidden = true; drawHint.hidden = true; frame.classList.remove('drawing'); };
