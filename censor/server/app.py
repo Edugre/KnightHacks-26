@@ -332,3 +332,8 @@ def export_file(vid: str):
     if not out.exists():
         raise HTTPException(404, "not exported yet")
     return FileResponse(out, media_type="video/mp4")
+
+
+if os.environ.get("CENSOR_LIVE") == "1":  # the live replay puts ~100% load on the GPU; never on the demo app by accident
+    from censor.server.live_routes import router as live_router
+    app.include_router(live_router)
