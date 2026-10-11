@@ -3,6 +3,7 @@
   POST /api/videos                      multipart file (a video or a photo) -> {video_id, info, prescan}  (starts a
                                         background scan). A photo is a one-frame video: info.kind is "image".
   GET  /api/config                      -> {offline, stub}: what a separately hosted page can't get injected into it
+  GET  /api/detectors                   actual detector mode, readiness, and category fallback/failure details
   GET  /api/samples[?kind=image]        clips in bench/clips, or photos in bench/photos -> [{id, mb, ...}]
   GET  /api/samples/{id}/photo          a sample photo, for the home screen's thumbnails
   POST /api/samples/{id}[?kind=image]   load one of them like an upload (no file picker needed)
@@ -60,6 +61,7 @@ from censor.agent.tools import Session, ToolError
 from censor.core.timeline import Timeline
 from censor.core.video import IMAGE_EXT, is_image, probe, read_frame
 from censor.render.render import FrameMasker, _padded, render_image, render_video
+from censor.vision import readiness
 
 netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
 
@@ -80,6 +82,12 @@ app = FastAPI(title="censor agent")
 CORS_ORIGINS = [o.strip().rstrip("/") for o in os.environ.get("CENSOR_CORS_ORIGINS", "").split(",") if o.strip()]
 if CORS_ORIGINS:  # no cookies or auth: the API has none, and "*" works as an origin for a quick test
     app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+
+
+@app.get("/api/detectors")
+def detectors():
+    """Read configuration and observed readiness; never start or wait for GPU work."""
+    return readiness.snapshot()
 
 
 def _warm_up() -> None:
