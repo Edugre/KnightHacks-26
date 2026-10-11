@@ -442,9 +442,54 @@ with **Faces** and **License plates** checkboxes (at least one), the badge names
 categories the run masked. YuNet has no plates: requesting them on the laptop yields a `detector_note` the page shows.
 Fail-closed is unchanged: an unselected category is simply not masked, by the owner's explicit choice.
 
-Next request on the table (not started; needs the owner's go and a ~38 MB SFace model download): **"blur everyone
-except me"** live, via face embeddings (enroll "that's me", spare only confident matches on every detection in the
-window, blur every other and every uncertain face).
+## 8. "Blur everyone except me" (owner's request ~06:20; building the code path while the owner sleeps; the SFace
+model download is NOT authorized yet, so the embedder is pluggable and the feature stays off until a model is set)
+
+**What:** in camera (or clip) mode, the owner enrolls their own face once ("That's me"); from then on their face is
+spared and every other face is blurred. Plates are unaffected.
+
+**Fail-closed rule (the only rule that matters):** a face is spared only when it is **confidently matched to the
+enrolled identity on every detection of its track inside the window**; any unmatched, uncertain, unembeddable or
+newly appeared face is blurred. Sparing is the exception that must be earned per frame; blurring is the default.
+When no identity is enrolled, or the embedder is missing, nothing is spared (identical to today).
+
+**Engine (`censor/live.py`):**
+- `Embed = Callable[[np.ndarray, Box], np.ndarray | None]` (frame, face box → unit-norm vector or None when the crop
+  is unusable). `sface_embed(onnx_path) -> Embed` via `cv2.FaceRecognizerSF.create(path, "")`: crop the box (with
+  10 % margin), `alignCrop` needs landmarks; without them use the plain resized crop (112×112) and `feature()`; document
+  the accuracy caveat. `cv2.FaceRecognizerSF` is in this OpenCV build (check `hasattr`).
+- Detections carry per-box identity: `Dets` values become `[(box, score, spared: bool)]`? No: keep `Dets` as is and
+  add to `Detection` a parallel `spared: dict[str, list[bool]]` (same order as `dets[cat]`), computed in the detector
+  thread right after detection: `spared = enrolled is not None and embed(frame, box) is not None and cos(embed, enrolled) >= SPARE_COS` (`SPARE_COS = 0.45`, stricter than OpenCV's documented 0.363; env `CENSOR_SPARE_COS`).
+  Only `"face"` boxes are ever spared.
+- `link()` takes `(box, score)` pairs; carry the flag by linking on `(box, score)` and then looking the flag up by
+  box identity (`id`/tuple equality) per keyframe: simplest is a `dict[(f, box)] -> spared` built from `ready`.
+- In `_table`: a face track is **spared iff every keyframe of the track inside the window is flagged spared**; a
+  spared track produces no mask boxes but is reported (so the page can outline it): `_table` returns both
+  `boxes` and `spared_rects`; `on_emit` and `stats` expose `spared` counts; `mask_boxes` keeps its signature and a new
+  `mask_and_spared(...)` returns the pair.
+- `LiveReplay(…, embed: Embed | None = None)`; `enroll(timeout=2.0) -> dict`: takes the newest ring frame, runs
+  `detect` on it (or reuses the latest Detection), picks the **largest** face, embeds it, stores `self._enrolled`
+  (a copy) and returns `{"ok", "faces_seen", "box"}`; errors → `{"ok": false, "reason"}`. `clear_enrolled()`.
+  `stats()` gains `"identity": {"enrolled": bool, "spared_now": int, "embedder": "sface"|"none"}`.
+- Enrollment is in memory only, never written to disk, cleared on `stop()`.
+
+**Routes (`censor/server/live_routes.py`):** `POST /api/live/enroll` (409 unless running; 503 when no embedder:
+`CENSOR_SFACE` unset or file missing; returns the engine's dict), `POST /api/live/enroll/clear`, `GET /stats` carries
+`identity`. `make_replay` builds `embed = sface_embed(os.environ["CENSOR_SFACE"])` when the env var is set, else None.
+
+**Page (`web/live.html`):** in the Blur fieldset, a toggle **"except me"** (enabled only when the server reports an
+embedder) with a **"That's me"** button active while running: POSTs `enroll`, shows "enrolled · sparing 1 face" or
+the reason; Program monitor shows the spared count; a small "Forget me" link clears it. Honest copy: "Your face
+embedding stays in the server's memory for this run only."
+
+**Tests:** fake `Embed` returning fixed vectors per box position; a track flagged spared on every keyframe → no mask
+box and one spared rect; a track spared on all but one keyframe → masked; unmatched faces masked; no enrolled → all
+masked; `enroll` picks the largest face; `enroll` without faces → ok false; routes 409/503; stats shape.
+
+**Model file (needs the owner's yes):** `face_recognition_sface_2021dec.onnx` (~38 MB) from opencv_zoo,
+`CENSOR_SFACE=<path>`; on the server it must be uploaded by hand like EgoBlur. Until then the toggle is disabled and
+the README says why.
 
 ## 5. Adversarial review
 
