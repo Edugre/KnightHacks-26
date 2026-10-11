@@ -32,7 +32,7 @@ Live on the R9700 through the AUP proxy, with `street_walk` as the main clip and
 ## What to point out
 
 - **The agent panel:** every step in plain words ("Asked 'Is this a woman?' about 3 tracks: 1 yes, 1 no, 1 unsure"). The raw tool calls are under "Tool calls" if a judge asks.
-- **Fail closed:** unsure answers stay masked; uncertain ranges show as the taller accent marks on the strip.
+- **Fail closed:** unsure answers stay masked; low-confidence moments show as the bright marks on the strip and are masked anyway, with extra padding (**Check N low-confidence spots** steps through them). On a crowd like `street_plates` the strip groups targets into one bar per kind, so the frame stays in view.
 - **Offline:** the empty egress log and `"offline": true`.
 - **AMD numbers** (R9700, IMPLEMENTATION.md): upload scan 0.76x real time at 1080p (24x the CPU); EgoBlur fp16 cut the per-frame cost 3x with the same boxes; export of `street_plates` in 2.8 s; planner call about 1.8 s; requests 2-7 s; 18 GB peak with every model loaded.
 
