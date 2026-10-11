@@ -5,6 +5,7 @@ Say what to hide in a video ("blur every license plate and the person in the red
 - What and why: [PLAN.md](PLAN.md)
 - How, milestones and contracts: [IMPLEMENTATION.md](IMPLEMENTATION.md). **Current status and next steps are in section 5**; working agreements (branches, sharing the AUP server) in section 8.
 - Measured stack: [docs/STACK.md](docs/STACK.md)
+- Detector alternatives researched but not yet tried (SAM 3, EgoBlur Gen2, YOLOE-26...): [DETECTOR_OPTIONS.md](DETECTOR_OPTIONS.md)
 
 ## Run
 
