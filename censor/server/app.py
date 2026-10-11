@@ -234,8 +234,22 @@ def source(vid: str):
 @app.post("/api/videos/{vid}/request")
 def request(vid: str, body: RequestIn):
     s = session(vid)
+    t0 = time.perf_counter()
     with turn(vid, body.text):
-        return Agent(s).run(body.text)
+        waited = time.perf_counter() - t0
+        out = Agent(s).run(body.text)
+    print(_request_log(vid, body.text, waited, time.perf_counter() - t0, out), file=sys.stderr)
+    return out
+
+
+def _request_log(vid: str, text: str, waited: float, total: float, out: dict) -> str:
+    """One line per request with where its time went, so a slow one (a first request once took 59 s, and the
+    AUP proxy gives up at ~100 s) shows in the log whether it waited for another edit, a scan or the models.
+    A find_objects that waited for the upload scan shows as a slow find_objects, with a [scan] line above."""
+    steps = ", ".join(f"{c['tool']} {c['ms'] / 1000:.1f} s" + (" (error)" if "error" in c else "")
+                      for c in out.get("calls", []) if "ms" in c)
+    return (f"[request] {vid} {text!r}: {total:.1f} s, {out.get('path')}; waited {waited:.1f} s for the "
+            f"previous edit; {steps or 'no steps'}")
 
 
 @app.post("/api/videos/{vid}/box")
