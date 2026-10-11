@@ -1,4 +1,4 @@
-# Censor Agent (Knight Hacks 2026, AMD challenge)
+# Blurr - Censor Agent (Knight Hacks 2026, AMD challenge)
 
 Say what to hide in a video ("blur every license plate and the person in the red shirt around halfway") or draw a box. A local agent turns the request into a **mask timeline**, and a deterministic renderer applies it. Uncertain frames fail closed (more blur, never less). Everything runs on one AMD GPU with ROCm: built and measured on a Radeon AI PRO R9700, now running on a Radeon 8060S (Strix Halo) while the Dublin hub is down. No footage leaves the machine.
 
