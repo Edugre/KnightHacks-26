@@ -12,11 +12,14 @@ a detection exists at or before f and one at or after f, at most HOLD_FRAMES + 1
 seen only at the earlier one runs out of hold before the later one (frames a+16..b-4 would be bare). An unvouched
 frame is "blind": the last vouched frame goes out again with a DETECTOR LATE badge (nothing new is shown), and
 before the first vouched frame the whole frame is blurred. A late detector therefore shows as a frozen picture,
-never as a bare face. Any error while masking blurs the whole frame.
+never as a bare face. Any error while masking blurs the whole frame. A thread that dies stops the engine.
 
 Only the shape half of the scan's confirmation rules runs here (faces: confirmed(); plates: plate_ok()), because the
-history half needs the whole clip. No FastAPI in this module; censor/live_cli.py and censor/server/live_routes.py
-drive it.
+history half needs the whole clip. The face rules are judged on the keyframes inside the window (WINDOW_BACK +
+HOLD_FRAMES frames), so a big face whose only confident detections are older than the window could be dropped by the
+big-faint-face rule; on the labeled clips every real big face scored 1.00 on every detection, so this has not been
+seen, and it is listed as an open edge in docs/LIVE_REPLAY_PLAN.md. No FastAPI in this module;
+censor/live_cli.py and censor/server/live_routes.py drive it.
 """
 from __future__ import annotations
 
@@ -28,7 +31,7 @@ import uuid
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Sequence
 
 import cv2
 import numpy as np
@@ -127,7 +130,8 @@ def _table(ready: list[Detection], frame_w: int, frame_h: int, n_frames: int) ->
 def mask_boxes(f: int, ready: list[Detection], frame_w: int, frame_h: int,
                hold: int = HOLD_FRAMES) -> list[tuple[Box, float, str]] | None:
     """Boxes to mask on frame f as (box, padding, effect), or None when f is not vouched. `ready` is windowed by
-    the caller to [f - WINDOW_BACK, f + hold] and sorted by f."""
+    the caller to [f - WINDOW_BACK, f + hold] and sorted by f. `hold` sets the vouch distance (b.f - a.f <= hold + 1)
+    and the table horizon; how long a lost box is held is always render.py's HOLD_FRAMES."""
     if not _vouched(f, ready, hold):
         return None
     return _table(ready, frame_w, frame_h, f + hold + 1).get(f, [])
@@ -136,7 +140,10 @@ def mask_boxes(f: int, ready: list[Detection], frame_w: int, frame_h: int,
 class BoxCache:
     """mask_boxes for a run of frames. link() + expand_target() over 25-40 detections is 10-20 ms of Python, which
     would fight the detector thread for the GIL at 30 fps, so the table is rebuilt only when the detections
-    change (every 4-5 frames); the vouch check still runs per frame."""
+    change (every 4-5 frames); the vouch check still runs per frame.
+
+    `boxes(..., hold)`: as for mask_boxes, `hold` sets the vouch distance (b.f - a.f <= hold + 1) and the table
+    horizon, while the hold-after-loss length itself is always render.py's HOLD_FRAMES."""
 
     def __init__(self) -> None:
         self._key: tuple | None = None
@@ -184,7 +191,7 @@ def sidecar_detect(tracks_json: Path, src_h: int, live_h: int, n_frames: int) ->
 
 # ---- the engine ---------------------------------------------------------------------------------------------
 
-def _pct(samples, key: str) -> float | None:
+def _pct(samples: Sequence[float], key: str) -> float | None:
     return stats_ms(list(samples))[key] if samples else None
 
 
@@ -201,7 +208,7 @@ def _badge(image: np.ndarray) -> np.ndarray:
 
 class LiveReplay:
     def __init__(self, clip: str, detect: Detect, height: int = LIVE_HEIGHT, delay_s: float = LIVE_DELAY_S,
-                 out_w: int = LIVE_OUT_W, on_emit: OnEmit | None = None):
+                 out_w: int = LIVE_OUT_W, on_emit: OnEmit | None = None) -> None:
         info = probe(str(clip))
         self.clip, self.fps, self.n_frames = str(clip), info.fps, max(1, info.n_frames)
         self.size = (int(round(info.width * height / info.height / 2)) * 2, height)  # even width (w, h)
@@ -232,8 +239,9 @@ class LiveReplay:
         with self._cv:
             if self._threads:
                 return
-            self._threads = [threading.Thread(target=fn, daemon=True, name=f"live-{fn.__name__}")
-                             for fn in (self._source, self._detector, self._emitter)]
+            self._threads = [threading.Thread(target=self._guarded, args=(name, fn), daemon=True, name=f"live-{name}")
+                             for name, fn in (("source", self._pump), ("detector", self._detector),
+                                              ("emitter", self._emitter))]
         for t in self._threads:
             t.start()
 
@@ -267,16 +275,18 @@ class LiveReplay:
             self._logged.add(key)
             print(f"[live] {where}: {type(exc).__name__}: {exc}", file=sys.stderr)
 
-    # -- source --
-    def _source(self) -> None:
+    def _guarded(self, name: str, fn: Callable[[], None]) -> None:
+        """Run a thread body. An escaped exception ends the whole engine (running turns False, the routes notice)
+        instead of leaving the other threads to look alive over a dead one."""
         try:
-            self._pump()
-        except Exception as e:  # noqa: BLE001  nothing will arrive: say so and stop
-            self._log_once("source", e)
+            fn()
+        except Exception as e:  # noqa: BLE001  one dead thread is a dead engine: say so and stop
+            self._log_once(name, e)
             self._stop.set()
             with self._cv:
                 self._cv.notify_all()
 
+    # -- source --
     def _pump(self) -> None:
         t0, f, clip_f, cap = time.monotonic(), 0, 0, None
         try:

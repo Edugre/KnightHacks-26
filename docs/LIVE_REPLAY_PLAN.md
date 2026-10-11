@@ -323,6 +323,67 @@ detection frame numbers; `frame_age_ms` = emit time − t_arrive.
 | D5 | Demo vehicle if the proxy shows < 12 fps | headless MP4 / keep tuning transport | MP4 |
 | D6 | Gate | recall ≥ offline − 0.03 per category / zero bare boxes | recall-based (zero-bare is unreachable without recheck_tiny/absorb) |
 
+**Open edge (code review, not fixed):** the face shape rules are judged on the keyframes inside the window
+(WINDOW_BACK + HOLD_FRAMES frames), so a big face whose only confident detections are older than the window could be
+dropped by the big-faint-face rule while still on screen. On the labeled clips every real big face scored 1.00 on
+every detection, so it has not been seen; a fix would carry each track's max confidence across rebuilds.
+
+## 6. Camera mode (added 04:50, owner's request: "blur a live video so I can use my camera")
+
+**What changes:** the *source*, nothing else. The engine, the vouch rule, the shape rules, the routes' state machine
+and the page's frame loop stay as they are. The camera is on the laptop and the GPU is on the AUP server, so frames
+go **up** (browser → server) and masked frames come **back** over the existing `/frame` long-poll. Glass-to-glass
+latency ≈ upload RTT + 1.0 s delay buffer + download RTT ≈ 1.5-2 s through Cloudflare; the badge says so.
+
+```
+ browser: getUserMedia(1280x720) ──► <video> ──► canvas (CAM_W wide) ──► toBlob(jpeg, 0.6) every CAM_INTERVAL ms
+          ──► POST /api/live/push (image/jpeg, ≤ 2 uploads in flight; a tick with both busy is skipped: latest wins)
+ server:  PushSource.push(jpeg) ──► imdecode ──► resize to live height ──► ring (f, f, img, t_arrive=now)
+          detector / emitter / BoxCache / badge / latest(): unchanged
+ browser: Source monitor = the raw <video> (what the camera sees now); Program monitor = /frame (masked, delayed)
+```
+
+**Engine (`censor/live.py`):** `LiveReplay(clip=None, detect, height, delay_s, out_w, on_emit, push=True)`. In push mode
+the source thread is not started; `push(jpeg: bytes) -> int` decodes, resizes to `height` (aspect kept, even width),
+sets `self.size` from the first frame (under the lock; `size == (0, 0)` before it, `stats()["size"]` shows that),
+appends `_Slot(f, f, img, time.monotonic())`, bumps `frames_in`, notifies, returns `f`. `fps` is nominal 30 for the
+ring depth; `stats()` adds `"input_fps"` (frames pushed in the last 2 s / 2). `n_frames = 0`, `clip = "camera"`.
+A bad JPEG raises `ValueError` (the route answers 400) and is not counted. Everything downstream paces on
+`t_arrive + delay_s`, which already works per slot (no constant-fps assumption).
+
+**Routes (`censor/server/live_routes.py`):** `POST /start {"clip": "camera", "height": 540}` → push mode (no sample
+file lookup, no sidecar; real mode warms EgoBlur at `(height, round(height * 16/9 / 2) * 2)`; stub mode uses
+`yunet_detect` if `CENSOR_YUNET` points at the ONNX file, else a detector that returns no boxes **and** the start
+answer carries `"detector": "none"` so the page can show "no detector loaded: nothing is masked"). `POST /push`:
+body = JPEG bytes (`content-type: image/jpeg`), `X-Live-Run` header must match (else 409), 413 above 2 MB, 409 when
+not running or not push mode, 400 on a bad JPEG; returns `{"f": n}`. Counts as a poll for the auto-stop watchdog.
+
+**Page (`web/live.html`):** first entry of the picker is **"Camera (this device)"**; picking it asks for the camera
+on Start (`{video: {width: {ideal: 1280}, height: {ideal: 720}, facingMode: "user"}, audio: false}`), shows the raw
+feed in a second, smaller monitor labeled **Source (now)** next to the masked one labeled **Program (delayed)**, and
+runs the upload loop: a canvas `CAM_W` wide (`960` default, selectable 640 / 960 / 1280; height follows the video's
+aspect), `toBlob("image/jpeg", 0.6)` every `CAM_INTERVAL = 80` ms (≈12 fps), at most two uploads in flight, counts
+of pushed / skipped frames in the stats strip, and the measured upload fps. The badge reads **"LIVE camera · delayed
+1.0 s · showing N fps"** (the word REPLAY only for clips). Stop releases the camera (`track.stop()`). Camera access
+needs a secure context: `https://` on the proxy, or `http://localhost` on the laptop. A denied permission shows an
+inline error. Bandwidth: 960-wide q0.6 ≈ 30-40 KB × 12 fps ≈ 3-4 Mbit/s upstream; 640 for weak Wi-Fi.
+
+**Laptop detector (stub mode) `yunet_detect(onnx_path, live_w, live_h) -> Detect`:** OpenCV's `FaceDetectorYN`
+(CPU, ~15-25 ms at 720p), faces only, scores ≥ 0.6, boxes widened by `FACE_EXPAND`; no plates. Model file:
+`face_detection_yunet_2023mar.onnx` from opencv_zoo (~230 KB; the laptop may fetch it, the server never needs it).
+This exists so the camera demo works on a laptop with no GPU; on the server EgoBlur is mandatory as before.
+
+**Gate for camera mode:** visual. The owner sits in front of the camera on the server page and must never see
+their own face bare on the Program monitor while moving, turning and walking in from the side; blind frames freeze
+with the badge as before. The clip gate (`score`) is unchanged and still decides the go/no-go for the feature.
+
+**Out of scope still:** audio, plates on the laptop detector, recording camera output, more than one viewer.
+
+**Commits:** C7 engine `push()` + `yunet_detect` + tests (`push` end to end with scripted JPEGs from the fixture
+clip; bad JPEG; size set on first frame; input_fps); C8 routes `camera` start + `/push` + tests (409/413/400/run
+mismatch; a push refreshes the watchdog); C9 page camera mode. Then: laptop test with a real camera at
+`http://localhost:8001/api/live/live` (stub + YuNet), then the server over the proxy with EgoBlur.
+
 ## 5. Adversarial review
 
 - **R1 correctness (folded):** maskable needs a ready detection on both sides of f; lead-in sized to the real gap
