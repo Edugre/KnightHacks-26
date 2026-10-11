@@ -349,12 +349,18 @@ sets `self.size` from the first frame (under the lock; `size == (0, 0)` before i
 appends `_Slot(f, f, img, time.monotonic())`, bumps `frames_in`, notifies, returns `f`. `fps` is nominal 30 for the
 ring depth; `stats()` adds `"input_fps"` (frames pushed in the last 2 s / 2). `n_frames = 0`, `clip = "camera"`.
 A bad JPEG raises `ValueError` (the route answers 400) and is not counted. Everything downstream paces on
-`t_arrive + delay_s`, which already works per slot (no constant-fps assumption).
+`t_arrive + delay_s`, which already works per slot (no constant-fps assumption). **Frame numbers follow elapsed
+time, not arrival count:** `f = max(last_f + 1, round((now - t0) * 30))`. The vouch rule and HOLD_FRAMES are in frame
+numbers; if a 2 s Wi-Fi stall were followed by a burst numbered consecutively, two detections 2 s apart in time
+would be 1 frame apart in numbering and a box would be interpolated across the stall, i.e. masked in the wrong
+place. With time-based numbers the stall is a ~60-frame gap, which the vouch rule refuses to bridge (blind frames,
+frozen picture). The emitter takes the first ring slot with `f >= next_f`; never-arrived numbers count as `gaps_in`.
 
 **Routes (`censor/server/live_routes.py`):** `POST /start {"clip": "camera", "height": 540}` → push mode (no sample
 file lookup, no sidecar; real mode warms EgoBlur at `(height, round(height * 16/9 / 2) * 2)`; stub mode uses
 `yunet_detect` if `CENSOR_YUNET` points at the ONNX file, else a detector that returns no boxes **and** the start
-answer carries `"detector": "none"` so the page can show "no detector loaded: nothing is masked"). `POST /push`:
+answer and `/stats` carry `"detector_kind": "none"` (`"egoblur"` / `"yunet"` otherwise; the key `detector` is already
+the engine's pass-timing dict) so the page can show "no detector loaded: nothing is masked"). `POST /push`:
 body = JPEG bytes (`content-type: image/jpeg`), `X-Live-Run` header must match (else 409), 413 above 2 MB, 409 when
 not running or not push mode, 400 on a bad JPEG; returns `{"f": n}`. Counts as a poll for the auto-stop watchdog.
 
