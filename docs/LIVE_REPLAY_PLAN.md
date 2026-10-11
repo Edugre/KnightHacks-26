@@ -402,6 +402,12 @@ with the badge as before. The clip gate (`score`) is unchanged and still decides
 
 **Out of scope still:** audio, plates on the laptop detector, recording camera output, more than one viewer.
 
+**Laptop results (05:20, stub + YuNet, M-series CPU, 1.0 s delay):** `street_walk` as a clip at 720p: 25 fps out,
+0 blind, 0 dropped, YuNet 32 ms p50 / 74 p95, emit 20 ms p50, frame age 1024 ms. Camera path with 960×540 JPEGs
+(~49 KB at q60) pushed at 12 fps over HTTP: 40/40 accepted, 0 blind, YuNet 28 ms p50, emit 7 ms p50, `gaps_in` 59
+(expected: 12 fps against the nominal 30), bad JPEG → 400, stale run → 409. Faces masked in both, including the
+large close-up faces the big-faint-face rule would have dropped.
+
 **Commits:** C7 engine `push()` + `yunet_detect` + tests (`push` end to end with scripted JPEGs from the fixture
 clip; bad JPEG; size set on first frame; input_fps); C8 routes `camera` start + `/push` + tests (409/413/400/run
 mismatch; a push refreshes the watchdog); C9 page camera mode. Then: laptop test with a real camera at
