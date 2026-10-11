@@ -312,6 +312,26 @@ detection frame numbers; `frame_age_ms` = emit time − t_arrive.
 - **Contention rule:** never run live while the :8000 app is scanning or the demo is being recorded; the router is
   off on :8000; DEMO.md gets the 2-minute rule; the page's "GPU contended" flag shows it when it happens anyway.
 
+### 3.5 Gate results and go/no-go (Sun ~06:00 EDT, Strix Halo, GPU otherwise idle; numbers in docs/STACK.md)
+
+| Clip | Detector pass p50 / p95 | Blind | Plates recall | Faces recall | Plan bar | Result |
+|---|---|---|---|---|---|---|
+| `street_walk` | 119 / 127 ms | 0.5 % | 1.000 (37/37) | 1.000 (234/234) | blind < 1 %, plates ≥ 0.90 | **pass** |
+| `street_plates` | 124 / 130 ms | 2.8 % (2.1 % at `--delay 1.5`) | 0.949 (75/79; 4 single-frame misses) | 0.839 (head-box labels; not comparable) | blind < 1 %, plates ≥ 0.97 | **fail** |
+
+Why `street_plates` fails: its blind frames all come from one 17-frame detection gap (a ~680 ms pass; at 25 fps the
+vouch limit `HOLD_FRAMES + 1` is 16 frames), so they are frozen frames by design and a longer delay buffer can't
+remove them; the 4 uncovered plate boxes are isolated single labeled frames (0.4 s each), which offline recovers with
+`recheck_tiny` / `absorb` and live can't. No bare labeled box was caused by the engine's logic; the misses are
+detector misses. 0 dropped frames, emit p50 7 ms, pass times equal to the idle-GPU benchmark: no contention.
+
+**Decision, per the plan's own gate ("score passes on both clips"): NO-GO for headlining live replay on
+`street_plates`; GO on `street_walk`.** Recommendation to the owner (not a plan step, their call): keep the branch
+and open the PR as "built and measured"; if live replay is shown, show it on `street_walk` or the camera and quote
+the `street_plates` numbers as they are. Two things remain outside my reach: a human watching the two MP4s once
+(`logs/live_street_walk.mp4`, `logs/live_street_plates.mp4` on the server), and the page/camera check through the
+proxy, which the in-app browser could not open (a popup window blocks navigation).
+
 ## 4. Decisions
 
 | ID | Question | Options | Default |
