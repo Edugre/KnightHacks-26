@@ -49,6 +49,7 @@ Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
   nohup cloudflared tunnel run --protocol http2 --url http://localhost:8000 blurr > logs/tunnel.log 2>&1 &
   ```
   `--protocol http2` because AUP blocks QUIC (UDP): without it the tunnel retries `failed to dial a quic connection` and never connects. `nohup` keeps it up when the VS Code tab disconnects.
+- **All of it in one go:** `bash scripts/serve.sh` pulls `main`, stops any running model server, app and tunnel, and starts all three fresh in the background (logs in `logs/`); rerun it to restart. `--keep-models` keeps a healthy model server, `--no-pull` skips the pull, `stop` stops everything.
 - **App:** start it with `CENSOR_CORS_ORIGINS=https://blurr.photo ./run.sh` (comma-separated for several origins, e.g. adding `http://localhost:5500` to test a local copy). Check with `https://api.blurr.photo/api/config`.
 
 **Laptop, no GPU (stub detector, no models):**
