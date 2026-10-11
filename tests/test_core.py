@@ -106,6 +106,41 @@ def test_lead_in_and_hold_follow_the_motion():
                                                            104 + MIN_PAD_PX)  # tiny boxes get a few pixels
 
 
+def _moving_target(first_f=30):
+    from censor.core.timeline import Target
+    kfs = [Keyframe(f=f, box=(100 + 3 * f, 50, 120 + 3 * f, 60), conf=0.9) for f in (first_f, first_f + 3, first_f + 6)]
+    return Target(label="p", source="detector", keyframes=kfs)
+
+
+def test_expand_target_default_lead_is_unchanged():
+    from censor.render.render import LEAD_FRAMES
+    t = _moving_target()
+    per = expand_target(t, 200)
+    assert per == expand_target(t, 200, lead_frames=LEAD_FRAMES)
+    assert 30 - LEAD_FRAMES in per and 30 - LEAD_FRAMES - 1 not in per
+
+
+def test_expand_target_longer_lead_covers_back_to_the_previous_detection():
+    from censor.render.render import HOLD_GROWTH, LEAD_FRAMES, _moved, _speed
+    t = _moving_target()
+    first, v0 = t.keyframes[0], _speed(t.keyframes, end=False)
+    per = expand_target(t, 200, lead_frames=10)
+    assert all(first.f - k in per for k in range(1, 11))
+    for k in range(LEAD_FRAMES + 1, 11):
+        box, pad = per[first.f - k]
+        moved = _moved(first.box, v0, -k)
+        assert box[0] <= first.box[0] and box[1] <= first.box[1] and box[2] >= first.box[2] and box[3] >= first.box[3]
+        assert box[0] <= moved[0] and box[1] <= moved[1] and box[2] >= moved[2] and box[3] >= moved[3]
+        assert pad == pytest.approx(t.padding + HOLD_GROWTH * k)
+        assert pad > per[first.f - k + 1][1]                    # padding grows with k
+
+
+def test_expand_target_lead_stops_at_frame_zero():
+    per = expand_target(_moving_target(first_f=4), 200, lead_frames=10)
+    assert all(f in per for f in range(0, 4))
+    assert min(per) == 0
+
+
 def test_uncertain_doubles_padding():
     t = fold([Op(op_id="op_1", kind="add_targets", targets=["t"], padding=0.2)],
              store_with(trk("t", [5], state="uncertain")), VIDEO).targets["t"]
