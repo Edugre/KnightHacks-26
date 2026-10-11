@@ -1,6 +1,6 @@
 # Devpost write-up (draft)
 
-*Draft. Numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700. Update them if they change before submitting, and fill in the request success rate once `./run.sh bench` has run with the real models.*
+*Draft. Numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700. Update them if they change before submitting, and fill in the request success rate once the benchmark has run with the real models: `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk` (the 20 real-clip requests; without `--clip` the synthetic ones are pooled in).*
 
 ## Censor: redaction you can ask for
 
@@ -56,7 +56,7 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 | Person questions on the three people in focus on `street_walk` | every answer right, at p 0.00 or 1.00 |
 | Upload scan, 1080p | 0.76x real time |
 | Peak GPU memory, all models | 17.9 GB of 32 GB |
-| Request success rate (20 benchmark requests) | *TODO after `./run.sh bench`* |
+| Request success rate (20 benchmark requests) | *TODO after the `--clip` run above* |
 
 ## Challenges
 

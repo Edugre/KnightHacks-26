@@ -26,7 +26,10 @@ clips:
     duration: 20.6
     notes: >-
       1920x1080, 25 fps. Three people talking face to face: man in a navy tee, man in a dark denim shirt with
-      a backpack, woman in a salmon-red tee. Parked cars behind them, plates too small to read.
+      a backpack, woman in a salmon-red tee. Parked cars behind them, side-on, plates too small to read.
+      A blurred woman stands in the background at the left edge (about x 20-80, frames 70-510).
+      Labeled (every 10th frame): the three faces and the three people, descs "man, navy tee",
+      "man, denim shirt", "woman, salmon tee". No plates and not the background woman.
 
   - id: street_walk
     file: street_walk.mp4
@@ -37,8 +40,10 @@ clips:
     consent: Pexels license (free to use, no attribution required); stock footage published by the creator
     duration: 8.8
     notes: >-
-      1280x720, 25 fps. The same three people walking toward the camera; one man wears a bright red hoodie.
-      A dark car with a visible front plate on the left in the first ~2 s.
+      1280x720, 25 fps. The same three people walking toward the camera: "man, red hoodie",
+      "man, black tee" (curly hair) and "woman, rust top". A dark car with a visible rear plate on the left
+      in the first ~1 s, and a few small, distant plates later. No other pedestrians in focus.
+      Labeled (every 10th frame): the three faces, the three people and 5 plates.
 
   - id: street_plates
     file: street_plates.mp4
@@ -51,9 +56,12 @@ clips:
     duration: 13.0
     notes: >-
       1920x1080, 25 fps, night street in Hong Kong. Rear plates of taxis: "UL 7246" close up at the start,
-      partial plates as cars pass, "UK 2189" sharp from ~11 s. Masked pedestrians appear in the background
-      from ~11 s; only plates are labeled in this clip. The full video's crowd half (13 s on) was cut because
-      30+ faces per frame are too slow to label by hand.
+      partial plates as cars pass, "UK 2189" sharp from ~11 s. A masked crowd is on the pavement from the
+      start, dense from ~1.6 s. The full video's crowd half (13 s on) was cut because 30+ faces per frame
+      are too slow to label by hand.
+      Labeled (every 10th frame): 6 plates, and only the 13 largest, clearest faces (not every crowd face),
+      so face recall here counts those only. Persons are not labeled: person recall and over-blur on this
+      clip mean nothing.
 
 # Template for a real clip. Copy it, fill it in, then label every 10th frame in bench/labels/<id>.json.
 #  - id: street_01

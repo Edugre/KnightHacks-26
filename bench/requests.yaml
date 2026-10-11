@@ -3,7 +3,9 @@
 #   must_not_mask  gt_ids that must stay visible: covered on <= 10% of their labeled frames inside `window`
 #   window         optional [start_s, end_s]; only labeled frames inside it are checked (default: whole clip)
 #   before         optional requests applied first and not scored, e.g. blur something, then "unblur ..."
-# Target (IMPLEMENTATION.md section 6): 20 requests over the real clips, at least 15 correct.
+# Target (IMPLEMENTATION.md section 6): 20 requests over the real clips, at least 15 correct. Score them alone:
+#   python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk
+# Every id named here must have a confirmed label box (inside `window`, if set), or the run stops with an error.
 #
 # Synthetic clip objects: license_plate_1 (moving plate), face_1, person_1 (red), person_2 (blue),
 # screen_1 (second half only, 3.0 to 6.0 s).
@@ -43,3 +45,113 @@ requests:
   - clip: synthetic
     text: make it look cinematic
     must_not_mask: [license_plate_1, face_1, person_1, person_2, screen_1]
+
+  # ---- Real clips (labels in bench/labels/<clip>.json; descs say who each id is) --------------------
+  # street_walk: face_1/person_3 man in the red hoodie, face_2/person_1 man in the black tee,
+  #   face_3/person_2 woman in the rust top; plates license_plate_1, _3, _4, _6, _7.
+  # street_plates: face_1..face_13 are the largest crowd faces only (not every face); persons not labeled;
+  #   plates license_plate_1..6.
+  # street_talk: face_1/person_1 man in the navy tee, face_2/person_2 man in the denim shirt,
+  #   face_3/person_3 woman in the salmon tee; no plates labeled (parked cars side-on, unreadable).
+  # Needs the GPU server: the attribute and "except" requests (offline, "everyone except X" becomes "only X").
+  - clip: street_walk
+    text: blur all faces
+    must_mask: [face_1, face_2, face_3]
+    must_not_mask: [person_1, person_2, person_3, license_plate_1, license_plate_3, license_plate_4, license_plate_6, license_plate_7]
+
+  - clip: street_walk
+    text: blur the plates
+    must_mask: [license_plate_1, license_plate_3, license_plate_4, license_plate_6, license_plate_7]
+    must_not_mask: [face_1, face_2, face_3, person_1, person_2, person_3]
+
+  - clip: street_walk
+    text: blur the guy in the red hoodie
+    must_mask: [person_3]
+    must_not_mask: [person_1, person_2]
+
+  - clip: street_walk
+    text: blur the woman
+    must_mask: [person_2]
+    must_not_mask: [person_1, person_3]
+
+  - clip: street_walk
+    text: blur everyone except the guy in the red hoodie
+    must_mask: [person_1, person_2]
+    must_not_mask: [person_3]
+
+  - clip: street_walk
+    text: blur faces in the first 2 seconds
+    window: [0.0, 2.0]
+    must_mask: [face_1, face_2, face_3]
+
+  - clip: street_walk
+    text: unblur the plates
+    before: [blur all plates and faces]
+    must_mask: [face_1, face_2, face_3]
+    must_not_mask: [license_plate_1, license_plate_3, license_plate_4, license_plate_6, license_plate_7]
+
+  - clip: street_plates
+    text: blur all plates
+    must_mask: [license_plate_1, license_plate_2, license_plate_3, license_plate_4, license_plate_5, license_plate_6]
+    must_not_mask: [face_1, face_2, face_3, face_4, face_5, face_6, face_7, face_8, face_9, face_10, face_11, face_12, face_13]
+
+  - clip: street_plates
+    text: blur faces and plates
+    must_mask: [face_1, face_2, face_3, face_4, face_5, face_6, face_7, face_8, face_9, face_10, face_11, face_12, face_13,
+                license_plate_1, license_plate_2, license_plate_3, license_plate_4, license_plate_5, license_plate_6]
+
+  - clip: street_plates
+    text: blur the plates in the last 3 seconds
+    window: [10.0, 13.0]
+    must_mask: [license_plate_4, license_plate_6]
+
+  - clip: street_plates
+    text: undo
+    before: [blur all faces, blur all plates]
+    must_mask: [face_1, face_2, face_3, face_4, face_5, face_6, face_7, face_8, face_9, face_10, face_11, face_12, face_13]
+    must_not_mask: [license_plate_1, license_plate_2, license_plate_3, license_plate_4, license_plate_5, license_plate_6]
+
+  - clip: street_plates
+    text: black box every face
+    must_mask: [face_1, face_2, face_3, face_4, face_5, face_6, face_7, face_8, face_9, face_10, face_11, face_12, face_13]
+    must_not_mask: [license_plate_1, license_plate_2, license_plate_3, license_plate_4, license_plate_5, license_plate_6]
+
+  - clip: street_talk
+    text: blur the woman in the salmon tee
+    must_mask: [person_3]
+    must_not_mask: [person_1, person_2]
+
+  - clip: street_talk
+    text: blur the man in the denim shirt
+    must_mask: [person_2]
+    must_not_mask: [person_1, person_3]
+
+  - clip: street_talk
+    text: blur the man in the navy tee
+    must_mask: [person_1]
+    must_not_mask: [person_2, person_3]
+
+  - clip: street_talk
+    text: pixelate everyone
+    must_mask: [person_1, person_2, person_3]
+
+  - clip: street_talk
+    text: blur everyone except the woman
+    must_mask: [person_1, person_2]
+    must_not_mask: [person_3]
+
+  - clip: street_talk
+    text: blur faces in the middle
+    window: [8.2, 12.3]
+    must_mask: [face_1, face_2, face_3]
+
+  - clip: street_talk
+    text: unblur the woman
+    before: [blur everyone]
+    must_mask: [person_1, person_2]
+    must_not_mask: [person_3]
+
+  - clip: street_talk
+    text: blur the faces in the first 5 seconds
+    window: [0.0, 5.0]
+    must_mask: [face_1, face_2, face_3]
