@@ -167,6 +167,20 @@ def test_big_faint_faces_are_dropped():
     assert sp.confirmed(track((500, 300, 545, 360), 0.15), rule, 1080)    # a small faint face in a crowd stays
 
 
+def test_wide_faint_faces_are_dropped_except_at_the_edge():
+    """EgoBlur's weak "faces" on car backs were plate-shaped and blurred the plates in "blur all faces". Real face
+    tracks on the three clips were 0.54-0.98:1, and 1.14:1 where the frame edge cut one off."""
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["face"]
+    track = lambda box, c: [Keyframe(f=f, box=box, conf=c) for f in (0, 3, 6)]  # noqa: E731
+    assert not sp.confirmed(track((53, 368, 156, 408), 0.29), rule, 720, 1280)      # street_walk's car, 2.6:1
+    assert not sp.confirmed(track((1241, 560, 1577, 693), 0.23), rule, 1080, 1920)  # a street_plates taxi, 2.5:1
+    assert sp.confirmed(track((1241, 560, 1577, 693), 0.95), rule, 1080, 1920)      # confident: kept
+    assert sp.confirmed(track((0, 1020, 150, 1080), 0.3), rule, 1080, 1920)         # cut off at the corner: kept
+    assert sp.confirmed(track((500, 300, 545, 356), 0.15), rule, 1080, 1920)        # a faint 0.8:1 face: kept
+    assert sp.confirmed(track((0, 1020, 150, 1080), 0.3), rule, 1080)               # frame width unknown: kept
+
+
 def test_confident_plates_must_be_wider_than_tall_except_at_the_edge_or_tiny():
     """The taxi's round sticker was a confident 131x123 "plate"; real plate tracks were 1.69:1 or wider."""
     from censor.core.tracks import Keyframe

@@ -78,6 +78,11 @@ CONFIRM = {"license plate": {
     # (bench/review.py on the three clips). Small faint faces stay: in a crowd many real faces never pass 0.3.
     "big_frac": float(os.environ.get("CENSOR_FACE_BIG_FRAC", "0.2")),        # of the frame height, median box
     "big_min_conf": float(os.environ.get("CENSOR_FACE_BIG_CONF", "0.8")),
+    # So does a "face" much wider than tall, unless the frame edge cuts it off. The weak faces EgoBlur put on car
+    # backs were plate-shaped (103x40 px at 0.29 on street_walk's car, 336x133 at 0.23 on a street_plates taxi) and
+    # blurred those plates in "blur all faces"; of the 121 face tracks kept on the three clips they were the only ones
+    # over 1.2:1. Real faces were 0.54-0.98:1, and 1.14:1 cut off at the edge (Strix Halo bench, Sun Oct 11).
+    "wide_aspect": float(os.environ.get("CENSOR_FACE_WIDE_ASPECT", "1.6")),  # width / height, median box
 }}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
 
@@ -213,26 +218,41 @@ def plate_shaped(box: Box, frame_h: int, min_aspect: Optional[float] = None, max
     return h > 0 and w / h >= min_aspect and h <= max_height_frac * frame_h
 
 
+def _median_size(kfs: list[Keyframe]) -> tuple[float, float]:
+    """Median width and median height of a track's boxes, so one odd frame doesn't decide its shape."""
+    return (sorted(k.box[2] - k.box[0] for k in kfs)[len(kfs) // 2],
+            sorted(k.box[3] - k.box[1] for k in kfs)[len(kfs) // 2])
+
+
+def _at_edge(kfs: list[Keyframe], frame_h: int, frame_w: int, margin: int = 3) -> bool:
+    """Some box touches the frame edge, where the object is cut off and its shape says little."""
+    return bool(frame_w) and any(k.box[0] < margin or k.box[1] < margin or k.box[2] > frame_w - margin
+                                 or k.box[3] > frame_h - margin for k in kfs)
+
+
 def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0, frame_w: int = 0) -> bool:
     """Tracks with enough confident detections count if they're the right shape (when the rule asks and the box
     isn't cut off by the frame edge or tiny). The rest need enough frames and, when the rule asks, the median
-    box of the track has to be plate-shaped (a median, so one odd frame doesn't decide)."""
+    box of the track has to be plate-shaped (a median, so one odd frame doesn't decide). A face that is big, or
+    wide and not cut off, needs a detection at big_min_conf; without the frame size a wide face is kept."""
     if rule is None:
         return True
     if "big_frac" in rule and frame_h:
         heights = sorted(k.box[3] - k.box[1] for k in kfs)
         if heights[len(heights) // 2] > rule["big_frac"] * frame_h and max(k.conf for k in kfs) < rule["big_min_conf"]:
             return False
+    if "wide_aspect" in rule and frame_h and frame_w and max(k.conf for k in kfs) < rule["big_min_conf"]:
+        w, h = _median_size(kfs)
+        if h > 0 and w / h > rule["wide_aspect"] and not _at_edge(kfs, frame_h, frame_w):
+            return False
     if "min_conf" not in rule:
         return True
     if sum(k.conf >= rule["min_conf"] for k in kfs) >= rule.get("min_confident", 1):
         if "confident_min_aspect" not in rule or not frame_h:
             return True
-        w = sorted(k.box[2] - k.box[0] for k in kfs)[len(kfs) // 2]
-        h = sorted(k.box[3] - k.box[1] for k in kfs)[len(kfs) // 2]
-        edge = frame_w and any(k.box[0] < 3 or k.box[1] < 3 or k.box[2] > frame_w - 3 or k.box[3] > frame_h - 3
-                               for k in kfs)
-        return bool(edge) or h < rule.get("shape_min_height", 0) or (h > 0 and w / h >= rule["confident_min_aspect"])
+        w, h = _median_size(kfs)
+        edge = _at_edge(kfs, frame_h, frame_w)
+        return edge or h < rule.get("shape_min_height", 0) or (h > 0 and w / h >= rule["confident_min_aspect"])
     if len(kfs) < rule["min_frames"] or sum(k.conf for k in kfs) / len(kfs) < rule.get("weak_min_mean", 0.0):
         return False
     if "min_aspect" not in rule or not frame_h:
