@@ -142,10 +142,13 @@
   .mon { display:flex; flex-direction:column; gap:8px; min-width:0; }
   #well.stacked { flex-direction:column; gap:14px; }
   .monHead { display:flex; align-items:center; gap:8px; font:400 11px/1.2 var(--font); height:24px; white-space:nowrap; min-width:0; overflow:hidden; }
-  .monHead .mute { color:var(--meta); overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .monHead .mute { color:var(--meta); overflow:hidden; text-overflow:ellipsis; min-width:0; margin-right:auto; }
   .monHead b { font:600 11px/1.2 var(--mono); letter-spacing:.08em; color:var(--text); }
   #drawBtn { margin-left:auto; display:flex; align-items:center; gap:4px; padding:3px 8px; border-radius:5px; font:500 11px/1.2 var(--font); color:#CFCFCF; }
   #drawBtn.on { background:var(--primary-bg); border-color:var(--primary-bg); color:var(--primary-fg); }
+  .expBtn { flex:none; display:grid; place-items:center; width:24px; height:22px; padding:0; border-radius:5px; color:#CFCFCF; }
+  .expBtn .shrink, .expBtn.on .grow { display:none; }
+  .expBtn.on .shrink { display:block; }
   .screen { position:relative; overflow:hidden; background:#000; border-radius:4px; }
   .screen canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
   #srcScreen { outline:1px solid #2A2A2A; }
@@ -462,11 +465,12 @@
       <div class="mon">
         <div class="monHead"><b>SOURCE</b><span class="mute">targets</span>
           <button id="drawBtn" disabled title="Drag a box on Source to hide anything by hand; in a clip it's tracked from there"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>Draw box</button>
+          <button class="expBtn" data-mon="src" disabled title="Expand Source" aria-label="Expand Source"><svg class="grow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg><svg class="shrink" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button>
         </div>
         <div class="screen" id="srcScreen"><canvas id="srcCv"></canvas><div id="drawHint" hidden></div></div>
       </div>
       <div class="mon">
-        <div class="monHead"><b>PROGRAM</b><span class="mute" id="progLabel">final output · what Export writes</span></div>
+        <div class="monHead"><b>PROGRAM</b><span class="mute" id="progLabel">final output · what Export writes</span><button class="expBtn" data-mon="prog" disabled title="Expand Program" aria-label="Expand Program"><svg class="grow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg><svg class="shrink" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg></button></div>
         <div class="screen" id="progScreen"><canvas id="progCv"></canvas><span id="progBadge" hidden></span></div>
       </div>
     </div>
@@ -528,6 +532,7 @@ const S = {
   ref: null,        // who "this person" means in the next request: {track_id} or {frame, box, guess}
   busy: null,       // null | 'request' | 'edit' | 'export'
   reqStart: 0, lastMs: null, steps: null, drawMode: false, picker: false,
+  expanded: null,   // null | 'src' | 'prog': that monitor alone fills the well
   exportUrl: null, exportStats: null, exportSig: '', spotIdx: -1,
 };
 const $ = id => document.getElementById(id);
@@ -715,7 +720,7 @@ async function watchScan(vid, queries) {
 }
 async function openVideo(j, name) {
   Object.assign(S, { vid: j.video_id, info: j.info, name, timeline: null, trackList: null, maskFrames: null, ops: [], ids: {}, desc: {}, vlm: {}, versions: [], redo: [], nRedo: 0, selected: null, hover: null, open: new Set(), ref: null,
-    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false, srcSeen: false });
+    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false, srcSeen: false, expanded: null });
   const saved = store.load();
   if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {},
     versions: (saved.versions || []).map(({ card, ...v }) => v), redo: saved.redo || [] });
@@ -1548,7 +1553,19 @@ function setProgramSource() {
 // Program alone until the clip first plays; then Source appears beside it and stays (pausing doesn't hide it),
 // unless the Source switch is off. Draw box always shows Source, since boxes are drawn there.
 const srcShown = () => S.drawMode || isPhoto() || (!S.srcOff && (S.srcSeen || !$('player').paused));
-const setSrcOff = off => { S.srcOff = off; layoutMonitors(); };
+const setSrcOff = off => { S.srcOff = off; if (off && S.expanded === 'src') S.expanded = null; layoutMonitors(); };
+// Expand one monitor to fill the well on its own; again (or Esc) puts both back. Drawing needs Source, so it
+// takes over from an expanded Program.
+const setExpanded = which => { S.expanded = which; layoutMonitors(); };
+function renderExpand() {
+  for (const b of document.querySelectorAll('.expBtn')) {
+    const on = S.expanded === b.dataset.mon, name = b.dataset.mon === 'src' ? 'Source' : 'Program';
+    b.disabled = !S.info;
+    b.classList.toggle('on', on);
+    b.title = on ? `Back to both monitors (Esc)` : `Expand ${name}`;
+    b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', String(on));
+  }
+}
 function renderSrcSwitch() {
   const on = !S.srcOff, b = $('srcSwitch');
   b.setAttribute('aria-checked', String(on));
@@ -1557,11 +1574,14 @@ function renderSrcSwitch() {
 }
 function layoutMonitors() {
   renderSrcSwitch();
+  if (S.drawMode && S.expanded === 'prog') S.expanded = null;
+  renderExpand();
   if (!S.info) return;
   const well = $('well'), r = well.getBoundingClientRect(), W = S.info.width, H = S.info.height, head = 25 + 4;
-  const srcMon = $('srcScreen').parentNode, progMon = $('progScreen').parentNode, show = srcShown(), dpr = devicePixelRatio || 1;
+  const srcMon = $('srcScreen').parentNode, progMon = $('progScreen').parentNode, dpr = devicePixelRatio || 1;
+  const show = S.expanded ? S.expanded === 'src' : srcShown(), both = show && S.expanded !== 'src';
   let s;
-  if (show) {
+  if (both) {
     const side = Math.min((r.width - 32 - 28 - 8) / 2 / W, (r.height - 18 - head) / H);
     const stack = Math.min((r.width - 32 - 8) / W, (r.height - 18 - 14 - 2 * head) / 2 / H);
     // Side by side, as designed, unless that makes them much smaller than stacking would (a phone, a wide clip)
@@ -1572,13 +1592,14 @@ function layoutMonitors() {
     well.classList.remove('stacked');
     s = Math.min((r.width - 32) / W, (r.height - 18 - head) / H);
   }
-  srcMon.hidden = !show;
+  srcMon.hidden = !show; progMon.hidden = S.expanded === 'src';
   s = Math.max(0.01, s);
   const w = Math.floor(W * s), h = Math.floor(H * s);
   for (const id of ['srcScreen', 'progScreen']) { $(id).style.width = `${w}px`; $(id).style.height = `${h}px`; $(id).parentNode.style.width = `${w}px`; }
   for (const id of ['srcCv', 'progCv']) { const c = $(id); if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); } }
   // Draw box sits over whichever monitor leads: Source when it's up, otherwise Program
-  (show ? srcMon : progMon).querySelector('.monHead').append($('drawBtn'));
+  const lead = (show ? srcMon : progMon).querySelector('.monHead');
+  lead.insertBefore($('drawBtn'), lead.querySelector('.expBtn'));
   drawAll();
 }
 let layoutQueued = false;
@@ -2050,13 +2071,14 @@ $('drawBtn').onclick = () => toggleDraw(S.drawMode === 'mask' ? false : 'mask');
 $('redoBtn').onclick = redoLast;
 $('tbody').onmouseleave = () => hoverRow(null);
 $('srcSwitch').onclick = () => setSrcOff(!S.srcOff);
+for (const b of document.querySelectorAll('.expBtn')) b.onclick = () => setExpanded(S.expanded === b.dataset.mon ? null : b.dataset.mon);
 $('undoBtn').onclick = undoLast;
 $('openBtn').onclick = () => { $('player').pause(); S.picker = true; renderPicker(); };
 $('playBtn').onclick = () => { const v = $('player'); v.paused ? v.play() : v.pause(); };
 const step = n => { const v = $('player'); v.pause(); if (S.info) seek((P.frame + n + 0.5) / S.info.fps); };
 document.addEventListener('keydown', e => {
   const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement.tagName);
-  if (e.key === 'Escape') { if (S.drawMode) toggleDraw(false); else if (S.picker && S.vid) $('homeBack').click(); return; }
+  if (e.key === 'Escape') { if (S.drawMode) toggleDraw(false); else if (S.expanded && !homeShown()) setExpanded(null); else if (S.picker && S.vid) $('homeBack').click(); return; }
   if (homeShown()) return;
   // Undo / redo the masks, except in a field with text in it, where they undo the typing
   const hist = (e.metaKey || e.ctrlKey) && !e.altKey && ['z', 'y'].includes(e.key.toLowerCase());
