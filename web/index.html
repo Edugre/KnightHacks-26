@@ -59,7 +59,8 @@
   .wm .r2 { filter:blur(.055em); color:var(--acc); }
 
   /* ---- the grid: 1px gaps on the rule color read as rules between panels ---- */
-  #app { height:100%; display:grid; gap:1px; grid-template-rows:52px minmax(0,1fr) 184px; grid-template-columns:300px minmax(0,1fr) 360px; }
+  #app { height:100%; display:grid; gap:1px; grid-template-rows:52px minmax(0,1fr) 184px; grid-template-columns:300px minmax(0,1fr) 360px;
+    transition:grid-template-columns .28s cubic-bezier(.2,.7,.2,1); }
   header { grid-column:1 / -1; display:flex; align-items:center; gap:18px; padding:0 18px; background:var(--head); min-width:0; }
   .vrule { width:1px; height:20px; background:var(--divider); flex:none; }
   #fileName { font:500 14px/1.2 var(--font); color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
@@ -70,7 +71,33 @@
   #netStatus i { width:6px; height:6px; background:var(--acc); flex:none; }
   .head-right button { font:500 12px/1.2 var(--font); color:#CFCFCF; padding:5px 10px; }
 
-  #left { grid-row:2; grid-column:1; display:flex; flex-direction:column; gap:1px; min-height:0; }
+  /* ---- collapsible side panels (design_handoff_collapsible_panels, option 1a "Icon rail"): each side column
+     collapses to a 44px rail. The panel keeps its full width inside the column, anchored to the edge next to the
+     video, so it slides out under the rail instead of reflowing, and fades out ---- */
+  .sideCol { grid-row:2; min-width:0; min-height:0; overflow:hidden; position:relative; background:var(--gridbg); }
+  #colL { grid-column:1; } #colR { grid-column:3; }
+  #left { position:absolute; top:0; bottom:0; right:0; width:300px; display:flex; flex-direction:column; gap:1px; min-height:0; transition:opacity .18s; }
+  #agent { position:absolute; top:0; bottom:0; left:0; width:360px; transition:opacity .18s; }
+  .rail { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; gap:14px; padding:12px 0; background:var(--panel); }
+  .railBtn { width:30px; height:28px; display:grid; place-items:center; padding:0; border:1px solid var(--divider); border-radius:6px; background:none; color:#CFCFCF; flex:none; }
+  .railBtn:hover:not(:disabled) { background:rgba(237,237,237,.07); color:var(--ink); }
+  .railLbl { writing-mode:vertical-rl; font:500 10.5px/1 var(--mono); letter-spacing:.12em; text-transform:uppercase; color:var(--mute); cursor:pointer; user-select:none; }
+  .railLbl:hover { color:var(--text); }
+  .railCaret { width:6px; height:6px; background:var(--acc); flex:none; }
+  #railExport { margin-top:auto; }
+  .railStat { display:flex; flex-direction:column; align-items:center; gap:6px; font:600 11px/1 var(--mono); color:var(--text); }
+  .railStat small { font:400 9.5px/1 var(--mono); color:var(--faint); }
+  .railStat i { width:8px; height:8px; background:var(--acc); }
+  .collapseBtn { margin-left:auto; width:24px; height:22px; display:grid; place-items:center; padding:0; border:0; border-radius:4px; background:none; color:var(--mute); flex:none; }
+  .collapseBtn:hover:not(:disabled) { background:rgba(237,237,237,.07); color:var(--ink); }
+  #agent .h { align-items:center; }
+  #agent .h .collapseBtn { margin:0 -2px 0 -6px; }  /* first in the row, by the video, like the rail's button */
+  @media (min-width:1101px) {
+    #app.l-collapsed { grid-template-columns:44px minmax(0,1fr) 360px; }
+    #app.r-collapsed { grid-template-columns:300px minmax(0,1fr) 44px; }
+    #app.l-collapsed.r-collapsed { grid-template-columns:44px minmax(0,1fr) 44px; }
+    #app.l-collapsed #left, #app.r-collapsed #agent { opacity:0; pointer-events:none; }
+  }
   .panel { background:var(--panel); padding:16px; }
   #reqPanel { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; gap:12px; }
   .reqField { display:flex; gap:10px; background:var(--field); border:1px solid #333; border-radius:8px; padding:12px 14px; flex:none; }
@@ -142,7 +169,7 @@
   /* picker (no clip yet, or Open clip) */
 
   /* ---- agent ---- */
-  #agent { grid-row:2; grid-column:3; display:flex; flex-direction:column; gap:12px; min-height:0; overflow:hidden; }
+  #agent { display:flex; flex-direction:column; gap:12px; min-height:0; overflow:hidden; }
   .hist { display:flex; align-items:center; gap:4px; border:0; padding:0; font:500 11px/1.4 var(--font); letter-spacing:0; text-transform:none; color:#CFCFCF; }
   .hist:hover:not(:disabled) { background:none; color:var(--ink); }
   #steps { display:flex; flex-direction:column; gap:6px; padding:12px; background:var(--field); border:1px solid #262626; border-radius:8px;
@@ -247,9 +274,12 @@
   @media (max-width:1100px) {
     body { overflow:auto; }
     #app { height:auto; grid-template-columns:minmax(0,1fr); grid-template-rows:52px auto 70vh auto 260px; }
-    #left { grid-row:2; grid-column:1; } #reqPanel { flex:none; }
+    .sideCol { overflow:visible; } #colL { grid-row:2; grid-column:1; } #colR { grid-row:4; grid-column:1; }
+    #left, #agent { position:static; width:auto; }
+    .rail, .collapseBtn { display:none !important; }  /* stacked already: nothing to collapse */
+    #reqPanel { flex:none; }
     #mid { grid-row:3; grid-column:1; }
-    #agent { grid-row:4; grid-column:1; overflow:visible; } .tbody { max-height:240px; }
+    #agent { overflow:visible; } .tbody { max-height:240px; }
     #timeline { grid-row:5; }
     body[data-kind="image"] #app { grid-template-rows:52px auto 70vh auto; }
     #tlGrid { grid-template-columns:140px minmax(0,1fr); }
@@ -369,9 +399,16 @@
     </div>
   </header>
 
+  <div class="sideCol" id="colL">
+  <div class="rail" id="railL" hidden>
+    <button class="railBtn" data-panel="l" title="Show Request  [" aria-controls="left" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></button>
+    <span class="railLbl" data-panel="l">Request</span>
+    <span class="railCaret" id="railCaret" hidden title="A request is running"></span>
+    <button class="railBtn" id="railExport" title="Export" aria-label="Show Export"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></button>
+  </div>
   <aside id="left">
     <div class="panel" id="reqPanel">
-      <div class="h">Request</div>
+      <div class="h">Request<button class="collapseBtn" data-panel="l" title="Hide Request  [" aria-controls="left" aria-expanded="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></button></div>
       <div class="reqField" id="reqField"><textarea id="text" rows="3" placeholder="Pick a clip or photo to start" disabled aria-label="Request"></textarea></div>
       <div id="refRow"></div>
       <button class="primary" id="genBtn" disabled>Generate masks<span class="kbd" aria-hidden="true">↵</span></button>
@@ -383,6 +420,7 @@
     </div>
     <div class="panel" id="expPanel"></div>
   </aside>
+  </div>
 
   <main id="mid">
     <div id="well">
@@ -404,8 +442,15 @@
     </div>
   </main>
 
+  <div class="sideCol" id="colR">
+  <div class="rail" id="railR" hidden>
+    <button class="railBtn" data-panel="r" title="Show Agent  ]" aria-controls="agent" aria-expanded="false"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m10 15-3-3 3-3"/></svg></button>
+    <span class="railLbl" data-panel="r">Agent</span>
+    <span class="railStat" id="railMasked" title="Targets masked"><span id="railMaskedN">0</span><small>masked</small></span>
+    <span class="railStat" id="railCheck" hidden title="Low-confidence spots, masked with extra padding"><i></i><small id="railCheckN"></small></span>
+  </div>
   <aside id="agent" class="panel">
-    <div class="h">Agent<span class="meta" id="planMeta"></span>
+    <div class="h"><button class="collapseBtn" data-panel="r" title="Hide Agent  ]" aria-controls="agent" aria-expanded="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/><path d="m8 9 3 3-3 3"/></svg></button>Agent<span class="meta" id="planMeta"></span>
       <button id="undoBtn" class="hist" hidden title="Revert the latest change as a whole (⌘Z / Ctrl+Z)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>Undo</button>
       <button id="redoBtn" class="hist" hidden title="Put back what Undo took (⇧⌘Z / Ctrl+Y)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></svg>Redo</button></div>
     <div id="steps"></div>
@@ -417,6 +462,7 @@
     </div>
     <div id="selPanel"></div>
   </aside>
+  </div>
 
   <section id="timeline">
     <div class="tlHead">
@@ -1009,8 +1055,37 @@ function checkSpot() {
 }
 
 // ---------- rendering the panels ----------
+// ---------- collapsible side panels ----------
+// [ toggles Request, ] toggles Agent; each side remembers its state for this viewer. On narrow screens the panels
+// are stacked and these do nothing.
+S.panels = (() => { try { return { l: true, r: true, ...JSON.parse(localStorage.getItem('blurr:panels') || '{}') }; } catch { return { l: true, r: true }; } })();
+const WIDE = matchMedia('(min-width:1101px)');
+function applyPanels() {
+  $('app').classList.toggle('l-collapsed', !S.panels.l); $('app').classList.toggle('r-collapsed', !S.panels.r);
+  $('railL').hidden = S.panels.l; $('railR').hidden = S.panels.r;
+  const wide = WIDE.matches;  // stacked layout below 1100px: nothing is collapsed there
+  $('left').inert = wide && !S.panels.l; $('agent').inert = wide && !S.panels.r;
+  document.querySelectorAll('[data-panel][aria-expanded]').forEach(b => b.setAttribute('aria-expanded', String(S.panels[b.dataset.panel])));
+  renderRails();
+}
+function togglePanel(side, open = !S.panels[side]) {
+  if (S.panels[side] === open) return;
+  S.panels[side] = open; applyPanels();
+  try { localStorage.setItem('blurr:panels', JSON.stringify(S.panels)); } catch {}
+}
+// The rails' live bits: a request running (left), and how much is masked and how many spots to check (right)
+function renderRails() {
+  $('railCaret').hidden = S.busy !== 'request';
+  const n = S.timeline ? Object.keys(S.timeline.targets).length : 0, sp = S.timeline ? spots().length : 0;
+  $('railMaskedN').textContent = n;
+  $('railCheck').hidden = !sp; $('railCheckN').textContent = `${sp} check`;
+}
+document.querySelectorAll('[data-panel]').forEach(b => b.addEventListener('click', () => togglePanel(b.dataset.panel)));
+$('railExport').onclick = () => { togglePanel('l', true); const b = $('expPanel').querySelector('button, a'); if (b) b.focus({ preventScroll: true }); };
+WIDE.addEventListener('change', applyPanels);
+applyPanels();
 function renderAll() {
-  renderHeader(); renderPicker(); renderRequest(); renderExport(); renderAgent(); renderTimeline(); drawAll();
+  renderHeader(); renderPicker(); renderRequest(); renderExport(); renderAgent(); renderTimeline(); renderRails(); drawAll();
 }
 function renderHeader() {
   $('fileName').textContent = S.vid ? S.name : 'No clip';
@@ -1106,6 +1181,7 @@ function renderExport() {
   }
 }
 function renderAgentHead() {
+  renderRails();
   const cur = curVersion();
   $('planMeta').textContent = !S.vid ? '' : S.busy === 'request' ? `v${S.versions.length + 1} · working`
     : `v${vNum(cur)}${S.lastMs !== null && cur && cur.key !== 'upload' ? ` · ${(S.lastMs / 1000).toFixed(1)} s` : ''}`;
@@ -1333,7 +1409,8 @@ function layoutMonitors() {
   (show ? srcMon : progMon).querySelector('.monHead').append($('drawBtn'));
   drawAll();
 }
-new ResizeObserver(layoutMonitors).observe($('well'));
+let layoutQueued = false;
+new ResizeObserver(() => { if (layoutQueued) return; layoutQueued = true; requestAnimationFrame(() => { layoutQueued = false; layoutMonitors(); }); }).observe($('well'));
 // A track's box at frame f: its keyframe, or interpolated between two keyframes up to 15 frames apart (the
 // renderer's MAX_GAP)
 function trackBox(t, f) {
@@ -1816,6 +1893,10 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); e.key.toLowerCase() === 'y' || e.shiftKey ? redoLast() : undoLast(); return;
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && maskedSel().length) { e.preventDefault(); editTargets('remove', maskedSel()); return; }
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && !typing) {
+    if (e.key === '[' || e.key === ']') { e.preventDefault(); togglePanel(e.key === '[' ? 'l' : 'r'); return; }
+    if (e.key === '/') { e.preventDefault(); togglePanel('l', true); $('text').focus(); return; }  // jump to the request field
+  }
   if (document.activeElement.tagName === 'BUTTON' || isPhoto()) return;
   if (e.key === ' ') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
