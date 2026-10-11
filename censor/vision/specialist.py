@@ -78,6 +78,12 @@ CONFIRM = {"license plate": {
     # (bench/review.py on the three clips). Small faint faces stay: in a crowd many real faces never pass 0.3.
     "big_frac": float(os.environ.get("CENSOR_FACE_BIG_FRAC", "0.2")),        # of the frame height, median box
     "big_min_conf": float(os.environ.get("CENSOR_FACE_BIG_CONF", "0.8")),
+    # A faint "face" much wider than tall is a license plate: EgoBlur took street_walk's car plate (2.5:1, 0.29) and
+    # street_plates' "FL 320" (2.5:1, 0.22) for faces, so "blur all faces" blurred a plate the request left visible.
+    # Every other face track on the three clips is 1.29:1 or narrower (labeled faces at most 0.85:1, widened boxes);
+    # a confident wide face (someone lying down) is kept.
+    "wide_aspect": float(os.environ.get("CENSOR_FACE_WIDE_ASPECT", "1.6")),  # median width / height
+    "wide_min_conf": float(os.environ.get("CENSOR_FACE_WIDE_CONF", "0.5")),
 }}
 LINK_GAP = 3 * EGOBLUR_EVERY  # frames a track may go unseen and still be continued
 
@@ -222,6 +228,11 @@ def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0, frame
     if "big_frac" in rule and frame_h:
         heights = sorted(k.box[3] - k.box[1] for k in kfs)
         if heights[len(heights) // 2] > rule["big_frac"] * frame_h and max(k.conf for k in kfs) < rule["big_min_conf"]:
+            return False
+    if "wide_aspect" in rule:
+        w = sorted(k.box[2] - k.box[0] for k in kfs)[len(kfs) // 2]
+        h = sorted(k.box[3] - k.box[1] for k in kfs)[len(kfs) // 2]
+        if h > 0 and w / h > rule["wide_aspect"] and max(k.conf for k in kfs) < rule["wide_min_conf"]:
             return False
     if "min_conf" not in rule:
         return True

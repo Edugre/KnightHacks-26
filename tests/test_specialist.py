@@ -167,6 +167,16 @@ def test_big_faint_faces_are_dropped():
     assert sp.confirmed(track((500, 300, 545, 360), 0.15), rule, 1080)    # a small faint face in a crowd stays
 
 
+def test_faint_wide_faces_are_dropped():
+    """EgoBlur took street_walk's car plate for a face (102x40 px, 0.29), so "blur all faces" blurred the plate."""
+    from censor.core.tracks import Keyframe
+    rule = sp.CONFIRM["face"]
+    track = lambda box, c: [Keyframe(f=f, box=box, conf=c) for f in (0, 3)]  # noqa: E731
+    assert not sp.confirmed(track((54, 368, 156, 408), 0.29), rule, 720, 1280)  # the plate on street_walk
+    assert sp.confirmed(track((500, 300, 545, 360), 0.15), rule, 720, 1280)     # a small faint face stays
+    assert sp.confirmed(track((400, 300, 560, 380), 0.95), rule, 720, 1280)     # a confident wide face stays
+
+
 def test_confident_plates_must_be_wider_than_tall_except_at_the_edge_or_tiny():
     """The taxi's round sticker was a confident 131x123 "plate"; real plate tracks were 1.69:1 or wider."""
     from censor.core.tracks import Keyframe
