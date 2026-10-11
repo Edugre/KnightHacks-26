@@ -150,6 +150,15 @@ python3 -m censor.core.timeline                                           # rege
 python3 scripts/overlay_tracks.py clip.mp4 out.jpg --frames 0 60 --tracks before.json after.json   # compare two detector runs by eye
 ```
 
+## Limits
+
+- **What it finds:** faces and license plates (EgoBlur), people and other everyday objects by name (YOLOE), and anything you draw a box around. Who a person is ("the woman in the salmon tee") is a yes / no question for Qwen3-VL, so it works on people, not on other objects.
+- **No nudity or graphic-content detection.** PLAN.md planned an NSFW category, but it wasn't built: there was no way to check a detector's accuracy without collecting explicit material. Draw a box for anything like that.
+- **Known misses** (bench, docs/STACK.md): dim or motion-blurred faces in medical masks in a night crowd, which EgoBlur doesn't see even at a 0.05 threshold, and colors the vision model reads differently (it says no to "denim shirt" for a charcoal one). Unsure answers stay blurred (fail closed), but a face the detector never sees isn't masked.
+- **Boxes, not outlines:** masks are padded rectangles, so they blur some background around each target.
+- **Offline, not live:** on the Strix Halo the full face + plate + person scan runs at 0.4x real time. A livestream was measured as feasible at 720p behind a ~0.8 s delay (`bench/live_speed.py`) but isn't built.
+- **Photos:** JPEG, PNG, WebP and BMP; not HEIC.
+
 ## License note
 
 YOLOE/Ultralytics is AGPL-3.0, so this repo stays public. Model cards: YOLOE-11s-seg, MobileCLIP, Qwen3-VL-8B-Instruct.

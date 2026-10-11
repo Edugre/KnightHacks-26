@@ -20,6 +20,7 @@ Anyone who posts street footage, bodycam clips, a vlog or a school event has to 
 - **Fail closed.** If the vision model is unsure about a person, or the tracker loses someone, they stay blurred. Errors mean more blur, never less.
 - **Undo and versions.** Every change is a version; undo is one click.
 - **Export** renders the blurred video locally.
+- **Photos too:** drop a JPEG, PNG, WebP or BMP and ask the same way; the exported photo carries no metadata (no GPS position, camera serial or capture time).
 
 ## How we built it
 
