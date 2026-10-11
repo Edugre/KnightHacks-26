@@ -9,6 +9,10 @@
                                         kind, added}]}  (counts as using it)
   PATCH  /api/folders/{id}              {"name": str} -> renamed
   DELETE /api/folders/{id}              removes the folder only; its clips stay on this machine, unfiled
+  GET  /api/folders?video=<id>          the same list, each with has: whether that clip is filed in it
+  POST /api/folders/{id}/clips          {"video_id": str, "name"?: str, "from"?: folder id} -> file an uploaded clip
+                                        here (again is a no-op); with from, it moves out of that folder
+  DELETE /api/folders/{id}/clips/{vid}  take a clip out of the folder; the clip itself stays
   GET  /api/config                      -> {offline, stub}: what a separately hosted page can't get injected into it
   GET  /api/samples[?kind=image]        clips in bench/clips, or photos in bench/photos -> [{id, mb, ...}]
   GET  /api/samples/{id}/photo          a sample photo, for the home screen's thumbnails
@@ -63,7 +67,7 @@ import yaml
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from censor import netguard
 from censor.agent.agent import Agent
@@ -256,9 +260,13 @@ def _live_clips(f: dict) -> list[dict]:
 
 
 @app.get("/api/folders")
-def list_folders():
+def list_folders(video: Optional[str] = None):
     fs = sorted(_load_folders(), key=lambda f: f["last_used"], reverse=True)
-    return [{"id": f["id"], "name": f["name"], "clipCount": len(_live_clips(f)), "lastUsed": f["last_used"]} for f in fs]
+    out = [{"id": f["id"], "name": f["name"], "clipCount": len(_live_clips(f)), "lastUsed": f["last_used"]} for f in fs]
+    if video:  # for the editor's Add to folder menu: which folders already hold this clip
+        for o, f in zip(out, fs):
+            o["has"] = any(c["video_id"] == video for c in f["clips"])
+    return out
 
 
 def _folder_name(raw: str) -> str:
@@ -313,6 +321,52 @@ def delete_folder(fid: str):
         fs.remove(f)
         _save_folders(fs)
     return {"deleted": fid, "clips_kept": len(_live_clips(f))}
+
+
+class FileIn(BaseModel):
+    video_id: str
+    name: Optional[str] = None
+    from_: Optional[str] = Field(None, alias="from")
+
+
+def _clip_name(fs: list[dict], vid: str) -> Optional[str]:
+    """The name a clip was filed under before, in any folder."""
+    return next((c["name"] for f in fs for c in f["clips"] if c["video_id"] == vid), None)
+
+
+@app.post("/api/folders/{fid}/clips")
+def file_clip(fid: str, body: FileIn):
+    """File a clip that's already uploaded (from the editor's Add to folder, or Move in a folder). Filing it where
+    it already is changes nothing; with from, it leaves that folder in the same write."""
+    vid = body.video_id
+    if not SAMPLE_NAME.fullmatch(vid) or not (DATA_DIR / vid).is_dir():
+        raise HTTPException(404, f"no video {vid}")
+    kind = session(vid).video_info().get("kind", "video")
+    with _folders_lock:
+        fs = _load_folders()
+        f = _folder(fs, fid)
+        src = _folder(fs, body.from_) if body.from_ and body.from_ != fid else None
+        name = " ".join((body.name or "").split())[:200] or _clip_name(fs, vid) or f"clip {vid}"
+        if not any(c["video_id"] == vid for c in f["clips"]):
+            f["clips"].append({"video_id": vid, "name": name, "kind": kind, "added": time.time()})
+        if src:
+            src["clips"] = [c for c in src["clips"] if c["video_id"] != vid]
+        f["last_used"] = time.time()
+        _save_folders(fs)
+    return {"id": fid, "name": f["name"], "clipCount": len(_live_clips(f)), "lastUsed": f["last_used"]}
+
+
+@app.delete("/api/folders/{fid}/clips/{vid}")
+def unfile_clip(fid: str, vid: str):
+    with _folders_lock:
+        fs = _load_folders()
+        f = _folder(fs, fid)
+        before = len(f["clips"])
+        f["clips"] = [c for c in f["clips"] if c["video_id"] != vid]
+        if len(f["clips"]) == before:
+            raise HTTPException(404, f"{vid} isn't in {f['name']}")
+        _save_folders(fs)
+    return {"id": fid, "name": f["name"], "clipCount": len(_live_clips(f)), "lastUsed": f["last_used"]}
 
 
 @app.get("/api/samples")
