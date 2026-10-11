@@ -235,6 +235,11 @@
   #ph { position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--acc); pointer-events:none; z-index:3; }
   #ph span { position:absolute; top:0; left:1px; transform:translateX(-50%); background:var(--acc); color:#fff; font:600 10px/1.5 var(--mono); padding:0 4px; white-space:nowrap; }
 
+  /* a photo (body[data-kind=image]): one frame, so no transport, timeline or in/out times */
+  body[data-kind="image"] #app { grid-template-rows:52px minmax(0,1fr); }
+  body[data-kind="image"] #transport, body[data-kind="image"] #timeline, body[data-kind="image"] .trow .t { display:none; }
+  body[data-kind="image"] .trow { grid-template-columns:32px minmax(0,1fr) 20px; }
+
   /* hidden decoders: the monitors draw their frames on canvases */
   .decoder { position:fixed; left:0; top:0; width:2px; height:2px; opacity:0; pointer-events:none; }
 
@@ -246,6 +251,7 @@
     #mid { grid-row:3; grid-column:1; }
     #agent { grid-row:4; grid-column:1; overflow:visible; } .tbody { max-height:240px; }
     #timeline { grid-row:5; }
+    body[data-kind="image"] #app { grid-template-rows:52px auto 70vh auto; }
     #tlGrid { grid-template-columns:140px minmax(0,1fr); }
     #fileMeta, #hdrNote, #netStatus { display:none; }
   }
@@ -272,6 +278,11 @@
   .hLink { background:none; border:0; padding:8px 4px; font:800 14px/1.2 var(--h-font); color:var(--h-acc400); cursor:pointer; border-radius:0; }
   .hLink:hover:not(:disabled) { background:color-mix(in srgb, var(--h-acc) 18%, transparent); }
   #homeBack { padding:4px; margin-left:-4px; }
+  .hKind { display:flex; flex-direction:column; gap:16px; min-width:0; }
+  .hKind.video { flex:1; }
+  .hKind > .th { display:flex; align-items:baseline; gap:12px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); }
+  .hKind > .th b { font:800 13px/1.2 var(--h-font); letter-spacing:.08em; color:var(--h-bg); }
+  .hKind > .th span { margin-left:auto; letter-spacing:0; text-transform:none; text-align:right; }
   .drop { flex:1; min-height:220px; position:relative; display:flex; flex-direction:column; justify-content:flex-end; gap:12px; padding:32px;
     border:2px dashed var(--h-n600); cursor:pointer; }
   .drop:hover, .drop.over { border-color:var(--h-acc400); background:var(--h-acc900); }
@@ -281,6 +292,16 @@
   .drop .sub { font-size:14px; color:var(--h-n400); }
   .drop .sub u { color:var(--h-acc400); text-underline-offset:3px; }
   .drop input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .drop.photo { flex:none; min-height:0; flex-direction:row; align-items:center; gap:16px; padding:20px 24px; }
+  .drop.photo .title { font-size:22px; }
+  .drop.photo .sub { margin-left:auto; text-align:right; }
+  .hThumbs { display:grid; grid-template-columns:repeat(auto-fill, minmax(120px, 1fr)); gap:12px; }
+  .hThumb { display:flex; flex-direction:column; gap:6px; padding:0; border:0; background:none; color:inherit; font:inherit; text-align:left; cursor:pointer; min-width:0; }
+  .hThumb img { display:block; width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--h-n900); outline:1px solid var(--h-n700); }
+  .hThumb:hover:not(:disabled) { background:none; color:var(--h-acc400); }
+  .hThumb:hover img { outline:2px solid var(--h-acc400); }
+  .hThumb .id { font:800 14px/1.2 var(--h-font); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hThumb .meta { font-size:12px; color:var(--h-n400); }
   .hSamples { display:flex; flex-direction:column; }
   .hSamples .th { font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--h-n400); padding-bottom:8px; border-bottom:2px solid var(--h-n700); }
   .hRow { display:grid; grid-template-columns:minmax(0,1fr) 120px 20px; align-items:center; gap:12px; padding:12px 0; width:100%;
@@ -305,20 +326,33 @@
       <span class="wm" role="img" aria-label="Blurr">Blu<span class="r1">r</span><span class="r2">r</span></span>
       <h1>Say what to <span class="hide">hide.</span></h1>
       <div class="rule"></div>
-      <p>"blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". Everything runs on this machine.</p>
+      <p>"blur all plates", "blur the woman", "pixelate faces in the first 5 seconds". In a video or a photo. Everything runs on this machine.</p>
     </section>
     <section class="select">
       <div class="hStatus"><button class="hLink" id="homeBack" hidden></button><span id="homeMsg" role="status"><i></i><span id="homeMsgText"></span></span></div>
-      <label class="drop" id="drop">
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-        <span class="title">Drop a video</span>
-        <span class="sub">or <u>browse files</u>. Landscape MP4 works best.</span>
-        <input type="file" accept="video/*" id="dropInput" aria-label="Choose a video">
-      </label>
-      <div class="hSamples">
-        <div class="th">Or start from a sample</div>
-        <div id="homeRows"><div class="hEmpty">Looking for sample clips…</div></div>
-        <label class="hLink" id="homeStub" hidden title="Stub mode: ground-truth tracks from scripts/make_test_clip.py"><span id="homeStubText">Attach .tracks.json</span><input type="file" accept=".json" id="stubInput"></label>
+      <div class="hKind video">
+        <div class="th"><b>Video</b></div>
+        <label class="drop" id="drop">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          <span class="title">Drop a video</span>
+          <span class="sub">or <u>browse files</u>. Landscape MP4 works best.</span>
+          <input type="file" accept="video/*" id="dropInput" aria-label="Choose a video">
+        </label>
+        <div class="hSamples">
+          <div class="th">Or start from a sample</div>
+          <div id="homeRows"><div class="hEmpty">Looking for sample clips…</div></div>
+          <label class="hLink" id="homeStub" hidden title="Stub mode: ground-truth tracks from scripts/make_test_clip.py"><span id="homeStubText">Attach .tracks.json</span><input type="file" accept=".json" id="stubInput"></label>
+        </div>
+      </div>
+      <div class="hKind photo">
+        <div class="th"><b>Photo</b><span>Faces, plates, screens. Exported without its location data.</span></div>
+        <label class="drop photo" id="photoDrop">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+          <span class="title">Drop a photo</span>
+          <span class="sub">or <u>browse files</u>. JPEG, PNG or WebP.</span>
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/bmp" id="photoInput" aria-label="Choose a photo">
+        </label>
+        <div class="hThumbs" id="photoRows"></div>
       </div>
     </section>
   </div>
@@ -331,14 +365,14 @@
     <div class="head-right">
       <span id="hdrNote"></span>
       <span id="netStatus" title="Detection, tracking and rendering all run on this machine"><i></i><span id="netLabel">on-device</span></span>
-      <button id="openBtn" hidden title="Back to the home screen: pick another clip or upload one">Open clip</button>
+      <button id="openBtn" hidden title="Back to the home screen: pick another clip or photo, or upload one">Open file</button>
     </div>
   </header>
 
   <aside id="left">
     <div class="panel" id="reqPanel">
       <div class="h">Request</div>
-      <div class="reqField" id="reqField"><textarea id="text" rows="3" placeholder="Pick a clip to start" disabled aria-label="Request"></textarea></div>
+      <div class="reqField" id="reqField"><textarea id="text" rows="3" placeholder="Pick a clip or photo to start" disabled aria-label="Request"></textarea></div>
       <div id="refRow"></div>
       <button class="primary" id="genBtn" disabled>Generate masks<span class="kbd" aria-hidden="true">↵</span></button>
       <div id="genProg" hidden><div class="indet"></div><span id="genLabel">Working</span></div>
@@ -354,7 +388,7 @@
     <div id="well">
       <div class="mon">
         <div class="monHead"><b>SOURCE</b><span class="mute">targets</span>
-          <button id="drawBtn" disabled title="Drag a box on Source to hide anything by hand; it's tracked through the clip"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>Draw box</button>
+          <button id="drawBtn" disabled title="Drag a box on Source to hide anything by hand; in a clip it's tracked from there"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>Draw box</button>
         </div>
         <div class="screen" id="srcScreen"><canvas id="srcCv"></canvas><div id="drawHint" hidden></div></div>
       </div>
@@ -377,7 +411,7 @@
     <div id="steps"></div>
     <div id="notice" role="status"></div>
     <div class="tlist">
-      <div class="trow head"><span>ID</span><span>Target</span><span>In</span><span>Out</span></div>
+      <div class="trow head"><span>ID</span><span>Target</span><span class="t">In</span><span class="t">Out</span></div>
       <div class="tbody" id="tbody"></div>
       <div id="lowconf" hidden></div>
     </div>
@@ -438,6 +472,12 @@ const fmt = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m *
 const fmtF = s => { s = Math.max(0, s); const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r.toFixed(2).padStart(5, '0')}`; };
 const fmtD = s => { const m = Math.floor(s / 60), r = s - m * 60; return `${String(m).padStart(2, '0')}:${r.toFixed(2).padStart(5, '0')}`; };
 const dur = () => S.info ? S.info.n_frames / S.info.fps : 1;
+// A photo is a one-frame video (censor/core/video.py): frame 0, no playback, decoded once into S.still
+const isPhoto = () => !!S.info && S.info.kind === 'image';
+const media = () => isPhoto() ? 'photo' : 'video';
+// What the monitors draw from: the photo, or the hidden <video> decoding the clip
+const frameEl = () => isPhoto() ? S.still : $('player');
+const frameReady = e => !!e && (e instanceof HTMLImageElement ? e.complete && e.naturalWidth > 0 : e.readyState >= 2);
 const pct = s => `${Math.max(0, Math.min(100, s / dur() * 100))}%`;
 const ICON = {
   play: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
@@ -557,6 +597,7 @@ const curVersion = () => { const live = S.versions.filter(v => !v.undone); retur
 const vNum = v => S.versions.indexOf(v) + 1;
 const opsSig = () => S.ops.map(o => o.op_id + o.kind + o.targets.join()).join('|');
 const exportFresh = () => !!S.exportUrl && S.exportSig === opsSig();
+const exportName = () => S.exportUrl ? S.exportUrl.split('?')[0].split('/').pop() : 'export.mp4';
 
 // ---------- loading a video ----------
 async function refreshState() {
@@ -595,7 +636,16 @@ async function openVideo(j, name) {
     versions: (saved.versions || []).map(({ card, ...v }) => v), redo: saved.redo || [] });
   if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
   history.replaceState(null, '', `?video=${S.vid}`);
-  $('player').src = `api/videos/${S.vid}/source`; $('expPlayer').removeAttribute('src');
+  document.body.dataset.kind = (j.info && j.info.kind) || 'video';
+  S.exportImg = null; S.still = null;
+  if (document.body.dataset.kind === 'image') {
+    const v = $('player'); v.pause(); v.removeAttribute('src'); v.load();
+    S.still = new Image();
+    S.still.onload = () => layoutMonitors();
+    S.still.src = `api/videos/${S.vid}/source`;
+  } else $('player').src = `api/videos/${S.vid}/source`;
+  $('expPlayer').removeAttribute('src');
+  renderExamples();
   $('text').disabled = false; $('text').placeholder = 'What should be hidden?';
   const v = await refreshState();
   if (saved && S.versions.length > 1) {
@@ -608,9 +658,9 @@ async function openVideo(j, name) {
   watchScan(S.vid, j.prescan || []);
   $('text').focus();
 }
-async function loadSample(id) {
+async function loadSample(id, kind = 'video', file = `${id}.mp4`) {
   homeMsg(`Loading ${id}…`);
-  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}`), `${id}.mp4`); homeMsg(''); }
+  try { await openVideo(await post(`api/samples/${encodeURIComponent(id)}${kind === 'image' ? '?kind=image' : ''}`), file); homeMsg(''); }
   catch (e) { homeMsg(`Couldn't load ${id}: ${errText(e)}`, true); }
 }
 async function uploadFile(file) {
@@ -665,8 +715,16 @@ function listSamples() {
       return b;
     }) : [el('div', { class: 'hEmpty' }, 'No clips in bench/clips. Upload one, or run scripts/make_test_clip.py.')]));
   }).catch(e => { samplesListed = false; rows.replaceChildren(el('div', { class: 'hEmpty' }, `Couldn't list samples: ${errText(e)}`)); });
+  // Sample photos from bench/photos, as thumbnails; none is fine, the drop area is enough
+  const thumbs = $('photoRows');
+  api('api/samples?kind=image').then(ps => {
+    thumbs.replaceChildren(...ps.map(c => el('button', { class: 'hThumb', title: `Open ${c.id}`, onclick: () => loadSample(c.id, 'image', `${c.id} (photo)`) },
+      el('img', { src: c.url, alt: '', loading: 'lazy' }), el('span', { class: 'id' }, c.id),
+      el('span', { class: 'meta' }, c.width ? `${c.width}×${c.height}${c.sidecar ? ' · stub' : ''}` : `${c.mb} MB`))));
+  }).catch(() => thumbs.replaceChildren());
 }
 $('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f); };
+$('photoInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f); };
 $('stubInput').onchange = e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
   if (S.vid) uploadSidecar(f); else { S.pendingSidecar = f; renderPicker(); }
@@ -675,17 +733,24 @@ $('homeBack').onclick = () => { S.picker = false; renderPicker(); layoutMonitors
 // Drag a file anywhere on the home screen; the drop area lights up while one is over the page
 (function dropTarget() {
   let depth = 0;
-  const over = on => $('drop').classList.toggle('over', on);
+  const VIDEO = /\.(mp4|mov|m4v|webm|mkv|avi)$/i, PHOTO = /\.(jpe?g|png|webp|bmp|heic|heif)$/i;
+  // While a file is over the page, the drop area for its kind lights up (both when the browser won't say yet)
+  const over = (on, kind) => {
+    $('drop').classList.toggle('over', on && kind !== 'image');
+    $('photoDrop').classList.toggle('over', on && kind !== 'video');
+  };
   const files = e => e.dataTransfer && [...e.dataTransfer.types].includes('Files');
-  window.addEventListener('dragenter', e => { if (!homeShown() || !files(e)) return; depth++; over(true); });
+  const kindOf = e => { const it = [...(e.dataTransfer.items || [])].find(i => i.kind === 'file'), t = it ? it.type : '';
+    return t.startsWith('image/') ? 'image' : t.startsWith('video/') ? 'video' : ''; };
+  window.addEventListener('dragenter', e => { if (!homeShown() || !files(e)) return; depth++; over(true, kindOf(e)); });
   window.addEventListener('dragleave', () => { if (depth && !--depth) over(false); });
   window.addEventListener('dragover', e => { if (files(e)) e.preventDefault(); });  // else the browser opens the file
   window.addEventListener('drop', e => {
     if (!files(e)) return;
     e.preventDefault(); depth = 0; over(false);
-    const f = [...e.dataTransfer.files].find(x => x.type.startsWith('video/') || /\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(x.name));
+    const f = [...e.dataTransfer.files].find(x => /^(video|image)\//.test(x.type) || VIDEO.test(x.name) || PHOTO.test(x.name));
     if (!homeShown()) return;
-    if (f) uploadFile(f); else homeMsg('That isn\'t a video file.', true);
+    if (f) uploadFile(f); else homeMsg('That isn\'t a video or a photo.', true);
   });
 })();
 
@@ -730,7 +795,7 @@ function describe(calls, path) {
         const ids = [...(a.track_ids || [])];
         add(el('span', {}, `${{ blur: 'Blurred', pixelate: 'Pixelated', box: 'Covered' }[a.effect || 'blur'] || a.effect} `,
           el('b', {}, ids.length ? names(ids) : (a.labels || []).join(', ')),
-          a.time_range ? ` from ${fmt(a.time_range[0])} to ${fmt(a.time_range[1])}` : ' for the whole clip'));
+          a.time_range && !isPhoto() ? ` from ${fmt(a.time_range[0])} to ${fmt(a.time_range[1])}` : isPhoto() ? '' : ' for the whole clip'));
         break;
       }
       case 'remove_masks': add(el('span', {}, 'Removed the mask from ', el('b', {}, names(a.track_ids || [])))); break;
@@ -764,7 +829,7 @@ function setBusy(kind) {
 function workingSteps(text, first) {
   return { head: 'Working', lines: [
     { mark: '■', now: true, bar: true, text: `Working on "${text}"` },
-    { mark: '○', dim: true, text: first ? 'The first request on a new clip waits for its scan (faces, plates, people).'
+    { mark: '○', dim: true, text: first ? `The first request on a new ${isPhoto() ? 'photo' : 'clip'} waits for its scan (faces, plates, people).`
       : 'Plain requests take a moment; ones that need the language model or many person checks take longer.' },
   ] };
 }
@@ -817,13 +882,14 @@ async function sendRequest(text) {
 async function sendBox(frame, box) {
   if (S.busy || !S.vid) return;
   toggleDraw(false);
-  setBusy('edit'); notice('Tracking the box through the clip…');
+  setBusy('edit'); notice(isPhoto() ? 'Adding the box…' : 'Tracking the box through the clip…');
   try {
     const j = await post(`api/videos/${S.vid}/box`, { frame, box });
-    pushVersion({ key: `box_${j.op_id}_${Date.now()}`, text: `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
+    pushVersion({ key: `box_${j.op_id}_${Date.now()}`, text: isPhoto() ? 'Drawn box' : `Drawn box on frame ${frame}`, at: Date.now(), opIds: [j.op_id], n: j.summary.n_targets, undone: false });
     S.selected = j.track.track_id;
     await refreshState();
-    notice(`Added ${tid(j.track.track_id)}: tracked from ${fmt(j.track.start)} to ${fmt(j.track.end)} and blurred wherever it was followed. Change its effect below.`);
+    notice(isPhoto() ? `Added ${tid(j.track.track_id)} and blurred it. Change its effect below.`
+      : `Added ${tid(j.track.track_id)}: tracked from ${fmt(j.track.start)} to ${fmt(j.track.end)} and blurred wherever it was followed. Change its effect below.`);
   } catch (e) { notice(`Couldn't track that box: ${errText(e)}`, true); }
   setBusy();
 }
@@ -906,12 +972,13 @@ async function moveTarget(id, frame, box) {
   try {
     const j = await post(`api/videos/${S.vid}/targets`, { action: 'move', track_ids: [id], frame, box });
     const nid = j.track.track_id;
-    pushVersion({ key: `move_${j.op_ids.join('_')}_${Date.now()}`, text: `Moved ${name} at frame ${frame}`, at: Date.now(),
+    pushVersion({ key: `move_${j.op_ids.join('_')}_${Date.now()}`, text: isPhoto() ? `Moved ${name}` : `Moved ${name} at frame ${frame}`, at: Date.now(),
       opIds: j.op_ids, n: j.summary.n_targets, undone: false });
     if (S.desc[id]) S.desc[nid] = S.desc[id];
     S.selected = nid; tid(nid);
     await refreshState();
-    notice(`Moved ${name}: from ${fmtF(frame / S.info.fps)} on, ${tid(nid)} follows the corrected box (until ${fmt(j.track.end)}); before that the old box stays. Undo reverts it.`);
+    notice(isPhoto() ? `Moved ${name}: ${tid(nid)} is the corrected box. Undo reverts it.`
+      : `Moved ${name}: from ${fmtF(frame / S.info.fps)} on, ${tid(nid)} follows the corrected box (until ${fmt(j.track.end)}); before that the old box stays. Undo reverts it.`);
   } catch (e) { notice(`Couldn't move it: ${errText(e)}`, true); }
   setBusy();
 }
@@ -947,7 +1014,8 @@ function renderAll() {
 }
 function renderHeader() {
   $('fileName').textContent = S.vid ? S.name : 'No clip';
-  $('fileMeta').textContent = S.info ? `${fmt(dur())} · ${S.info.width}×${S.info.height} · ${+S.info.fps.toFixed(2)} fps` : '';
+  $('fileMeta').textContent = !S.info ? '' : isPhoto() ? `photo · ${S.info.width}×${S.info.height}`
+    : `${fmt(dur())} · ${S.info.width}×${S.info.height} · ${+S.info.fps.toFixed(2)} fps`;
   $('hdrNote').textContent = exportFresh() && S.exportStats ? `exported · ${S.exportStats.masked_boxes.toLocaleString()} masked boxes` : '';
   // app.py marks the page when netguard refuses outbound connections (CENSOR_OFFLINE=1)
   $('netLabel').textContent = document.body.dataset.offline === '1' ? 'on-device · network off' : 'on-device';
@@ -971,7 +1039,7 @@ function renderRef() {
   const rr = $('refRow'), r = S.ref, busy = !!S.busy;
   if (r && S.info) {
     const id = r.track_id || r.guess, tr = id && (S.trackList || []).find(t => t.track_id === id);
-    const what = id ? `${tid(id)} · ${tname(id, tr ? tr.label : '')}${r.track_id ? '' : ' (from your box)'}` : `Your box on ${fmtF(r.frame / S.info.fps)}`;
+    const what = id ? `${tid(id)} · ${tname(id, tr ? tr.label : '')}${r.track_id ? '' : ' (from your box)'}` : isPhoto() ? 'Your box' : `Your box on ${fmtF(r.frame / S.info.fps)}`;
     rr.replaceChildren(el('div', { class: 'refChip' }, el('b', {}, 'THIS'),
       el('button', { class: 'what', title: 'Show it on the video', onclick: showRef }, what),
       el('button', { class: 'x', title: 'Clear: the next request has no "this"', 'aria-label': 'Clear the reference', disabled: busy ? '' : null,
@@ -1017,17 +1085,21 @@ function renderExport() {
   const n = S.timeline ? Object.keys(S.timeline.targets).length : 0, p = $('expPanel');
   const targets = `${n} target${n === 1 ? '' : 's'}`;
   const head = (title, meta, mute) => el('div', { class: 'exHead' }, el('span', { class: `exTitle${mute ? ' mute' : ''}` }, title), el('span', { class: 'exMeta' }, meta || ''));
-  const btn = disabled => el('button', { class: 'secondary', disabled: disabled ? '' : null, onclick: doExport }, 'Export MP4', el('span', { class: 'kbd' }, 'h.264'));
-  const sub = S.info ? 'Renders on this machine. The source file never leaves it.' : 'Pick a clip first.';
+  const photo = isPhoto();
+  const btn = disabled => el('button', { class: 'secondary', disabled: disabled ? '' : null, onclick: doExport },
+    photo ? 'Export photo' : 'Export MP4', el('span', { class: 'kbd' }, photo ? 'same format' : 'h.264'));
+  const sub = !S.info ? 'Pick a clip or photo first.' : photo ? 'Renders on this machine, without the photo\'s metadata (location, camera).'
+    : 'Renders on this machine. The source file never leaves it.';
   if (S.busy === 'request') {
     p.replaceChildren(head('Export', `waiting for v${S.versions.length + 1}`, true), el('span', { class: 'exSub' }, sub), btn(true));
   } else if (S.busy === 'export') {
-    p.replaceChildren(head('Rendering…', targets), el('span', { class: 'exSub' }, 'Writing every frame with its masks, on this machine.'), btn(true));
+    p.replaceChildren(head('Rendering…', targets), el('span', { class: 'exSub' }, photo ? 'Writing the photo with its masks, on this machine.' : 'Writing every frame with its masks, on this machine.'), btn(true));
   } else if (exportFresh()) {
-    const st = S.exportStats;
+    const st = S.exportStats, file = exportName();
     p.replaceChildren(head('Exported', `v${vNum(curVersion())} · ${targets}`),
-      el('span', { class: 'exSub' }, `export.mp4 · ${st.frames.toLocaleString()} frames · ${st.failed_frames} failed segments`),
-      el('a', { class: 'primary', href: S.exportUrl, download: 'export.mp4' }, 'Download', svg('download')));
+      el('span', { class: 'exSub' }, photo ? `${file} · ${S.info.width}×${S.info.height} · no metadata${st.failed_frames ? ' · masking failed, the whole photo is blurred' : ''}`
+        : `${file} · ${st.frames.toLocaleString()} frames · ${st.failed_frames} failed segments`),
+      el('a', { class: 'primary', href: S.exportUrl, download: file }, 'Download', svg('download')));
   } else {
     p.replaceChildren(head('Export', S.vid ? `v${vNum(curVersion())} · ${targets}` : '', !n),
       el('span', { class: 'exSub' }, n || !S.vid ? sub : 'Nothing masked yet. Send a request or draw a box first.'), btn(!S.vid || !n || !!S.busy));
@@ -1050,7 +1122,7 @@ function renderAgent() {
   const st = S.steps, box = $('steps');
   if (!st) {
     box.replaceChildren(el('span', { class: 'sh' }, 'What the agent did'),
-      el('div', { class: 'step dim' }, el('span', { class: 'mk' }, '○'), el('span', {}, S.vid ? 'Nothing yet. Type a request on the left, or draw a box on Source.' : 'Pick a clip to start.')));
+      el('div', { class: 'step dim' }, el('span', { class: 'mk' }, '○'), el('span', {}, S.vid ? 'Nothing yet. Type a request on the left, or draw a box on Source.' : 'Pick a clip or photo to start.')));
   } else {
     // A finished run ends on the red square: the last thing the agent did. Collapsed (the default), the card
     // shows only that, so the target list keeps the room; a run in progress always shows every step.
@@ -1098,7 +1170,7 @@ function renderAgent() {
   if (sp.length) {
     const cur = S.spotIdx >= 0 && sp[S.spotIdx % sp.length];
     $('lowconf').replaceChildren(el('i'),
-      el('span', {}, cur ? `Spot ${S.spotIdx % sp.length + 1} of ${sp.length}: ${cur.chip} at ${fmtF(cur.a)}–${fmtF(cur.b)}. The detector wasn't sure there, so it's masked with extra padding.`
+      el('span', {}, cur ? `Spot ${S.spotIdx % sp.length + 1} of ${sp.length}: ${cur.chip}${isPhoto() ? '' : ` at ${fmtF(cur.a)}–${fmtF(cur.b)}`}. The detector wasn't sure there, so it's masked with extra padding.`
         : `${sp.length} low-confidence spot${sp.length === 1 ? '' : 's'}, masked anyway with extra padding`),
       el('button', { onclick: checkSpot, title: 'Step through them' }, cur ? 'Next' : 'Check'));
   }
@@ -1110,7 +1182,7 @@ function renderAgent() {
     if (g) {
       const range = span(g), one = g.effect && !g.effect.includes('/') ? g.effect : null;
       const head = el('div', { class: 'selHead' }, el('span', { class: 'sid' }, '·'), el('span', { class: 'snm' }, g.name),
-        el('span', { class: 'stm' }, range ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
+        el('span', { class: 'stm' }, range && !isPhoto() ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
       sp2.replaceChildren(head, g.ids.length
         ? el('div', { class: 'selRow' }, el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect for all of them' }, fxs.map(([fx, nm]) =>
             el('button', { class: fx === one ? 'on' : '', 'aria-pressed': String(fx === one), disabled: busy ? '' : null,
@@ -1118,13 +1190,14 @@ function renderAgent() {
             el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking all of them (Delete key)', onclick: () => editTargets('remove', g.ids) }, 'Remove all'))
         : el('div', { class: 'selRow' }, el('span', { class: 'mute' }, 'Mask them all with'), el('div', { class: 'seg' }, fxs.map(([fx, nm]) =>
             el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', g.all, fx) }, nm)))),
-        el('span', { class: 'selHint' }, `Edits apply to all ${g.n}. Open the group with › to pick one, or click one on the video.`));
+        el('span', { class: 'selHint' }, `Edits apply to all ${g.n}. Open the group with › to pick one, or click one on the ${media()}.`));
       return;
     }
   }
   const t = id && ts.find(x => x.id === id), tr = id && (S.trackList || []).find(x => x.track_id === id);
   if (!id || (!t && !tr)) {
-    sp2.replaceChildren(el('span', { class: 'selHint' }, S.vid ? 'Select a target on the video, in the list or in the timeline to change its effect, move it or remove it.' : ''));
+    sp2.replaceChildren(el('span', { class: 'selHint' }, !S.vid ? '' : isPhoto() ? 'Select a target on the photo or in the list to change its effect, move it or remove it.'
+      : 'Select a target on the video, in the list or in the timeline to change its effect, move it or remove it.'));
     return;
   }
   const refBtn = el('button', { class: 'refUse', disabled: busy || (S.ref && S.ref.track_id === id) ? '' : null,
@@ -1133,14 +1206,15 @@ function renderAgent() {
   const label = (t || tr).label, masked = t && !t.spared;
   const range = t ? span(t) : (tr.keyframes.length ? [tr.keyframes[0].f / S.info.fps, (tr.keyframes[tr.keyframes.length - 1].f + 1) / S.info.fps] : null);
   const head = el('div', { class: 'selHead' }, el('span', { class: 'sid' }, tid(id)), el('span', { class: 'snm' }, t ? t.name : tname(id, label)),
-    el('span', { class: 'stm' }, range ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
+    el('span', { class: 'stm' }, range && !isPhoto() ? `${fmtF(range[0])} → ${fmtF(range[1])}` : ''));
   if (masked) {
     const seg = el('div', { class: 'seg', role: 'group', 'aria-label': 'Effect' }, fxs.map(([fx, nm]) =>
       el('button', { class: fx === t.effect ? 'on' : '', 'aria-pressed': String(fx === t.effect), disabled: busy ? '' : null,
         onclick: () => fx !== t.effect && editTargets('effect', [id], fx) }, nm)));
     sp2.replaceChildren(head, el('div', { class: 'selRow' }, seg,
       el('button', { id: 'removeBtn', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Remove')),
-      el('span', { class: 'selHint' }, 'In the wrong place? Drag the box or a corner on the video; from that frame on, a new track follows it. × on the video removes it.'),
+      el('span', { class: 'selHint' }, isPhoto() ? 'In the wrong place? Drag the box or a corner on the photo. × on the photo removes it.'
+        : 'In the wrong place? Drag the box or a corner on the video; from that frame on, a new track follows it. × on the video removes it.'),
       refBtn);
   } else {
     const ans = S.vlm[id];
@@ -1205,18 +1279,27 @@ function placePlayhead() {
 const P = { t: 0, frame: 0, hits: [], dragBox: null, newBox: null, src: 'source', btn: {}, paused: null };
 function seek(t) {
   if (!S.info) return;
+  if (isPhoto()) { drawAll(); return; }  // always frame 0
   const v = $('player'); t = Math.max(0, Math.min(dur() - 1 / S.info.fps, t));
   v.currentTime = t; P.t = t; drawAll();
 }
 function setProgramSource() {
   const fresh = exportFresh(), ex = $('expPlayer');
   P.src = fresh ? 'export' : 'source';
+  if (isPhoto()) {  // Program shows the exported photo itself until the next edit
+    if (!fresh) S.exportImg = null;
+    else if (!S.exportImg || S.exportImg.dataset.url !== S.exportUrl) {
+      const img = S.exportImg = new Image();
+      img.dataset.url = S.exportUrl; img.onload = () => drawProgram(); img.src = S.exportUrl;
+    }
+    return;
+  }
   if (fresh && !ex.src.endsWith(S.exportUrl)) { ex.src = S.exportUrl; ex.currentTime = $('player').currentTime || 0; }
   if (!fresh && ex.getAttribute('src')) { ex.pause(); ex.removeAttribute('src'); ex.load(); }
 }
 // Program alone until the clip first plays; then Source appears beside it and stays (pausing doesn't hide it),
 // unless the Source switch is off. Draw box always shows Source, since boxes are drawn there.
-const srcShown = () => S.drawMode || (!S.srcOff && (S.srcSeen || !$('player').paused));
+const srcShown = () => S.drawMode || isPhoto() || (!S.srcOff && (S.srcSeen || !$('player').paused));
 const setSrcOff = off => { S.srcOff = off; layoutMonitors(); };
 function renderSrcSwitch() {
   const on = !S.srcOff, b = $('srcSwitch');
@@ -1277,7 +1360,7 @@ const currentFrame = t => S.info ? Math.max(0, Math.min(S.info.n_frames - 1, Mat
 function drawAll(mediaTime) {
   if (!S.info || !S.timeline) return;
   const v = $('player');
-  P.t = mediaTime !== undefined ? mediaTime : v.currentTime || 0;
+  P.t = isPhoto() ? 0 : mediaTime !== undefined ? mediaTime : v.currentTime || 0;
   P.frame = currentFrame(P.t);
   drawSource(); drawProgram();
   $('tc').textContent = fmtF(P.t); $('tcDur').textContent = `/ ${fmtF(dur())}`;
@@ -1289,7 +1372,7 @@ function drawAll(mediaTime) {
     $('playBtn').setAttribute('aria-label', v.paused ? 'Play' : 'Pause');
   }
   const exportLabel = P.src === 'export';
-  $('progLabel').textContent = exportLabel ? 'export.mp4 · what was written' : S.busy === 'request' ? `final output · v${vNum(curVersion())}` : 'final output · what Export writes';
+  $('progLabel').textContent = exportLabel ? `${exportName()} · what was written` : S.busy === 'request' ? `final output · v${vNum(curVersion())}` : 'final output · what Export writes';
   const badge = $('progBadge');
   badge.hidden = S.busy !== 'request';
   if (!badge.hidden) badge.textContent = `Showing v${vNum(curVersion())} · updates when v${S.versions.length + 1} is done`;
@@ -1307,11 +1390,11 @@ function placeLabel(g, text, x1, y1, x2, y2, placed, cw, ch) {
   return { x: pos[0], y: pos[1], w, h };
 }
 function drawSource() {
-  const cv = $('srcCv'), v = $('player'), dpr = devicePixelRatio || 1;
+  const cv = $('srcCv'), v = frameEl(), ready = frameReady(v), dpr = devicePixelRatio || 1;
   const cw = cv.width / dpr, ch = cv.height / dpr; if (!cw) return;
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.fillStyle = '#000'; g.fillRect(0, 0, cw, ch);
-  if (v.readyState >= 2) g.drawImage(v, 0, 0, cw, ch);
+  if (ready) g.drawImage(v, 0, 0, cw, ch);
   const s = cw / S.info.width, f = P.frame;
   const maskNow = new Map(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => [m.id, m]));
   const items = [], sel = selIds();
@@ -1341,7 +1424,7 @@ function drawSource() {
   for (const b of boxes) {
     P.hits.push({ id: b.id, r: b.r });
     g.save();
-    if ((b.kind === 'mask' || b.kind === 'sel') && !many && v.readyState >= 2) {
+    if ((b.kind === 'mask' || b.kind === 'sel') && !many && ready) {
       g.beginPath(); g.rect(b.x, b.y, b.w, b.h); g.clip();
       g.filter = 'blur(8px)'; g.drawImage(v, 0, 0, cw, ch); g.filter = 'none';
       g.restore(); g.save();
@@ -1376,7 +1459,7 @@ function drawSource() {
     g.fillStyle = '#EDEDED'; g.fillRect(x2 * s - 3.5, y2 * s - 3.5, 7, 7);
     hint.hidden = false;
     hint.replaceChildren(`${S.drawMode === 'ref' ? 'This one' : 'New box'} · ${Math.round(x2 - x1)} × ${Math.round(y2 - y1)} px`, el('br'),
-      el('span', {}, S.drawMode === 'ref' ? 'Release: it\'s "this" in your next request.' : `Release to add T${Object.keys(S.ids).length + 1}. It's tracked through the clip.`));
+      el('span', {}, S.drawMode === 'ref' ? 'Release: it\'s "this" in your next request.' : `Release to add T${Object.keys(S.ids).length + 1}.${isPhoto() ? '' : ' It\'s tracked through the clip.'}`));
     const below = y2 * s + 6 + 40 < ch;
     hint.style.left = `${Math.max(0, Math.min(cw - 200, x1 * s - 1))}px`;
     hint.style.top = below ? `${y2 * s + 6}px` : ''; hint.style.bottom = below ? '' : `${ch - y1 * s + 6}px`;
@@ -1387,6 +1470,11 @@ function drawProgram() {
   const cw = cv.width / dpr, ch = cv.height / dpr; if (!cw) return;
   const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.fillStyle = '#000'; g.fillRect(0, 0, cw, ch);
+  if (P.src === 'export' && isPhoto()) {
+    if (frameReady(S.exportImg)) g.drawImage(S.exportImg, 0, 0, cw, ch);
+    drawMarks(g, cw / S.info.width, cw, ch, 'prog');
+    return;
+  }
   if (P.src === 'export') {
     const ex = $('expPlayer'), v = $('player');
     if (!v.paused && ex.paused) ex.play().catch(() => {});
@@ -1398,7 +1486,7 @@ function drawProgram() {
     drawMarks(g, cw / S.info.width, cw, ch, 'prog');
     return;
   }
-  const v = $('player'); if (v.readyState < 2) { drawMarks(g, cw / S.info.width, cw, ch, 'prog'); return; }
+  const v = frameEl(); if (!frameReady(v)) { drawMarks(g, cw / S.info.width, cw, ch, 'prog'); return; }
   g.drawImage(v, 0, 0, cw, ch);
   // Each rectangle the way censor/render/render.py's apply_effect does it, in plain JS on the frame's pixels so
   // the monitor looks like the export: blur = INTER_AREA shrink to 1/24, Gaussian (OpenCV's kernel and mirrored
@@ -1675,6 +1763,7 @@ function editableMonitor(cv, which) {
     if (moved) return;
     const id = boxAtPoint(ev, cv);
     if (id) { if (id !== S.selected) select(id); return; }
+    if (isPhoto()) return;
     const v = $('player'); v.paused ? v.play() : v.pause();  // like clicking the video itself
   };
   cv.onpointercancel = () => { drag = null; P.newBox = null; P.dragBox = null; drawAll(); };
@@ -1683,12 +1772,18 @@ editableMonitor($('srcCv'), 'src');
 editableMonitor($('progCv'), 'prog');
 
 // ---------- request panel, transport, keys ----------
-const EXAMPLES = ['blur everyone except this person', 'blur the woman', 'blur everyone except the guy in the red hoodie', "pixelate all faces but mine, I'm the one in the black t-shirt"];
-$('examples').append(...EXAMPLES.map(t => el('button', { type: 'button', onclick: () => {
-  if (!S.vid) return;
-  $('text').value = t; $('text').focus();
-  if (/\bthis\b/.test(t) && !S.ref) toggleDraw('ref');  // it needs a "this": point at them first
-} }, t)));
+const EXAMPLES = {
+  video: ['blur everyone except this person', 'blur the woman', 'blur everyone except the guy in the red hoodie', "pixelate all faces but mine, I'm the one in the black t-shirt"],
+  image: ['blur all faces and plates', 'blur everyone except this person', 'pixelate everyone but the bride', 'cover the screens with a black box'],
+};
+function renderExamples() {
+  $('examples').replaceChildren(...EXAMPLES[isPhoto() ? 'image' : 'video'].map(t => el('button', { type: 'button', onclick: () => {
+    if (!S.vid) return;
+    $('text').value = t; $('text').focus();
+    if (/\bthis\b/.test(t) && !S.ref) toggleDraw('ref');  // it needs a "this": point at them first
+  } }, t)));
+}
+renderExamples();
 $('text').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendRequest($('text').value); } };
 $('genBtn').onclick = () => sendRequest($('text').value);
 // mode: 'mask' draws a box to hide, 'ref' a box that says who "this" is; false ends drawing
@@ -1721,7 +1816,7 @@ document.addEventListener('keydown', e => {
     e.preventDefault(); e.key.toLowerCase() === 'y' || e.shiftKey ? redoLast() : undoLast(); return;
   }
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && S.timeline && maskedSel().length) { e.preventDefault(); editTargets('remove', maskedSel()); return; }
-  if (document.activeElement.tagName === 'BUTTON') return;
+  if (document.activeElement.tagName === 'BUTTON' || isPhoto()) return;
   if (e.key === ' ') { e.preventDefault(); $('playBtn').click(); }
   else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
   else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
