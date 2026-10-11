@@ -32,12 +32,12 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 ## The four tasks
 
-### Worker 1: stitch fragmented person tracks (vision)
+### Worker 1: stitch fragmented person tracks (vision) — taken, in progress (branch `A/person-stitch`)
 
 **Problem:** on `street_walk` the person detector gives 18 tracks for about 3 people in focus; 15 are short scraps of blurry background pedestrians, because the tracker loses someone for a few frames and starts a "new" person. Every request asks the VLM about every track (~0.3 s each), and scraps get inconsistent answers. (IMPLEMENTATION.md, open item 1.)
 
 **Work:**
-1. Get YOLOE running locally (install line above) and cache person detections per frame, the way `bench/review.py` caches EgoBlur (add a `--cat person` path, or a small `bench/review_person.py`).
+1. Get YOLOE running locally (install line above) and cache person detections per frame, the way `bench/review.py` caches EgoBlur (add a `--cat person` path, or a small `bench/review_person.py`). Use **YOLOE-11**: YOLOE-26 was tested and misses real people (DETECTOR_OPTIONS.md item 2). `bench/compare_people.py` already counts tracks and scraps per clip and makes crop sheets.
 2. Write the stitcher in a new file `censor/vision/stitch.py`: join a track that ends to one that starts within N frames, near where the first was heading, with a similar box size (and optionally similar colors in the crop). Unit tests in `tests/test_stitch.py`.
 3. Call it at the end of `YoloeDetector._run` in `censor/vision/detect.py`.
 4. Measure on `street_walk`, `street_talk` and `street_plates`: tracks before and after, and check by eye (crop sheets) that no two different people got merged. Merging two people is worse than leaving a scrap: it would make one VLM answer apply to both.
@@ -64,7 +64,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 **Problem:** the request success rate (target: at least 15 of 20) can't be measured: `bench/requests.yaml` has 7 requests, all on the synthetic clip, and the real clips only have plate labels (`bench/labels/street_plates.plate.json`, `street_walk.plate.json`).
 
 **Work:**
-1. Label people (with a short description each: "woman, rust top", "man, red hoodie"), faces and plates on every 10th frame of `street_walk`, `street_talk` and `street_plates` with `bench/label_server.py` (format: `bench/gt.py`; on `street_plates`, the people in focus are enough).
+1. **Faces first** on `street_walk` and `street_plates`: without face labels nobody can tell whether EgoBlur Gen2 (or SCRFD) finds faces better, only whether they disagree. Then label people (with a short description each: "woman, rust top", "man, red hoodie") and plates, on every 10th frame of `street_walk`, `street_talk` and `street_plates` with `bench/label_server.py` (format: `bench/gt.py`; on `street_plates`, the people in focus are enough).
 2. Write 13+ more requests in `bench/requests.yaml` over the real clips, each with `must_mask` / `must_not_mask` by label id: plain ones ("blur all plates"), attribute ones ("blur the woman"), exceptions ("everyone except the guy in the red hoodie"), time windows, unblur, undo.
 3. Check the file loads: `python -m bench.run_bench --help`, then a stub run.
 
@@ -92,7 +92,8 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 - The taxi's round sticker on `street_plates` is blurred as a plate (EgoBlur 0.97): find a rule with `bench/review.py` that drops it without losing real plates (scored with `score`).
 - An 11x7 px plate on `street_walk` stays visible 0.16 s.
 - ~~YOLOE `half=True` for the person scan~~ done Sat evening: slightly worse, keep fp32. ~~YOLOE-26~~ tried: misses real people in the night crowd, dropped (DETECTOR_OPTIONS.md item 2, `bench/compare_people.py`).
-- EgoBlur Gen2 (DETECTOR_OPTIONS.md item 1): once someone gets the files from Meta's form, score it with `bench/review.py score <clip> --cat plate` on `street_plates` and `street_walk` against Gen1 (100% / 94.6% masked, 3% plate over-blur).
+- EgoBlur Gen2 (DETECTOR_OPTIONS.md item 1): the files are in hand and the loader supports them (`CENSOR_EGOBLUR_LP`, `CENSOR_EGOBLUR_FACE`); scoring is in progress. Score it with `bench/review.py score <clip> --cat plate` on `street_plates` and `street_walk` against Gen1 (100% / 94.6% masked, 3% plate over-blur).
+- Anyone free: make a Hugging Face account and request access to Meta's SAM 3 weights (gated), so SAM 3 can be tried as soon as the server is back (DETECTOR_OPTIONS.md item 3).
 
 ## Who touches what
 
