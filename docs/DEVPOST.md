@@ -14,6 +14,8 @@ Anyone who posts street footage, bodycam clips, a vlog or a school event has to 
 
 - **Ask in plain words.** "Blur all plates and the person in the red hoodie around halfway." "Everyone except the woman." "Pixelate faces in the first 10 seconds." "Unblur the plates." "Undo."
 - **Or draw a box** on a frame around anything, and it's tracked through the clip.
+- **Watch it before you export.** The video plays with two layers you can stack: every box the detectors found (masked or not, with the vision model's answer on each person), and the masks themselves, blurred where the export will blur. Inside the masks the live preview is within a few levels of the rendered frames.
+- **Fix any mask by hand.** Click a box to mask it, unmask it or switch blur / pixelate / black box; drag it or a corner if it's in the wrong place, and it's re-tracked from that frame on. Every fix is a version you can undo.
 - **See what the agent did.** Each reply lists its steps in plain words: what it looked for, the yes/no question it asked about each person ("Is this a man wearing a red hoodie?") with how many said yes, no or unsure, and what it masked. A coverage strip shows when each target is masked; click it to jump to that moment.
 - **Fail closed.** If the vision model is unsure about a person, or the tracker loses someone, they stay blurred. Errors mean more blur, never less.
 - **Undo and versions.** Every change is a version; undo is one click.

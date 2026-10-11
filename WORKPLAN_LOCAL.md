@@ -72,7 +72,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 **Files:** `bench/labels/*.json`, `bench/requests.yaml`, `bench/clips/manifest.yaml`.
 **Needs:** no GPU (plate drafts via `bench/review.py` need EgoBlur).
 
-### Worker 4: demo UI, demo script, Devpost (web + docs) — done (PR #12, branch `D/demo-ui`)
+### Worker 4: demo UI, demo script, Devpost (web + docs) — done (PR #12); follow-ups merged: video preview with box and mask layers, hand edits (mask / unmask / restyle / move) (#13, #15, #16; IMPLEMENTATION.md open item 4)
 
 **Problem:** the UI is a test page (`web/index.html`): no timeline, and the agent's work is only visible as raw JSON in the log.
 
