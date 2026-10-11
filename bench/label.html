@@ -20,6 +20,7 @@
   button { cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); }
   .obj { display:grid; grid-template-columns:14px 1fr auto; gap:6px; align-items:center; padding:4px; border-radius:6px; cursor:pointer; }
   .obj.active { background:#2a2a2a; }
+  button.armed { background:var(--accent); border-color:var(--accent); }
   .obj input { width:100%; box-sizing:border-box; padding:3px 6px; margin-top:3px; }
   .sw { width:14px; height:14px; border-radius:3px; }
   small, .muted { color:var(--muted); }
@@ -79,6 +80,14 @@ const color = id => { let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(
 const outlined = (x, y, w, h, lw, stroke) => {
   ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = lw + 4 * Math.max(1, lw / 3); ctx.strokeRect(x, y, w, h);
   ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.strokeRect(x, y, w, h);
+};
+// Click-twice confirmation: window.confirm() is blocked in some embedded browsers, where it returns false at once.
+const ARM_MS = 3000;
+const armed = (btn, label, text) => {
+  if (btn.classList.contains('armed')) { btn.classList.remove('armed'); btn.textContent = label; return true; }
+  btn.classList.add('armed'); btn.textContent = 'Sure?'; setStatus(text);
+  setTimeout(() => { btn.classList.remove('armed'); btn.textContent = label; }, ARM_MS);
+  return false;
 };
 const setStatus = (text, err) => { $('status').textContent = text; $('status').style.color = err ? 'var(--accent)' : ''; };
 
@@ -232,8 +241,8 @@ function renderObjects() {
     input.value = o.desc;
     input.onchange = () => { o.desc = input.value.trim(); touch(); };
     row.onclick = ev => { if (!['INPUT', 'BUTTON'].includes(ev.target.tagName)) { active = id; renderObjects(); draw(); } };
-    row.querySelector('button').onclick = () => {
-      if (!confirm(`Delete ${id} and its ${counts[id] || 0} boxes?`)) return;
+    row.querySelector('button').onclick = ev => {
+      if (!armed(ev.currentTarget, '\u00d7', `Click again to delete ${id} and its ${counts[id] || 0} boxes`)) return;
       delete L.objects[id];
       for (const e of byF.values()) e.boxes = e.boxes.filter(b => b.gt_id !== id);
       if (active === id) active = null;
@@ -257,7 +266,8 @@ $('add').onclick = () => {
 $('merge').onclick = () => {
   const into = $('mergeInto').value;
   if (!active || !into) return;
-  if (L.objects[active].category !== L.objects[into].category && !confirm('These objects have different categories. Merge anyway?')) return;
+  if (L.objects[active].category !== L.objects[into].category
+      && !armed($('merge'), 'Merge', 'These objects have different categories. Click Merge again to merge anyway')) return;
   let moved = 0, dropped = 0;
   for (const e of byF.values()) {
     const src = e.boxes.find(b => b.gt_id === active);
