@@ -69,6 +69,7 @@ bench/
   review.py            # cached EgoBlur on every frame, replayed track rules, crop sheets, per-plate scoring (any CUDA GPU)
   profile_scan.py      # where the scan time goes, GPU vs CPU-only
   egoblur_speed.py     # fp16 / autotuning / input scale / two streams for EgoBlur
+  live_speed.py        # could the detectors keep up with a livestream: tail latency, paced run, stride + delay
 scripts/
   setup.sh             # server env (never replaces the ROCm torch)
   smoke_yoloe.py       # M0 detector check
