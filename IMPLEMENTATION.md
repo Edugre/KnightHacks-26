@@ -319,6 +319,7 @@ Owner: C. Starts only after M4 passes.
 Built Sun 04:00-05:00 on branch `feat/live-replay` (plan: docs/LIVE_REPLAY_PLAN.md).
 - Plays a recorded clip at its own frame rate through the same detectors behind a 1.0 s delay buffer, with one standing rule (faces and plates), labeled as a replay; the page shows the delay and per-frame age.
 - Fail closed: a frame goes out only when a detection exists on both sides of it; otherwise the last vouched frame is repeated with a DETECTOR LATE badge, and before the first vouched frame the whole frame is blurred.
+- Camera mode (Sun 05:00): the page can push the laptop camera's frames to the same engine (`POST /api/live/push`); frame numbers follow elapsed time so a Wi-Fi stall is never interpolated across; detector on the server is EgoBlur, on a laptop optionally YuNet (faces only).
 - Tests: `tests/test_live.py`, `tests/test_live_cli.py`, `tests/test_live_routes.py`.
 - GPU gate run: pending (C5 of the plan); go/no-go 08:30.
 
