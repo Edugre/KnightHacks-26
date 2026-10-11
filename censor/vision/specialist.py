@@ -23,7 +23,7 @@ from typing import Callable, Optional
 import numpy as np
 
 from censor.core.tracks import Keyframe, Track, TrackStore
-from censor.core.video import frames
+from censor.core.video import frames, read_frame
 
 EGOBLUR_DIR = Path(os.environ.get("CENSOR_EGOBLUR_DIR", Path.home() / "datasets" / "egoblur"))
 # Which model file each category uses. Gen2 files (ego_blur_face_gen2.jit, ego_blur_lp_gen2.jit) load too; see
@@ -59,6 +59,18 @@ CONFIRM = {"license plate": {
     # no real plate on the labeled clips relied on a track this faint.
     "weak_min_mean": float(os.environ.get("CENSOR_PLATE_WEAK_MEAN", "0.3")),
     "min_aspect": float(os.environ.get("CENSOR_PLATE_MIN_ASPECT", "1.2")),        # width / height; PP4AV: 96.7% of real plates pass
+    # Confident tracks must be wider than tall too: the taxi's round sticker on street_plates was a confident
+    # 131x123 "plate" (0.92) blurred for a second, and three other square false tracks went with it, while every
+    # real plate track there was 1.69:1 or wider. Except at the frame edge, where a plate is cut off (FL 320
+    # leaving the frame: 0.69), and for tiny boxes, whose shape is a few pixels of noise (13x10 px plates).
+    "confident_min_aspect": float(os.environ.get("CENSOR_PLATE_CONFIDENT_MIN_ASPECT", "1.25")),
+    "shape_min_height": 16,  # px: below this the box shape isn't checked
+    # A tiny plate seen once in the checked frames (every 3rd) is dropped as a blip, though it may be there in
+    # the frames between: an 11x7 px plate on street_walk was detected on 4 frames in a row (0.43-0.49) but checked
+    # on one. Such blips get the frames around them checked too (+-1, +-2). Only tiny ones: doing it for every
+    # weak blip tripled the false plates on street_plates (tail lights and signs are there in the next frame too).
+    "recheck_min_conf": 0.4,
+    "recheck_max_height": 16,  # px
     "max_height_frac": float(os.environ.get("CENSOR_PLATE_MAX_HEIGHT", "0.25")),  # of the frame height
 }, "face": {
     # A big "face" needs a confident detection. EgoBlur's false faces are car backs: 300-900 px boxes at
@@ -201,17 +213,26 @@ def plate_shaped(box: Box, frame_h: int, min_aspect: Optional[float] = None, max
     return h > 0 and w / h >= min_aspect and h <= max_height_frac * frame_h
 
 
-def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0) -> bool:
-    """Tracks with enough confident detections always count. The rest need enough frames and, when the rule
-    asks, the median box of the track has to be plate-shaped (a median, so one odd frame doesn't decide)."""
+def confirmed(kfs: list[Keyframe], rule: Optional[dict], frame_h: int = 0, frame_w: int = 0) -> bool:
+    """Tracks with enough confident detections count if they're the right shape (when the rule asks and the box
+    isn't cut off by the frame edge or tiny). The rest need enough frames and, when the rule asks, the median
+    box of the track has to be plate-shaped (a median, so one odd frame doesn't decide)."""
     if rule is None:
         return True
     if "big_frac" in rule and frame_h:
         heights = sorted(k.box[3] - k.box[1] for k in kfs)
         if heights[len(heights) // 2] > rule["big_frac"] * frame_h and max(k.conf for k in kfs) < rule["big_min_conf"]:
             return False
-    if "min_conf" not in rule or sum(k.conf >= rule["min_conf"] for k in kfs) >= rule.get("min_confident", 1):
+    if "min_conf" not in rule:
         return True
+    if sum(k.conf >= rule["min_conf"] for k in kfs) >= rule.get("min_confident", 1):
+        if "confident_min_aspect" not in rule or not frame_h:
+            return True
+        w = sorted(k.box[2] - k.box[0] for k in kfs)[len(kfs) // 2]
+        h = sorted(k.box[3] - k.box[1] for k in kfs)[len(kfs) // 2]
+        edge = frame_w and any(k.box[0] < 3 or k.box[1] < 3 or k.box[2] > frame_w - 3 or k.box[3] > frame_h - 3
+                               for k in kfs)
+        return bool(edge) or h < rule.get("shape_min_height", 0) or (h > 0 and w / h >= rule["confident_min_aspect"])
     if len(kfs) < rule["min_frames"] or sum(k.conf for k in kfs) / len(kfs) < rule.get("weak_min_mean", 0.0):
         return False
     if "min_aspect" not in rule or not frame_h:
@@ -245,13 +266,42 @@ def absorb(kept: list[list[Keyframe]], dropped: list[list[Keyframe]], gap: int =
 
 
 def build_tracks(seq: list[tuple[int, list[tuple[Box, float]]]], rule: Optional[dict], frame_h: int,
-                 uncertain_below: float = 0.35) -> tuple[list[list[Keyframe]], list[list[Keyframe]]]:
+                 uncertain_below: float = 0.35, frame_w: int = 0) -> tuple[list[list[Keyframe]], list[list[Keyframe]]]:
     """(kept, dropped) tracks from per-frame detections: link, apply the confirmation rule, fold fragments in.
     bench/review.py replays this on cached detections, so keep the app's logic here and only here."""
     kept, dropped = [], []
     for kfs in link(seq, uncertain_below):
-        (kept if confirmed(kfs, rule, frame_h) else dropped).append(kfs)
+        (kept if confirmed(kfs, rule, frame_h, frame_w) else dropped).append(kfs)
     return kept, absorb(kept, dropped)
+
+
+def recheck_tiny(dropped: list[list[Keyframe]], detect_at: Callable[[int], list[tuple[Box, float]]],
+                 rule: Optional[dict], frame_h: int, frame_w: int = 0, n_frames: int = 0,
+                 uncertain_below: float = 0.35) -> tuple[list[list[Keyframe]], int]:
+    """Dropped tiny, fairly confident blips: look in the frames around each one (detect_at(f) runs the model on
+    frame f) and judge the track again with what's there. Returns the tracks it keeps and the frames it checked."""
+    if not rule or "recheck_min_conf" not in rule:
+        return [], 0
+    kept, checked = [], 0
+    for t in dropped:
+        if max(k.conf for k in t) < rule["recheck_min_conf"] or max(k.box[3] - k.box[1] for k in t) >= rule["recheck_max_height"]:
+            continue
+        have = {k.f for k in t}
+        extra = []
+        for k in t:
+            for f in (k.f - 2, k.f - 1, k.f + 1, k.f + 2):
+                if f < 0 or (n_frames and f >= n_frames) or f in have:
+                    continue
+                checked += 1
+                match = [(b, s) for b, s in detect_at(f) if _same(k.box, b)]
+                if match:
+                    b, s = max(match, key=lambda m: m[1])
+                    extra.append(Keyframe(f=f, box=b, conf=min(s, 1.0), state="detected" if s >= uncertain_below else "uncertain"))
+                    have.add(f)
+        full = sorted(t + extra, key=lambda k: k.f)
+        if extra and confirmed(full, rule, frame_h, frame_w):
+            kept.append(full)
+    return kept, checked
 
 
 class EgoBlurDetector:
@@ -296,9 +346,9 @@ class EgoBlurDetector:
     def _run(self, video: str, queries: list[str], store: TrackStore) -> list[Track]:
         wanted = {q: ALIASES[q.lower().strip()] for q in queries if q.lower().strip() in ALIASES}
         per_cat: dict[str, list[tuple[int, list[tuple[Box, float]]]]] = {c: [] for c in set(wanted.values())}
-        frame_h = 0
+        frame_h = frame_w = 0
         for f, img in frames(video, every=self.every, prefetch=DECODE_AHEAD):
-            frame_h = img.shape[0]
+            frame_h, frame_w = img.shape[:2]
             for cat in per_cat:
                 dets = [(b, s) for b, s in self.infer[cat](img) if s >= self.conf]
                 if cat == "face":
@@ -307,7 +357,15 @@ class EgoBlurDetector:
         found = []
         self.dropped = {}
         for q, cat in wanted.items():
-            kept, dropped = build_tracks(per_cat[cat], self.confirm.get(cat), frame_h, self.uncertain_below)
+            kept, dropped = build_tracks(per_cat[cat], self.confirm.get(cat), frame_h, self.uncertain_below, frame_w)
+
+            def detect_at(f: int, cat=cat) -> list[tuple[Box, float]]:
+                return [(b, s) for b, s in self.infer[cat](read_frame(video, f)) if s >= self.conf]
+            rescued, _ = recheck_tiny(dropped, detect_at, self.confirm.get(cat), frame_h, frame_w,
+                                      uncertain_below=self.uncertain_below)
+            if rescued:
+                kept += rescued
+                dropped = [t for t in dropped if not any(k in r for r in rescued for k in t[:1])]
             if dropped:
                 self.dropped[cat] = self.dropped.get(cat, 0) + len(dropped)
             for kfs in kept:

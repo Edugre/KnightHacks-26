@@ -91,7 +91,10 @@ def app_tracks(raw: dict, cat: str, every: int = sp.EGOBLUR_EVERY, conf: float =
     """(kept, dropped) tracks, exactly as EgoBlurDetector builds them from these detections."""
     rule = sp.CONFIRM.get(cat) if rule is None else rule
     seq = [(f, dets_at(raw, cat, f, conf)) for f in range(0, raw["n_frames"], every)]
-    return sp.build_tracks(seq, rule, raw["height"])
+    kept, dropped = sp.build_tracks(seq, rule, raw["height"], frame_w=raw["width"])
+    rescued, _ = sp.recheck_tiny(dropped, lambda f: dets_at(raw, cat, f, conf), rule, raw["height"], raw["width"],
+                                 raw["n_frames"])
+    return kept + rescued, [t for t in dropped if not any(t[0] in r for r in rescued)]
 
 
 def mask_rects(raw: dict, tracks: list[list[Keyframe]], padding: float = 0.15) -> dict[int, list[tuple]]:
