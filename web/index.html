@@ -706,14 +706,14 @@ async function watchScan(vid, queries) {
     } catch { return; }
   }
 }
-async function openVideo(j, name) {
+async function openVideo(j, name, home = false) {
+  reopening = false;
   Object.assign(S, { vid: j.video_id, info: j.info, name, timeline: null, trackList: null, maskFrames: null, ops: [], ids: {}, desc: {}, vlm: {}, versions: [], redo: [], nRedo: 0, selected: null, hover: null, open: new Set(), ref: null,
-    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: false, srcSeen: false, expanded: null });
+    exportUrl: null, exportStats: null, exportSig: '', steps: null, lastMs: null, spotIdx: -1, picker: home, srcSeen: false, expanded: null });
   const saved = store.load();
   if (saved) Object.assign(S, { name: saved.name || name, ids: saved.ids || {}, desc: saved.desc || {}, vlm: saved.vlm || {},
     versions: (saved.versions || []).map(({ card, ...v }) => v), redo: saved.redo || [] });
   if (!S.versions.length) S.versions.push({ key: 'upload', text: 'Upload', at: Date.now(), opIds: [], n: 0, undone: false });
-  history.replaceState(null, '', `?video=${S.vid}`);
   document.body.dataset.kind = (j.info && j.info.kind) || 'video';
   S.exportImg = null; S.still = null;
   if (document.body.dataset.kind === 'image') {
@@ -756,7 +756,17 @@ function notice(msg, err = false) { $('notice').textContent = msg || ''; $('noti
 // workspace on that clip.
 const homeShown = () => !S.vid || S.picker;
 const ARROW = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+// The address says where you are, so a refresh comes back to it: ?video=<id> in the editor, ?video=<id>&home on the
+// home screen with that clip still open (its "Back to" link works after a refresh), nothing on a fresh home screen
+// On load the page draws once before the ?video= clip has reopened: leave the address alone until it has (or failed)
+let reopening = new URLSearchParams(location.search).has('video');
+function syncUrl() {
+  if (reopening && !S.vid) return;
+  const want = S.vid ? `?video=${S.vid}${S.picker ? '&home' : ''}` : '';
+  if (location.search !== want) history.replaceState(null, '', want || location.pathname);
+}
 function renderPicker() {
+  syncUrl();
   const show = homeShown();
   $('home').hidden = !show; $('app').hidden = show;
   $('openBtn').hidden = !S.vid;
@@ -771,8 +781,8 @@ function homeMsg(msg, err = false) {
   m.classList.toggle('err', !!err); m.classList.toggle('busy', !!msg && !err);
   $('homeMsgText').textContent = msg || (document.body.dataset.offline === '1' ? 'on-device · nothing leaves this machine' : 'on-device');
 }
-$('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, H.open); };
-$('photoInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, H.open); };
+$('dropInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, uploadTarget()); };
+$('photoInput').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) uploadFile(f, uploadTarget()); };
 $('homeBack').onclick = () => { S.picker = false; renderPicker(); layoutMonitors(); };
 // Drag a file anywhere on the home screen; the drop area lights up while one is over the page
 let resetDrag = () => {};
@@ -796,37 +806,58 @@ let resetDrag = () => {};
     e.preventDefault(); depth = 0; over(false);
     const f = [...e.dataTransfer.files].find(x => /^(video|image)\//.test(x.type) || VIDEO.test(x.name) || PHOTO.test(x.name));
     if (!homeShown()) return;
-    if (f) uploadFile(f, H.open); else homeMsg('That isn\'t a video or a photo.', true);
+    if (f) uploadFile(f, uploadTarget()); else homeMsg('That isn\'t a video or a photo.', true);
   });
 })();
 
 
 // ---------- home: folders ----------
-// No folders: the home screen is as it was, plus "New folder" in the samples header (2c). Once there is one, a
-// "Your folders" row sits between the drop area and the samples (1c): the three most recently used folders and a
-// New folder cell. Click a folder for its clips; drop a video or photo on one to upload it there.
+// "Your folders", pinned to the bottom of the home screen: the built-in Samples folder, the two most recently used
+// folders and a New folder cell (All N shows the rest). Click a folder for its clips; drop a video or photo on one of
+// the user's folders to upload it there.
 const FOLDER_IC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>', FOLDER_PLUS = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/></svg>';
-const H = { folders: [], all: false, naming: false, open: null };
+const H = { folders: [], all: false, naming: false, open: null, samples: null };
+// Samples: a built-in folder, always first, holding the sample videos (bench/clips) and photos (bench/photos) the
+// server lists. Opening one loads it like an upload. It can't be renamed, deleted or uploaded into.
+const SAMPLES = 'samples';
+const isSamples = f => !!f && f.id === SAMPLES;
+const uploadTarget = () => (H.open && !isSamples(H.open) ? H.open : null);  // uploads never go into Samples
+function listSampleClips() {
+  if (H.samples) return;
+  H.samples = [];
+  Promise.all([api('api/samples').catch(() => []), api('api/samples?kind=image').catch(() => [])]).then(([vs, ps]) => {
+    H.samples = [
+      ...vs.map(c => ({ id: c.id, kind: 'video', name: c.id, meta: c.duration ? `${c.duration.toFixed(1)} s · ${c.height}p` : `${c.mb} MB` })),
+      ...ps.map(c => ({ id: c.id, kind: 'image', name: c.id, meta: c.width ? `photo · ${c.width}×${c.height}` : `photo · ${c.mb} MB` })),
+    ];
+    if (isSamples(H.open)) H.open.clips = H.samples;
+    if (!typingName()) renderFolders();
+  });
+}
 // A refresh in the background (the home screen re-renders when a scan or request finishes) mustn't throw away a
 // folder name being typed: the data updates, the redraw waits
 const typingName = () => $('homeFolders').contains(document.activeElement) && document.activeElement.tagName === 'INPUT';
 function listFolders() {
+  listSampleClips();
   api('api/folders').then(fs => {
     H.folders = fs;
-    if (H.open && !fs.some(f => f.id === H.open.id)) H.open = null;
+    if (H.open && !isSamples(H.open) && !fs.some(f => f.id === H.open.id)) H.open = null;
     if (!typingName()) renderFolders();
-    if (H.open && !H.open.mode) refreshOpenFolder();  // back from the workspace: a clip may have been filed here since
+    if (H.open && !isSamples(H.open) && !H.open.mode) refreshOpenFolder();  // back from the workspace: a clip may have been filed here since
   })
     .catch(() => { H.folders = []; renderFolders(); });
 }
 const nClips = n => `${n} clip${n === 1 ? '' : 's'}`;
 function renderFolders() {
   const box = $('homeFolders'), open = H.open;
-  $('dropTitle').textContent = open ? `Drop a video into ${open.name}` : 'Drop a video';
+  $('dropTitle').textContent = uploadTarget() ? `Drop a video into ${open.name}` : 'Drop a video';
   box.classList.toggle('viewing', !!open);
   if (open) return renderFolderView(box);
   // Always shown, at the bottom of the column: with no folders yet it's just the New folder cell
-  const shown = H.all ? H.folders : H.folders.slice(0, 3);
+  const shown = H.all ? H.folders : H.folders.slice(0, 2);
+  const samples = el('button', { class: 'fCell', title: 'Sample videos and photos to try', onclick: () => openFolder({ id: SAMPLES, name: 'Samples' }) });
+  samples.insertAdjacentHTML('beforeend', FOLDER_IC);
+  samples.append(el('span', { class: 'nm' }, el('b', {}, 'Samples'), el('small', {}, H.samples ? nClips(H.samples.length) : '')));
   const cells = shown.map(f => {
     const b = el('button', { class: 'fCell', title: `Open ${f.name}. Drop a video or photo here to upload it into this folder.`, onclick: () => openFolder(f) });
     b.insertAdjacentHTML('beforeend', FOLDER_IC);
@@ -835,10 +866,11 @@ function renderFolders() {
     return b;
   });
   if (H.naming) cells.unshift(namingCell());
+  cells.unshift(samples);
   const add = el('button', { class: 'fCell new', title: 'New folder', onclick: startNaming });
   add.insertAdjacentHTML('beforeend', FOLDER_PLUS); add.append(el('b', {}, 'New folder'));
   box.replaceChildren(
-    el('div', { class: 'th' }, 'Your folders', H.folders.length > 3 ? el('button', { class: 'hLink thLink', onclick: () => { H.all = !H.all; renderFolders(); } }, H.all ? 'Fewer' : `All ${H.folders.length}`) : null),
+    el('div', { class: 'th' }, 'Your folders', H.folders.length > 2 ? el('button', { class: 'hLink thLink', onclick: () => { H.all = !H.all; renderFolders(); } }, H.all ? 'Fewer' : `All ${H.folders.length}`) : null),
     el('div', { class: 'fGrid' }, ...cells, H.naming ? null : add));
 }
 // Naming a new folder: an inline field in a new cell. Enter creates it, Esc (or leaving it empty) cancels.
@@ -865,6 +897,7 @@ async function refreshOpenFolder() {
   try { const got = await api(`api/folders/${id}`); if (H.open && H.open.id === id) { H.open = { ...got, mode: H.open.mode }; if (!typingName()) renderFolders(); } } catch {}
 }
 async function openFolder(f) {
+  if (isSamples(f)) { H.open = { id: SAMPLES, name: 'Samples', clips: H.samples && H.samples.length ? H.samples : (H.samples ? [] : null) }; return renderFolders(); }
   H.open = { id: f.id, name: f.name, clips: null }; renderFolders();
   try { const got = await api(`api/folders/${f.id}`); if (H.open && H.open.id === f.id) { H.open = got; renderFolders(); } }
   catch (e) { H.open = null; renderFolders(); homeMsg(`Couldn't open ${f.name}: ${errText(e)}`, true); }
@@ -872,7 +905,13 @@ async function openFolder(f) {
 function renderFolderView(box) {
   const o = H.open, when = t => { const d = new Date(t * 1000); return d.toDateString() === new Date().toDateString()
     ? `today ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : d.toLocaleDateString([], { month: 'short', day: 'numeric' }); };
+  const builtin = isSamples(o);
   const rows = !o.clips ? [el('div', { class: 'hEmpty' }, 'Opening…')]
+    : builtin ? (o.clips.length ? o.clips.map(c => {
+      const b = el('button', { class: 'hRow', title: `Open ${c.name}`, onclick: () => loadSample(c.id, c.kind, c.kind === 'image' ? `${c.id} (photo)` : `${c.id}.mp4`) },
+        el('span', { class: 'id' }, c.name), el('span', { class: 'meta' }, c.meta));
+      b.insertAdjacentHTML('beforeend', ARROW); return b;
+    }) : [el('div', { class: 'hEmpty' }, 'No samples on this server. Add clips to bench/clips or photos to bench/photos.')])
     : o.clips.length ? o.clips.map(c => {
       const b = el('button', { class: 'hRow', title: `Open ${c.name}`, onclick: () => openFiled(c) },
         el('span', { class: 'id' }, c.name), el('span', { class: 'meta' }, `${c.kind === 'image' ? 'photo · ' : ''}${when(c.added)}`));
@@ -897,7 +936,7 @@ function renderFolderView(box) {
     input.onblur = () => finish(true);
     title = input;
   } else title = el('b', {}, o.name);
-  const acts = o.mode ? null : el('span', { class: 'fActs' },
+  const acts = o.mode || builtin ? null : el('span', { class: 'fActs' },
     el('button', { class: 'hLink', title: 'Rename this folder', onclick: () => { o.mode = 'rename'; renderFolders(); } }, 'Rename'),
     el('button', { class: 'hLink', title: 'Delete this folder (its clips stay)', onclick: () => { o.mode = 'delete'; renderFolders(); } }, 'Delete'));
   const confirm = o.mode !== 'delete' ? null : el('div', { class: 'fConfirm', role: 'alert' },
@@ -2063,11 +2102,11 @@ if (API) api('api/config').then(c => {
   if (c.stub) document.body.dataset.stub = '1';
   renderAll();
 }).catch(e => notice(`Can't reach the server at ${API}: ${errText(e)}`, true));
-// ?video=<id> reopens a video uploaded earlier, with its masks so far
-const reopen = new URLSearchParams(location.search).get('video');
+// ?video=<id> reopens a video uploaded earlier, with its masks so far; with &home, behind the home screen
+const params = new URLSearchParams(location.search), reopen = params.get('video');
 if (reopen) {
-  api(`api/videos/${reopen}`).then(j => openVideo({ video_id: reopen, info: j.info, prescan: [] }, `video ${reopen}`))
-    .catch(e => { notice(`Couldn't reopen video ${reopen}: ${errText(e)}`, true); history.replaceState(null, '', location.pathname); });
+  api(`api/videos/${reopen}`).then(j => openVideo({ video_id: reopen, info: j.info, prescan: [] }, `video ${reopen}`, params.has('home')))
+    .catch(e => { reopening = false; notice(`Couldn't reopen video ${reopen}: ${errText(e)}`, true); history.replaceState(null, '', location.pathname); });
 }
 </script>
 </body>
