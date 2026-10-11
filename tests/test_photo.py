@@ -1,4 +1,5 @@
 """Photos as one-frame videos: the readers, the renderer and a whole request on a photo. No GPU or ffmpeg needed."""
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -138,3 +139,146 @@ def test_a_request_on_a_photo_masks_and_exports(photo, tmp_path):
         x1, y1, x2, y2 = (int(v) for v in s.tracks.by_label(label)[0].keyframes[0].box)
         assert detail(b[y1:y2, x1:x2]) < 0.2 * detail(a[y1:y2, x1:x2]), label
     assert np.abs(a[0:80, 0:400].astype(int) - b[0:80, 0:400].astype(int)).mean() < 1  # the sky, far from every target
+
+
+# ---- detectors and agent on a photo ---------------------------------------------------------------------------
+
+def test_egoblur_keeps_one_frame_plates_on_a_photo(photo):
+    """Video rules want a plate seen twice confidently or on 3 frames; a photo has one frame, so that would drop
+    every plate. One detection counts, still judged by shape, and weak ones are kept as uncertain."""
+    from censor.vision import specialist as sp
+    seen = []
+
+    def plate(img):
+        seen.append(img.shape)
+        return [((100, 500, 260, 540), 0.9),    # a plate, confident
+                ((700, 500, 780, 520), 0.42),   # a distant plate, under min_conf: kept, uncertain
+                ((900, 400, 960, 420), 0.15),   # faint but plate-shaped: kept, uncertain (fail closed)
+                ((300, 100, 360, 200), 0.3)]    # faint and taller than wide: not a plate
+    det = sp.EgoBlurDetector(infer={"face": lambda img: [], "license plate": plate}, every=3)
+    found = det.run(str(photo), ["license plate"], TrackStore())
+    assert len(seen) == 1  # one pass, no recheck of frames a photo doesn't have
+    states = {round(t.keyframes[0].box[0]): t.keyframes[0].state for t in found}
+    assert states == {100: "detected", 700: "uncertain", 900: "uncertain"} and det.dropped == {"license plate": 1}
+    assert all(len(t.keyframes) == 1 and t.keyframes[0].f == 0 for t in found)
+
+
+def test_yoloe_detects_a_photo_once_without_the_tracker(photo):
+    from types import SimpleNamespace as NS
+    from censor.vision import detect as d
+    got = {}
+
+    class FakeYoloe:
+        predictor = None
+
+        def set_classes(self, names, pe):
+            got["classes"] = names
+
+        def get_text_pe(self, names):
+            return None
+
+        def track(self, **kw):
+            raise AssertionError("a photo has nothing to track")
+
+        def predict(self, source, **kw):
+            got["shape"] = source.shape  # the decoded pixels, rotated as read_image reads them
+            rows = [((10, 20, 110, 220), 0.8, 0), ((300, 50, 340, 90), 0.2, 1)]
+            return [NS(boxes=NS(xyxy=NS(tolist=lambda: [list(b) for b, _, _ in rows]),
+                                conf=NS(tolist=lambda: [c for _, c, _ in rows]),
+                                cls=NS(tolist=lambda: [float(k) for _, _, k in rows])))]
+
+    det = object.__new__(d.YoloeDetector)
+    det.weights, det.device = "fake.pt", "cpu"
+    d.YoloeDetector._models["fake.pt"] = FakeYoloe()
+    try:
+        found = det.run(str(photo), ["car", "dog"], TrackStore())
+    finally:
+        d.YoloeDetector._models.pop("fake.pt")
+    assert got == {"classes": ["car", "dog"], "shape": (720, 1280, 3)}
+    assert [(t.label, len(t.keyframes), t.keyframes[0].f, t.keyframes[0].state) for t in found] == \
+        [("car", 1, 0, "detected"), ("dog", 1, 0, "uncertain")]
+
+def test_a_time_phrase_on_a_photo_is_ignored_with_a_note(photo, tmp_path):
+    from censor.agent.agent import Agent
+    from censor.agent.tools import Session
+    from censor.vision.detect import StubDetector
+    s = Session(photo, tmp_path / "w", detector=StubDetector())
+    assert s.resolve_time("last 5 seconds") == [0.0, 1.0]
+    r = Agent(s).run("blur the screen in the last 5 seconds")
+    assert r["summary"]["by_label"] == {"screen": 1}
+    assert "A photo has no time" in r["message"]
+    assert all(o.time_range is None for o in s.log.ops)
+
+
+# ---- the server ------------------------------------------------------------------------------------------------
+
+@pytest.fixture()
+def client(tmp_path, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_DATA", str(tmp_path / "data"))
+    monkeypatch.delenv("CENSOR_MODEL_URL", raising=False)
+    import importlib
+    import censor.server.app as app_mod
+    importlib.reload(app_mod)
+    from fastapi.testclient import TestClient
+    return TestClient(app_mod.app), app_mod
+
+
+def test_upload_request_export_a_photo(photo, client):
+    c, _ = client
+    with open(photo, "rb") as f:
+        j = c.post("/api/videos", files={"file": ("Holiday.PNG", f, "image/png")}).json()
+    vid = j["video_id"]
+    assert j["info"]["kind"] == "image" and j["info"]["n_frames"] == 1
+    with open(str(photo) + ".tracks.json", "rb") as f:
+        assert c.post(f"/api/videos/{vid}/tracks-sidecar", files={"file": ("t.json", f)}).json()["ok"]
+
+    r = c.post(f"/api/videos/{vid}/request", json={"text": "blur all plates and faces"}).json()
+    assert r["summary"]["by_label"] == {"license plate": 1, "face": 1}
+    assert c.post(f"/api/videos/{vid}/box", json={"frame": 0, "box": [1050, 300, 1230, 420]}).json()["track"]["end"] == 0
+    masks = c.get(f"/api/videos/{vid}/masks").json()
+    assert masks["n_frames"] == 1 and all(f[0] == 0 for m in masks["targets"].values() for f in m["frames"])
+    assert c.get(f"/api/videos/{vid}/preview/0.jpg").status_code == 200
+    assert c.get(f"/api/videos/{vid}/preview/1.jpg").status_code == 404
+
+    e = c.post(f"/api/videos/{vid}/export").json()
+    assert e["kind"] == "image" and e["url"].startswith(f"api/videos/{vid}/export.png?v=")
+    assert e["stats"] == {"frames": 1, "masked_boxes": 3, "failed_frames": 0}
+    got = c.get("/" + e["url"])
+    assert got.status_code == 200 and got.headers["content-type"] == "image/png"
+    out = cv2.imdecode(np.frombuffer(got.content, np.uint8), cv2.IMREAD_COLOR)
+    assert out.shape == (720, 1280, 3)
+    assert c.get(f"/api/videos/{vid}/export.mp4").status_code == 404
+    assert c.get(f"/api/videos/{vid}/export.exe").status_code == 404
+
+
+def test_photos_the_server_cant_read_are_refused(client, tmp_path):
+    c, app_mod = client
+    r = c.post("/api/videos", files={"file": ("IMG_0001.HEIC", b"\x00" * 64, "image/heic")})
+    assert r.status_code == 415 and "JPEG" in r.json()["detail"]
+    r = c.post("/api/videos", files={"file": ("broken.jpg", b"not a jpeg", "image/jpeg")})
+    assert r.status_code == 400
+    assert not any(app_mod.DATA_DIR.iterdir())  # no half-made session left behind
+
+
+def test_sample_photos_load_without_a_file_picker(photo, client, tmp_path, monkeypatch):
+    c, app_mod = client
+    photos = tmp_path / "photos"
+    photos.mkdir()
+    shutil.copyfile(photo, photos / "street.png")
+    shutil.copyfile(str(photo) + ".tracks.json", photos / "street.png.tracks.json")
+    (photos / "notes.txt").write_text("not a photo")
+    monkeypatch.setattr(app_mod, "PHOTOS_DIR", photos)
+    monkeypatch.setattr(app_mod, "SAMPLES_DIR", tmp_path / "no-clips")
+    listed = c.get("/api/samples?kind=image").json()
+    assert [(p["id"], p["width"], p["height"], p["sidecar"]) for p in listed] == [("street", 1280, 720, True)]
+    assert c.get("/api/samples").json() == []  # the clip list stays clips
+    thumb = c.get("/" + listed[0]["url"])
+    assert thumb.status_code == 200 and thumb.headers["content-type"] == "image/png"
+    assert c.get("/api/samples/../photo").status_code == 404
+
+    j = c.post("/api/samples/street?kind=image").json()
+    assert j["info"]["kind"] == "image"
+    r = c.post(f"/api/videos/{j['video_id']}/request", json={"text": "blur all plates"}).json()
+    assert r["summary"]["by_label"] == {"license plate": 1}  # the sidecar came along
+    assert c.post("/api/samples/nope?kind=image").status_code == 404

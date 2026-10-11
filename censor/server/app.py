@@ -1,8 +1,10 @@
 """Main API (role D's UI talks to this). Sessions persist under DATA_DIR/<video_id>/.
 
-  POST /api/videos                      multipart file  -> {video_id, info, prescan}  (starts a background scan)
-  GET  /api/samples                     clips in bench/clips -> [{id, mb}]
-  POST /api/samples/{id}                load one of them like an upload (no file picker needed)
+  POST /api/videos                      multipart file (a video or a photo) -> {video_id, info, prescan}  (starts a
+                                        background scan). A photo is a one-frame video: info.kind is "image".
+  GET  /api/samples[?kind=image]        clips in bench/clips, or photos in bench/photos -> [{id, mb, ...}]
+  GET  /api/samples/{id}/photo          a sample photo, for the home screen's thumbnails
+  POST /api/samples/{id}[?kind=image]   load one of them like an upload (no file picker needed)
   GET  /api/videos/{id}                 -> {info, summary, ops, busy}  (busy: the request still running, if any)
   GET  /api/videos/{id}/source          original video
   POST /api/videos/{id}/request         {"text": str, "ref"?: {"track_id": str} | {"frame": int, "box": [x1,y1,x2,y2]}}
@@ -18,8 +20,9 @@
   GET  /api/videos/{id}/tracks          TrackStore JSON
   GET  /api/videos/{id}/masks           per-frame masked rectangles, exactly as the renderer applies them (UI preview)
   GET  /api/videos/{id}/preview/{f}.jpg masked frame f
-  POST /api/videos/{id}/export          render -> {url, stats}  (waits for a running request; 409 if it takes too long)
-  GET  /api/videos/{id}/export.mp4      rendered video (the url from export carries ?v=<render time>)
+  POST /api/videos/{id}/export          render -> {url, kind, stats}  (waits for a running request; 409 if it takes too long)
+  GET  /api/videos/{id}/export.<ext>    rendered video (.mp4) or photo (the source's format, no metadata); the url
+                                        from export carries ?v=<render time>
 
 Requests, boxes, undo and exports on one video take turns, so an export always includes every finished edit.
 Nothing is cached: AUP's Cloudflare keeps .mp4 and .jpg responses for 4 hours when the origin says nothing, which
@@ -29,6 +32,7 @@ Run: uvicorn censor.server.app:app --host 0.0.0.0 --port 8000   (see run.sh)
 """
 from __future__ import annotations
 
+import mimetypes
 import os
 import re
 import shutil
@@ -41,7 +45,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import cv2
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from pydantic import BaseModel
 
@@ -49,8 +53,8 @@ from censor import netguard
 from censor.agent.agent import Agent
 from censor.agent.tools import Session, ToolError
 from censor.core.timeline import Timeline
-from censor.core.video import probe, read_frame
-from censor.render.render import FrameMasker, _padded, render_video
+from censor.core.video import IMAGE_EXT, is_image, probe, read_frame
+from censor.render.render import FrameMasker, _padded, render_image, render_video
 
 netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
 
@@ -60,6 +64,9 @@ PRESCAN = [] if os.environ.get("CENSOR_STUB") == "1" else \
     [q.strip() for q in os.environ.get("CENSOR_PRESCAN", "face,license plate,person").split(",") if q.strip()]
 WEB_DIR = Path(__file__).resolve().parents[2] / "web"
 SAMPLES_DIR = Path(__file__).resolve().parents[2] / "bench" / "clips"
+PHOTOS_DIR = Path(__file__).resolve().parents[2] / "bench" / "photos"
+# Photos cv2 can't read: say what to do instead of failing on a file the server can't open
+UNSUPPORTED_PHOTO = {".heic": "HEIC", ".heif": "HEIF", ".avif": "AVIF", ".tif": "TIFF", ".tiff": "TIFF", ".gif": "GIF"}
 SAMPLE_NAME = re.compile(r"[\w-]+")  # a bare file stem: no paths
 # How long an export waits for a running request before giving up with a 409. Under the 100 s that AUP's
 # Cloudflare waits for a response, so the user gets a message rather than a timeout page.
@@ -160,17 +167,38 @@ def index():
 
 @app.post("/api/videos")
 async def upload(file: UploadFile = File(...)):
+    suffix = Path(file.filename or "x.mp4").suffix.lower() or ".mp4"
+    if suffix in UNSUPPORTED_PHOTO:
+        raise HTTPException(415, f"{UNSUPPORTED_PHOTO[suffix]} photos aren't supported yet. Save it as JPEG or PNG and "
+                                 "upload that.")
     vid, d = _new_video_dir()
-    src = d / f"source{Path(file.filename or 'x.mp4').suffix or '.mp4'}"
+    src = d / f"source{suffix}"
     with src.open("wb") as f:
         shutil.copyfileobj(file.file, f)
-    return _start(vid)
+    try:
+        return _start(vid)
+    except IOError as e:  # not a video or photo OpenCV can read: don't keep it around as a broken session
+        shutil.rmtree(d, ignore_errors=True)
+        raise HTTPException(400, f"Can't open {file.filename}: {e}")
 
 
 @app.get("/api/samples")
-def samples():
+def samples(kind: str = Query("video", pattern="^(video|image)$")):
     """Clips already on the server (bench/clips), so a demo needs no file picker. Length and size for the home
-    screen's list, and whether a stub-mode sidecar (ground-truth tracks) comes along."""
+    screen's list, and whether a stub-mode sidecar (ground-truth tracks) comes along. kind=image: the photos in
+    bench/photos, with their size and a thumbnail URL instead of a length."""
+    if kind == "image":
+        out = []
+        for p in _sample_photos():
+            c = {"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1), "sidecar": Path(f"{p}.tracks.json").exists(),
+                 "url": f"api/samples/{p.stem}/photo"}
+            try:
+                v = probe(str(p))
+                c.update(width=v.width, height=v.height)
+            except IOError:
+                pass
+            out.append(c)
+        return out
     out = []
     for p in sorted(SAMPLES_DIR.glob("*.mp4")):
         c = {"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1), "sidecar": Path(f"{p}.tracks.json").exists()}
@@ -183,16 +211,36 @@ def samples():
     return out
 
 
+def _sample_photos() -> list[Path]:
+    return sorted(p for p in PHOTOS_DIR.glob("*") if p.suffix.lower() in IMAGE_EXT) if PHOTOS_DIR.is_dir() else []
+
+
+def _sample_photo(name: str) -> Path:
+    src = next((p for p in _sample_photos() if p.stem == name), None) if SAMPLE_NAME.fullmatch(name) else None
+    if src is None:
+        raise HTTPException(404, f"no sample photo {name!r}")
+    return src
+
+
+@app.get("/api/samples/{name}/photo")
+def sample_photo(name: str):
+    return FileResponse(_sample_photo(name))
+
+
 @app.post("/api/samples/{name}")
-def load_sample(name: str):
-    src = SAMPLES_DIR / f"{name}.mp4"
-    if not SAMPLE_NAME.fullmatch(name) or not src.exists():
-        raise HTTPException(404, f"no sample clip {name!r}")
+def load_sample(name: str, kind: str = Query("video", pattern="^(video|image)$")):
+    if kind == "image":
+        src = _sample_photo(name)
+    else:
+        src = SAMPLES_DIR / f"{name}.mp4"
+        if not SAMPLE_NAME.fullmatch(name) or not src.exists():
+            raise HTTPException(404, f"no sample clip {name!r}")
     vid, d = _new_video_dir()
-    shutil.copyfile(src, d / "source.mp4")
+    dst = d / f"source{src.suffix.lower()}"
+    shutil.copyfile(src, dst)
     sidecar = Path(f"{src}.tracks.json")
     if sidecar.exists():  # stub mode replays it, so the sample works without a GPU too
-        shutil.copyfile(sidecar, d / "source.mp4.tracks.json")
+        shutil.copyfile(sidecar, f"{dst}.tracks.json")
     return _start(vid)
 
 
@@ -339,7 +387,10 @@ def tracks(vid: str):
 @app.get("/api/videos/{vid}/preview/{f}.jpg")
 def preview(vid: str, f: int):
     s = session(vid)
-    frame = read_frame(s.video, f)
+    try:
+        frame = read_frame(s.video, f)
+    except IndexError as e:
+        raise HTTPException(404, str(e))
     FrameMasker(s.timeline).apply(frame, f)
     return Response(cv2.imencode(".jpg", frame)[1].tobytes(), media_type="image/jpeg")
 
@@ -347,18 +398,21 @@ def preview(vid: str, f: int):
 @app.post("/api/videos/{vid}/export")
 def export(vid: str):
     s = session(vid)
-    out = s.workdir / "export.mp4"
+    photo = is_image(s.video)
+    out = s.workdir / f"export{Path(s.video).suffix.lower() if photo else '.mp4'}"
     with turn(vid, "an export", timeout=EXPORT_WAIT):
-        stats = render_video(s.video, s.timeline, str(out))
+        stats = (render_image if photo else render_video)(s.video, s.timeline, str(out))
     # A new URL per render, so no cache between here and the browser can hand back an older file
-    return {"url": f"api/videos/{vid}/export.mp4?v={out.stat().st_mtime_ns}",
+    return {"url": f"api/videos/{vid}/{out.name}?v={out.stat().st_mtime_ns}", "kind": s.info.kind,
             "stats": {"frames": stats.frames, "masked_boxes": stats.masked_boxes,
                       "failed_frames": len(stats.failed_frames)}}
 
 
-@app.get("/api/videos/{vid}/export.mp4")
-def export_file(vid: str):
-    out = session(vid).workdir / "export.mp4"
+@app.get("/api/videos/{vid}/export.{ext}")
+def export_file(vid: str, ext: str):
+    if f".{ext}" not in IMAGE_EXT | {".mp4"}:
+        raise HTTPException(404, f"no export.{ext}")
+    out = session(vid).workdir / f"export.{ext}"
     if not out.exists():
         raise HTTPException(404, "not exported yet")
-    return FileResponse(out, media_type="video/mp4")
+    return FileResponse(out, media_type=mimetypes.guess_type(out.name)[0] or "application/octet-stream")

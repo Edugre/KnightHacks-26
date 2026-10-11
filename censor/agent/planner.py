@@ -33,7 +33,7 @@ OBJECT_ALIASES = {"plate": "license plate", "plates": "license plate", "license 
                   "phones": "screen", "phone": "screen", "monitor": "screen", "laptop": "screen", "signs": "text",
                   "sign": "text", "logos": "logo"}
 
-SYSTEM = """You turn a request about censoring a video into a JSON plan. Reply with ONE JSON object and nothing else:
+SYSTEM = """You turn a request about censoring a video or a photo into a JSON plan. Reply with ONE JSON object and nothing else:
 {"action": "mask"|"remove"|"undo"|"clarify", "effect": "blur"|"pixelate"|"box",
  "targets": [{"object": "<noun>", "only": ["<yes/no question>"], "except": ["<yes/no question>"], "one": true|false, "time": "<phrase or null>"}],
  "message": "<question for the user, only when action is clarify>"}
@@ -49,6 +49,7 @@ Rules:
 - "one": true when the request means one particular person or thing ("the guy in red", "the lady", "me"), false for
   groups ("the women", "people in red", "kids").
 - "time": the time words from the request ("around halfway", "first 10 seconds", "last 5 seconds", "0:30") or null.
+  Always null when the input's "kind" is "image": a photo has no time.
 Examples:
 "blur all plates" -> {"action":"mask","effect":"blur","targets":[{"object":"license plate","only":[],"except":[],"time":null}]}
 "blur everyone except the guy in the red hoodie" -> {"action":"mask","effect":"blur","targets":[{"object":"person","only":[],"except":["Is this a man wearing a red hoodie?"],"one":true,"time":null}]}
@@ -130,9 +131,12 @@ def execute(plan: Plan, s: Session, call: Callable[[str, dict], object], ref: Op
         op = call("undo", {})
         return f"Undid {op}." if op else "Nothing to undo."
     done, notes = 0, []
+    photo = getattr(getattr(s, "info", None), "kind", "video") == "image"
     for t in plan.targets:
         tr = None
-        if isinstance(t.time, list) and len(t.time) == 2:
+        if photo and t.time:  # a photo has no time: the whole of it
+            notes.append(f"A photo has no time, so \"{t.time}\" was ignored for {t.object}.")
+        elif isinstance(t.time, list) and len(t.time) == 2:
             tr = [float(t.time[0]), float(t.time[1])]
         elif t.time:
             tr = call("resolve_time", {"phrase": str(t.time)})

@@ -36,6 +36,9 @@ switch ($Mode) {
         if (-not (Test-Path "bench\clips\synthetic.mp4")) {
             & $py scripts\make_test_clip.py bench\clips\synthetic.mp4
         }
+        if (-not (Test-Path "bench\photos\synthetic.png")) {
+            & $py scripts\make_test_clip.py --image bench\photos\synthetic.png
+        }
         Write-Host "stub mode: open http://localhost:$Port, then upload bench\clips\synthetic.mp4 and its .tracks.json"
         & $py -m uvicorn censor.server.app:app --host 127.0.0.1 --port $Port
     }

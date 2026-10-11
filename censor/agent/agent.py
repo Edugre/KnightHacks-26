@@ -88,7 +88,8 @@ class Agent:
     def _plan(self, text: str, calls: list[dict]) -> planner.Plan:
         """One LLM call for the whole plan; if the reply isn't a usable plan, one retry with the reason."""
         messages = [{"role": "system", "content": planner.SYSTEM},
-                    {"role": "user", "content": f"Video: {json.dumps(self.s.video_info())}\nRequest: {text}"}]
+                    {"role": "user", "content": f"{'Photo' if self.s.info.kind == 'image' else 'Video'}: "
+                                                f"{json.dumps(self.s.video_info())}\nRequest: {text}"}]
         for attempt in range(2):
             t0 = time.perf_counter()
             reply = _chat(messages)

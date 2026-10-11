@@ -11,6 +11,7 @@ logs/
 bus.jpg
 bench/clips/*
 !bench/clips/manifest.yaml
+bench/photos/*
 .env
 .venv/
 weights/

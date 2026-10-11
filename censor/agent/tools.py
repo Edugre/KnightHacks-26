@@ -108,11 +108,13 @@ class Session:
 
     def video_info(self) -> dict:
         v = self.info
-        return {"duration": round(v.n_frames / v.fps, 2), "fps": v.fps, "n_frames": v.n_frames,
+        return {"kind": v.kind, "duration": round(v.n_frames / v.fps, 2), "fps": v.fps, "n_frames": v.n_frames,
                 "width": v.width, "height": v.height}
 
     def resolve_time(self, phrase: str) -> list[float]:
         dur = self.info.n_frames / self.info.fps
+        if self.info.kind == "image":  # a photo has no time: every phrase is the whole of it
+            return [0.0, dur]
         p = phrase.lower().strip()
         if m := re.search(r"(\d+):(\d{2})", p):
             t = int(m[1]) * 60 + int(m[2])
