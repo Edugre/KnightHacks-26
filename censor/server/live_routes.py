@@ -3,7 +3,13 @@
 Included by censor.server.app only when CENSOR_LIVE=1 (the replay puts ~100% load on the GPU), so the demo app on
 :8000 never exposes /api/live/start.
 
-  POST /api/live/start   {"clip": str, "height": 360..1080 = 720}  -> 202 + stats; warms the detectors in the background
+  POST /api/live/start   {"clip": str, "height": 360..1080 = 720, "cats": ["face", "license plate"]}
+                         -> 202 + stats; warms the detectors in the background
+                         cats: what to mask this run; non-empty, each one of LIVE_CATS (duplicates dropped, order normalised
+                         to LIVE_CATS order), else 422. The 202 / stats carry "cats": [..] while warming and running.
+                         Stub mode with CENSOR_YUNET masking (clip or camera) and "license plate" requested still starts, but
+                         YuNet only finds faces: the 202 / stats then also carry "detector_note":
+                         "yunet: faces only, plates not detected" so the page can warn
                          404 unknown clip, 409 already running, 503 no EgoBlur models (not in stub mode), 400 stub clip with
                          neither a sidecar nor CENSOR_YUNET
                          stub mode (CENSOR_STUB=1, no GPU) masks a clip with its <clip>.mp4.tracks.json sidecar when there is one,
@@ -36,7 +42,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from censor.vision.specialist import EGOBLUR_DIR, egoblur_available
@@ -57,14 +63,18 @@ FRAME_WAIT_S = 2.0  # how long one /frame poll waits for a newer frame
 AHEAD = 10**12  # an `after` beyond any frame number: the engine answers with its newest frame
 CAMERA = "camera"  # the clip id for the browser's camera: frames arrive through /push instead of a sample file
 PUSH_MAX_BYTES = 2_000_000  # one camera JPEG (960 wide at q0.6 is ~40 KB); more is not a frame from our page
+# The categories a live run can mask; must equal censor.live.LIVE_CATS (duplicated: that module is imported lazily)
+LIVE_CATS = ("face", "license plate")
+YUNET_PLATES_NOTE = "yunet: faces only, plates not detected"
 ENGINE_DIED = "engine stopped unexpectedly; see the server log"
 
 _lock = threading.Lock()
 # phase: idle | warming | running. gen counts starts and stops, so a warm-up that was stopped meanwhile discards its
 # engine. error: why the last start failed, shown by /stats once the phase is back to idle. detector_kind: what masks a
-# camera run ("egoblur" | "yunet" | "none") or a stub-mode clip ("sidecar" | "yunet"), None for real-mode clips. last_poll: the last accepted /frame poll or /push.
+# camera run ("egoblur" | "yunet" | "none") or a stub-mode clip ("sidecar" | "yunet"), None for real-mode clips. cats: what
+# this run masks. detector_note: a warning for the page (YuNet asked for plates), else None. last_poll: the last accepted /frame poll or /push.
 _state: dict = {"phase": "idle", "replay": None, "last_poll": 0.0, "clip": None, "error": None, "gen": 0,
-                "detector_kind": None}
+                "detector_kind": None, "cats": LIVE_CATS, "detector_note": None}
 _watchdog: threading.Thread | None = None
 # EgoBlur detectors by live (height, width): warmed once, then shared by every start. A warm-up that outlives its
 # stop must not make the next start load a second 420 MB copy, so creation happens under _det_lock.
@@ -75,6 +85,17 @@ _det_lock = threading.Lock()
 class StartIn(BaseModel):
     clip: str
     height: int = Field(720, ge=360, le=1080)
+    cats: list[str] = list(LIVE_CATS)
+
+    @field_validator("cats")
+    @classmethod
+    def _valid_cats(cls, cats: list[str]) -> list[str]:
+        if not cats:
+            raise ValueError(f"cats must not be empty; choose from {list(LIVE_CATS)}")
+        bad = sorted(set(cats) - set(LIVE_CATS))
+        if bad:
+            raise ValueError(f"unknown cats {bad}; choose from {list(LIVE_CATS)}")
+        return [c for c in LIVE_CATS if c in cats]  # deduplicated, in LIVE_CATS order
 
 
 def _even(x: float) -> int:
@@ -116,29 +137,30 @@ def _stub_clip_detector_kind(sidecar: Path) -> str | None:
     return "yunet" if os.environ.get("CENSOR_YUNET") else None
 
 
-def _make_camera_replay(height: int, stub: bool) -> LiveReplay:
+def _make_camera_replay(height: int, stub: bool, cats: tuple[str, ...]) -> LiveReplay:
     """The push-mode engine for the browser's camera. Real mode warms EgoBlur at the 16:9 size the page sends; stub mode
     uses OpenCV's YuNet face detector when CENSOR_YUNET names the ONNX file, else detects nothing."""
     from censor.live import LiveReplay, egoblur_detect
 
     if not stub:
         det = _detector_for((height, _even(height * 16 / 9)))
-        return LiveReplay(None, egoblur_detect(det.infer), height=height, push=True)
+        return LiveReplay(None, egoblur_detect(det.infer, cats=cats), height=height, push=True,
+                          cats=cats)
     onnx = os.environ.get("CENSOR_YUNET")
     if onnx:
         from censor.live import yunet_detect
 
-        return LiveReplay(None, yunet_detect(onnx), height=height, push=True)
-    return LiveReplay(None, _no_detections, height=height, push=True)
+        return LiveReplay(None, yunet_detect(onnx, cats=cats), height=height, push=True, cats=cats)
+    return LiveReplay(None, _no_detections, height=height, push=True, cats=cats)
 
 
-def make_replay(clip_path: str, height: int, stub: bool) -> LiveReplay:
+def make_replay(clip_path: str, height: int, stub: bool, cats: tuple[str, ...] = LIVE_CATS) -> LiveReplay:
     """Build the engine for one clip (tests replace this with a fake). Real mode loads EgoBlur and warms it at the
     live size before the clock starts; stub mode (no GPU) replays the clip's tracks.json sidecar if it has one, else
-    runs YuNet from CENSOR_YUNET on every frame. `clip_path == "camera"` builds a push-mode engine instead (see
+    runs YuNet from CENSOR_YUNET on every frame. `cats` (a LIVE_CATS subset) goes to the detector and the engine. `clip_path == "camera"` builds a push-mode engine instead (see
     _make_camera_replay)."""
     if clip_path == CAMERA:
-        return _make_camera_replay(height, stub)
+        return _make_camera_replay(height, stub, cats)
     from censor.core.video import probe
     from censor.live import LiveReplay, egoblur_detect, sidecar_detect
 
@@ -147,17 +169,17 @@ def make_replay(clip_path: str, height: int, stub: bool) -> LiveReplay:
         kind = _stub_clip_detector_kind(sidecar)
         if kind == "sidecar":
             v = probe(clip_path)
-            detect = sidecar_detect(sidecar, src_h=v.height, live_h=height, n_frames=v.n_frames)
+            detect = sidecar_detect(sidecar, src_h=v.height, live_h=height, n_frames=v.n_frames, cats=cats)
         elif kind == "yunet":
             from censor.live import yunet_detect
 
-            detect = yunet_detect(os.environ["CENSOR_YUNET"])
+            detect = yunet_detect(os.environ["CENSOR_YUNET"], cats=cats)
         else:
             raise FileNotFoundError(_stub_needs(Path(clip_path).name))
-        return LiveReplay(clip_path, detect, height=height)
+        return LiveReplay(clip_path, detect, height=height, cats=cats)
     v = probe(clip_path)
     det = _detector_for((height, _even(v.width * height / v.height)))
-    return LiveReplay(clip_path, egoblur_detect(det.infer), height=height)
+    return LiveReplay(clip_path, egoblur_detect(det.infer, cats=cats), height=height, cats=cats)
 
 
 def _stub_needs(clip_name: str) -> str:
@@ -180,11 +202,13 @@ def _stats_locked() -> dict:
     phase, replay = _state["phase"], _state["replay"]
     # Not "detector": the engine's stats already use that key for its pass timings
     kind = {"detector_kind": _state["detector_kind"]} if _state["detector_kind"] else {}
+    note = {"detector_note": _state["detector_note"]} if _state["detector_note"] else {}
+    cats = {"cats": list(_state["cats"])}
     if phase == "warming":
-        return {"phase": "warming", "running": False, "warming": True, "clip": _state["clip"], **kind}
+        return {"phase": "warming", "running": False, "warming": True, "clip": _state["clip"], **cats, **kind, **note}
     if replay is None:
         return _idle_stats()
-    return {**replay.stats(), "phase": phase, "warming": False, **kind}
+    return {**replay.stats(), "phase": phase, "warming": False, **cats, **kind, **note}
 
 
 def _reap_if_dead_locked() -> LiveReplay | None:
@@ -199,11 +223,11 @@ def _reap_if_dead_locked() -> LiveReplay | None:
     return replay
 
 
-def _warm_and_run(gen: int, clip_path: str, height: int, stub: bool) -> None:
+def _warm_and_run(gen: int, clip_path: str, height: int, stub: bool, cats: tuple[str, ...]) -> None:
     replay = None
     current = False
     try:
-        replay = make_replay(clip_path, height, stub)
+        replay = make_replay(clip_path, height, stub, cats)
         with _lock:
             current = _state["gen"] == gen and _state["phase"] == "warming"
             if current:
@@ -280,11 +304,14 @@ def start(body: StartIn):
             kind = _stub_clip_detector_kind(Path(f"{src}.tracks.json"))
             if kind is None:
                 raise HTTPException(400, _stub_needs(src.name))
+        cats = tuple(body.cats)  # normalised by StartIn
+        note = YUNET_PLATES_NOTE if stub and kind == "yunet" and "license plate" in cats else None
         gen = _state["gen"] + 1
-        _state.update(phase="warming", replay=None, clip=body.clip, error=None, gen=gen, detector_kind=kind)
+        _state.update(phase="warming", replay=None, clip=body.clip, error=None, gen=gen, detector_kind=kind, cats=cats,
+                      detector_note=note)
         stats = _stats_locked()
     _ensure_watchdog()
-    threading.Thread(target=_warm_and_run, args=(gen, CAMERA if camera else str(src), body.height, stub), daemon=True,
+    threading.Thread(target=_warm_and_run, args=(gen, CAMERA if camera else str(src), body.height, stub, cats), daemon=True,
                      name="live-start").start()
     return stats
 

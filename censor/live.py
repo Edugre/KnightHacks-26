@@ -126,10 +126,11 @@ def _vouched(f: int, ready: list[Detection], hold: int) -> bool:
 
 
 def _table(ready: list[Detection], frame_w: int, frame_h: int, n_frames: int,
-           face_rule: dict | None = CONFIRM["face"]) -> dict[int, list]:
-    """Frame -> [(box, padding, effect)] from the tracks the detections link into. `face_rule` None keeps every face."""
+           face_rule: dict | None = CONFIRM["face"], cats: Sequence[str] = LIVE_CATS) -> dict[int, list]:
+    """Frame -> [(box, padding, effect)] from the tracks the detections link into. `face_rule` None keeps every face;
+    only the categories in `cats` get tracks."""
     out: dict[int, list] = {}
-    for cat in LIVE_CATS:
+    for cat in cats:
         seq = [(d.f, d.dets.get(cat, [])) for d in ready]
         for kfs in link(seq, uncertain_below=UNCERTAIN_BELOW):
             keep = ((face_rule is None or confirmed(kfs, face_rule, frame_h, frame_w)) if cat == "face"
@@ -146,14 +147,16 @@ def _table(ready: list[Detection], frame_w: int, frame_h: int, n_frames: int,
 
 
 def mask_boxes(f: int, ready: list[Detection], frame_w: int, frame_h: int, hold: int = HOLD_FRAMES,
-               face_rule: dict | None = CONFIRM["face"]) -> list[tuple[Box, float, str]] | None:
+               face_rule: dict | None = CONFIRM["face"],
+               cats: Sequence[str] = LIVE_CATS) -> list[tuple[Box, float, str]] | None:
     """Boxes to mask on frame f as (box, padding, effect), or None when f is not vouched. `ready` is windowed by
     the caller to [f - WINDOW_BACK, f + hold] and sorted by f. `hold` sets the vouch distance (b.f - a.f <= hold + 1)
     and the table horizon; how long a lost box is held is always render.py's HOLD_FRAMES. `face_rule` is the scan's
-    face confirmation rule; None keeps every face track (camera mode)."""
+    face confirmation rule; None keeps every face track (camera mode). `cats` limits the tracks to those
+    categories."""
     if not _vouched(f, ready, hold):
         return None
-    return _table(ready, frame_w, frame_h, f + hold + 1, face_rule).get(f, [])
+    return _table(ready, frame_w, frame_h, f + hold + 1, face_rule, cats).get(f, [])
 
 
 class BoxCache:
@@ -169,48 +172,52 @@ class BoxCache:
         self._table: dict[int, list] = {}
 
     def boxes(self, f: int, ready: list[Detection], frame_w: int, frame_h: int, hold: int = HOLD_FRAMES,
-              face_rule: dict | None = CONFIRM["face"]) -> list[tuple[Box, float, str]] | None:
+              face_rule: dict | None = CONFIRM["face"],
+              cats: Sequence[str] = LIVE_CATS) -> list[tuple[Box, float, str]] | None:
         if not _vouched(f, ready, hold):
             return None
-        key = (tuple(d.f for d in ready), frame_w, frame_h, hold, face_rule is None)
+        key = (tuple(d.f for d in ready), frame_w, frame_h, hold, face_rule is None, tuple(cats))
         if key != self._key:
-            self._table = _table(ready, frame_w, frame_h, max(d.f for d in ready) + hold + 1, face_rule)
+            self._table = _table(ready, frame_w, frame_h, max(d.f for d in ready) + hold + 1, face_rule, cats)
             self._key = key
         return self._table.get(f, [])
 
 
 # ---- detectors ----------------------------------------------------------------------------------------------
 
-def egoblur_detect(infer: dict[str, Infer]) -> Detect:
-    """EgoBlur on a frame: scores at or above EGOBLUR_CONF, faces widened by FACE_EXPAND as the scan does."""
+def egoblur_detect(infer: dict[str, Infer], cats: Sequence[str] = LIVE_CATS) -> Detect:
+    """EgoBlur on a frame: scores at or above EGOBLUR_CONF, faces widened by FACE_EXPAND as the scan does. Only the
+    models for `cats` run (faces only halves the GPU pass) and only those keys are returned."""
     def detect(clip_f: int, frame: np.ndarray) -> Dets:
         out: Dets = {}
-        for cat in LIVE_CATS:
+        for cat in cats:
             kept = [(b, s) for b, s in infer[cat](frame) if s >= EGOBLUR_CONF]
             out[cat] = [(_expand(b, FACE_EXPAND), s) for b, s in kept] if cat == "face" else kept
         return out
     return detect
 
 
-def sidecar_detect(tracks_json: Path, src_h: int, live_h: int, n_frames: int) -> Detect:
+def sidecar_detect(tracks_json: Path, src_h: int, live_h: int, n_frames: int,
+                   cats: Sequence[str] = LIVE_CATS) -> Detect:
     """Replay a TrackStore dump as if a detector had found it: no GPU. Boxes are scaled to the live size; the
-    sidecar's faces are raw ground truth, so they get FACE_EXPAND like the real detector's."""
+    sidecar's faces are raw ground truth, so they get FACE_EXPAND like the real detector's. Only `cats` are returned."""
     scale = live_h / src_h
     table: dict[int, Dets] = {}
     for track in TrackStore.load(tracks_json).tracks.values():
-        if track.label not in LIVE_CATS:
+        if track.label not in cats:
             continue
         for k in track.keyframes:
             box = tuple(c * scale for c in k.box)
             box = _expand(box, FACE_EXPAND) if track.label == "face" else box
-            table.setdefault(k.f, {c: [] for c in LIVE_CATS})[track.label].append((box, k.conf))
-    empty: Dets = {c: [] for c in LIVE_CATS}
+            table.setdefault(k.f, {c: [] for c in cats})[track.label].append((box, k.conf))
+    empty: Dets = {c: [] for c in cats}
     return lambda clip_f, frame: table.get(clip_f % n_frames, empty)
 
 
-def yunet_detect(onnx_path: str | Path, score: float = YUNET_SCORE) -> Detect:
+def yunet_detect(onnx_path: str | Path, score: float = YUNET_SCORE, cats: Sequence[str] = LIVE_CATS) -> Detect:
     """Faces only, on the CPU (OpenCV's YuNet, ~15-25 ms at 720p): the camera demo on a laptop with no GPU. Boxes are
-    widened by FACE_EXPAND like EgoBlur's; there are no plates. The model file is fetched by hand, never here."""
+    widened by FACE_EXPAND like EgoBlur's; there are no plates: if "license plate" is in `cats` its list is always
+    empty, and without "face" in `cats` the net is skipped. The model file is fetched by hand, never here."""
     path = Path(onnx_path)
     if not path.is_file():
         raise FileNotFoundError(f"YuNet model not found: {path}. Download it once (about 230 KB) from {YUNET_URL}")
@@ -220,15 +227,18 @@ def yunet_detect(onnx_path: str | Path, score: float = YUNET_SCORE) -> Detect:
 
     def detect(clip_f: int, frame: np.ndarray) -> Dets:
         h, w = frame.shape[:2]
+        if "face" not in cats:
+            return {c: [] for c in cats}
         with lock:  # the detector thread is the only caller; setInputSize + detect must not interleave anyway
             if input_size[0] != (w, h):
                 net.setInputSize((w, h))
                 input_size[0] = (w, h)
             _, faces = net.detect(frame)
         rows = [] if faces is None else faces  # N x 15: x, y, w, h, five landmarks (x, y), score
-        return {"face": [(_expand((float(r[0]), float(r[1]), float(r[0] + r[2]), float(r[1] + r[3])), FACE_EXPAND),
-                          float(r[-1])) for r in rows],
-                "license plate": []}
+        out: Dets = {c: [] for c in cats}
+        out["face"] = [(_expand((float(r[0]), float(r[1]), float(r[0] + r[2]), float(r[1] + r[3])), FACE_EXPAND),
+                        float(r[-1])) for r in rows]
+        return out
     return detect
 
 
@@ -269,10 +279,16 @@ def _live_size(src_w: int, src_h: int, height: int) -> tuple[int, int]:
 
 class LiveReplay:
     def __init__(self, clip: str | None, detect: Detect, height: int = LIVE_HEIGHT, delay_s: float = LIVE_DELAY_S,
-                 out_w: int = LIVE_OUT_W, on_emit: OnEmit | None = None, push: bool = False) -> None:
+                 out_w: int = LIVE_OUT_W, on_emit: OnEmit | None = None, push: bool = False,
+                 cats: tuple[str, ...] = LIVE_CATS) -> None:
         """Clip mode (default): `clip` is played back at its own fps, looping. Push mode (`push=True`, `clip` may be
         None): the caller feeds frames with push(); fps is a nominal 30 (it sizes the ring and numbers the frames),
-        n_frames is 0 and size is (0, 0) until the first frame fixes it."""
+        n_frames is 0 and size is (0, 0) until the first frame fixes it. `cats` is what this run masks: a
+        non-empty subset of LIVE_CATS (ValueError otherwise); build the detector with the same cats."""
+        cats = tuple(cats)
+        if not cats or len(set(cats)) != len(cats) or not set(cats) <= set(LIVE_CATS):
+            raise ValueError(f"cats must be a non-empty subset of {LIVE_CATS}, got {cats!r}")
+        self.cats = cats
         self.is_push = push
         self._face_rule = None if push else CONFIRM["face"]  # camera: every face is kept (see the module docstring)
         self._height, self._out_w = height, out_w
@@ -529,7 +545,7 @@ class LiveReplay:
         w, h = self.size
         img = slot.frame.copy()  # the ring frame is the detector's input and apply_effect draws in place
         try:
-            boxes = cache.boxes(slot.f, ready, w, h, face_rule=self._face_rule)
+            boxes = cache.boxes(slot.f, ready, w, h, face_rule=self._face_rule, cats=self.cats)
             if boxes is None:
                 if frozen is not None:
                     return _Out(_badge(frozen), [], True, False)
@@ -592,7 +608,7 @@ class LiveReplay:
                                "max": n["gap_max"] if n["gaps"] else None},
                 "hold_frames": HOLD_FRAMES, "frame_age_ms": {"p50": _pct(self._age_s, "p50")},
                 "input_fps": self._input_fps() if self.is_push else None, "gaps_in": n["gaps_in"],
-                "mode": "push" if self.is_push else "clip",
+                "mode": "push" if self.is_push else "clip", "cats": list(self.cats),
             }
 
     def _input_fps(self) -> float:

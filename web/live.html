@@ -44,6 +44,13 @@
   select { background:var(--field); border:1px solid #333; border-radius:6px; padding:7px 10px; font:500 13px/1.2 var(--font); text-transform:none; letter-spacing:0; color:var(--text); max-width:100%; }
   select:hover:not(:disabled) { border-color:var(--faint); }
   select:disabled { opacity:.5; }
+  fieldset.blur { margin:0; border:1px solid #333; border-radius:6px; padding:5px 12px 7px; min-width:0; }
+  fieldset.blur legend { padding:0 4px; font:500 10.5px/1.2 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--meta); }
+  fieldset.blur .opts { display:flex; flex-wrap:wrap; gap:4px 14px; }
+  .controls fieldset.blur label { flex-direction:row; align-items:center; gap:6px; font:500 13px/1.2 var(--font); letter-spacing:0; text-transform:none; color:var(--text); cursor:pointer; }
+  fieldset.blur input { accent-color:var(--acc); margin:0; width:15px; height:15px; }
+  fieldset.blur:disabled label { opacity:.5; cursor:default; }
+  #blurHint { flex-basis:100%; margin:3px 0 0; font:400 11.5px/1.3 var(--font); color:var(--warn); }
   .btns { display:flex; gap:8px; margin-left:auto; }
   button { cursor:pointer; background:none; border:1px solid #3A3A3A; border-radius:6px; padding:8px 18px; font:600 13px/1.2 var(--font); }
   button:hover:not(:disabled) { background:rgba(237,237,237,.08); }
@@ -68,6 +75,7 @@
   .overlay .contended { background:var(--acc); color:var(--ink); font-weight:600; }
   .monitor.unmasked { outline:2px solid var(--warn); }
   .nodet { position:absolute; left:0; right:0; top:0; z-index:2; display:flex; align-items:baseline; gap:8px; padding:7px 10px; background:var(--warn); color:var(--ink-dark); font:600 12px/1.35 var(--mono); pointer-events:none; }
+  .detnote { margin:6px 0 0; padding:4px 8px; border-left:2px solid var(--warn); color:var(--warn); font:400 11.5px/1.4 var(--mono); overflow-wrap:anywhere; }
   .nodet b { background:var(--ink-dark); color:var(--warn); padding:0 6px; }
 
   dl.stats { margin:0; display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:1px; background:var(--divider); border:1px solid var(--divider); }
@@ -94,6 +102,10 @@
     <form class="controls" id="ctl" onsubmit="return false">
       <label>Source <select id="clip" aria-label="Source: this device's camera, or a clip to replay" aria-describedby="camHint"><option value="camera" selected>Camera (this device)</option><option data-note disabled>loading clips…</option></select></label>
       <label>Height <select id="height" aria-label="Live height in pixels"><option value="720">720 p</option><option value="540" selected>540 p</option></select></label>
+      <fieldset class="blur" id="blur"><legend>Blur</legend>
+        <div class="opts"><label><input type="checkbox" id="cFace" checked> Faces</label><label><input type="checkbox" id="cPlate" checked> License plates</label></div>
+        <p id="blurHint" role="status" hidden>pick at least one</p>
+      </fieldset>
       <div class="btns"><button type="button" class="primary" id="startBtn" disabled>Start</button><button type="button" id="stopBtn" disabled>Stop</button></div>
       <p class="hint" id="camHint">Frames are sent unmasked to the server for masking; nothing is stored.</p>
       <p id="err" role="alert"></p>
@@ -118,6 +130,7 @@
           <div class="nodet" id="nodet" role="alert" hidden><b>!</b><span>no detector loaded: nothing is masked</span></div>
           <div class="overlay"><span id="status" class="" role="status" aria-live="polite">idle</span><span class="contended" id="contended" hidden>GPU contended</span></div>
         </div>
+        <p class="detnote" id="detnote" role="status" hidden></p>
       </figure>
     </div>
   </section>
@@ -153,6 +166,9 @@ async function api(path, opts) {
   return j;
 }
 const sleep = (ms, signal) => new Promise(res => { const t = setTimeout(res, ms); signal && signal.addEventListener('abort', () => { clearTimeout(t); res(); }, { once: true }); });
+const CAT_BOXES = [['face', 'cFace', 'faces'], ['license plate', 'cPlate', 'plates']];  // request order, checkbox id, badge word
+const pickedCats = () => CAT_BOXES.filter(([, id]) => $(id).checked).map(([cat]) => cat);
+const catsWord = cats => CAT_BOXES.filter(([cat]) => cats.includes(cat)).map(([, , w]) => w).join(' + ');
 const selMode = () => $('clip').value === CAMERA ? 'camera' : 'clip';
 
 /* ---- clips (the camera entry is in the markup, so it is there even when the list fails to load) ---- */
@@ -355,7 +371,10 @@ function render() {
     ['Input gaps', num(st.gaps_in, 0)]);
   $('stats').innerHTML = rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('');  // values are numbers formatted here, never server text
   const delay = st.delay_s != null ? Number(st.delay_s).toFixed(1) : '1.0';
-  $('badge').textContent = `${cam ? `LIVE camera · ${delay} s buffer + network` : `REPLAY of a recorded clip · delayed ${delay} s`} · showing ${fmtRate(rate(S.times))} fps`;
+  const running = !idle && Array.isArray(st.cats) && st.cats.length;  // a run decides what is blurred; the boxes just mirror it
+  if (running) CAT_BOXES.forEach(([cat, id]) => { $(id).checked = st.cats.includes(cat); });
+  const rule = catsWord(running ? st.cats : pickedCats());
+  $('badge').textContent = `${cam ? `LIVE camera · ${delay} s buffer + network` : `REPLAY of a recorded clip · delayed ${delay} s`}${rule ? ` · blurring ${rule}` : ''} · showing ${fmtRate(rate(S.times))} fps`;
   const text = idle ? 'idle' : st.warming || S.phase === 'warming' ? 'warming up the detectors…' : 'live';
   const el = $('status'); if (el.textContent !== text) el.textContent = text;
   el.className = text === 'live' ? 'live' : '';
@@ -369,13 +388,16 @@ function render() {
   ss.hidden = !c; ss.className = sending ? 'live' : '';
   ss.textContent = !c ? '' : sending ? `sending to server · ${fmtRate(rate(c.times))} fps` : 'camera on · not sending';
   const unmasked = !idle && detKind(st) === 'none';  // the laptop stub without YuNet: the picture goes through untouched
+  const note = !idle && typeof st.detector_note === 'string' ? st.detector_note : '';
+  if ($('detnote').textContent !== note) $('detnote').textContent = note;
+  $('detnote').hidden = !note;
   $('nodet').hidden = !unmasked; $('progMon').classList.toggle('unmasked', unmasked);
 
   $('camHint').hidden = !picked;
   if (picked) $('clip').setAttribute('aria-describedby', 'camHint'); else $('clip').removeAttribute('aria-describedby');
   $('startBtn').disabled = !idle || S.busy || !$('clip').value;
   $('stopBtn').disabled = idle && !S.busy;
-  $('clip').disabled = $('height').disabled = !idle || S.busy;
+  $('clip').disabled = $('height').disabled = $('blur').disabled = !idle || S.busy;
 }
 function syncControls(st) {  // a run already going when the page loaded: show what it is
   const id = isPush(st) ? CAMERA : st.clip;
@@ -416,7 +438,7 @@ async function start() {
       if (token !== S.epoch) { stopStream(stream); return; }  // Stop landed during the permission prompt; stop() owns the UI
       attachCamera(stream);
     }
-    const st = await api('start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clip: $('clip').value, height: Number($('height').value) }) });
+    const st = await api('start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clip: $('clip').value, height: Number($('height').value), cats: pickedCats() }) });
     if (token !== S.epoch) { await api('stop', { method: 'POST' }).catch(() => {}); return; }  // Stop landed first and may have run before this Start
     S.epoch++;  // stats polls sent before this answer may still say idle: drop them
     S.stats = st; S.phase = st.phase || 'warming';  // 202; the stats poll attaches the frame loop (and the upload loop) once phase is running and run is set
@@ -434,6 +456,11 @@ async function stop() {
   S.epoch++;  // a stats poll sent while the stop was in flight may still say running: drop it
   S.phase = 'idle'; S.stats = { phase: 'idle', running: false }; S.busy = S.starting = false; render();
 }
+CAT_BOXES.forEach(([, id]) => $(id).addEventListener('change', e => {
+  const none = !pickedCats().length;
+  if (none) e.target.checked = true;  // the last one cannot be unticked
+  $('blurHint').hidden = !none; render();
+}));
 $('startBtn').addEventListener('click', start);
 $('stopBtn').addEventListener('click', stop);
 $('height').addEventListener('change', () => { S.heightPref[selMode()] = $('height').value; });

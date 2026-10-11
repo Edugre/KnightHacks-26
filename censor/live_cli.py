@@ -1,7 +1,7 @@
 """Headless live replay: run the live engine in real time, record what a viewer would see, score it.
 
     python -m censor.live_cli run <clip> [--seconds 30] [--height 720] [--delay 1.0] --out X.mp4 --report X.json
-                                 [--stub [--yunet MODEL.onnx]]
+                                 [--cats "face,license plate"] [--stub [--yunet MODEL.onnx]]
     python -m censor.live_cli score X.json bench/labels/<clip>.json [--min-face 0.92] [--min-plate 0.95]
                                   [--max-blind 0.01]
 
@@ -19,6 +19,10 @@ frames that were blind at or below --max-blind (a dead detector is all blind fra
 1.0); and at least one scored box in every category the labels contain (a run that emitted none of the labeled
 frames did not cover the clip). It is recall, not "zero bare boxes" (plan D6): live has no recheck_tiny / absorb
 passes, so zero bare boxes is out of reach by construction.
+
+`run --cats` picks what is masked: a comma-separated subset of "face" and "license plate" (default both; anything
+else, or an empty list, exits 2). The report's stats.cats records it, and `score` then scores only the categories
+listed there (a faces-only run is not failed on plates, and says so); a report without stats.cats scores both.
 
 A failed `run` (ffmpeg died, the engine stalled) still writes the report with the frames collected so far.
 
@@ -58,6 +62,14 @@ STATS_EVERY = 10      # refresh the age shown in the overlay every n frames (sta
 FFMPEG_WAIT_S = 30.0  # how long to wait for ffmpeg to finish the file once its stdin is closed
 MAX_BLIND = 0.01      # at most this share of emitted frames may be blind
 Rect = tuple[int, int, int, int]
+
+
+def parse_cats(text: str) -> tuple[str, ...]:
+    """"face,license plate" -> ("face", "license plate"); ValueError on an unknown, repeated or empty category."""
+    cats = tuple(c.strip() for c in text.split(","))
+    if not text.strip() or any(c not in CATS for c in cats) or len(set(cats)) != len(cats):
+        raise ValueError(f"--cats must be a comma-separated subset of {', '.join(CATS)}, got {text!r}")
+    return cats
 
 
 def die(msg: str, code: int = 2) -> "SystemExit":
@@ -117,10 +129,19 @@ def score_report(report: dict, labels: "LabelSet", live_h: int) -> dict:
     return out
 
 
-def _print_score(res: dict) -> None:
+def _run_cats(report: dict) -> tuple[str, ...]:
+    """The categories the run masked (stats.cats), both when the report does not say."""
+    cats = (report.get("stats") or {}).get("cats")
+    return tuple(c for c in CATS if c in cats) if cats else CATS
+
+
+def _print_score(res: dict, cats: tuple[str, ...] = CATS) -> None:
     engine = "" if res["engine_blind_share"] is None else f" (engine blind share {res['engine_blind_share']:.3f})"
     print(f"{res['frames']} frames emitted, blind share {res['blind_share']:.3f}{engine}")
     for cat in CATS:
+        if cat not in cats:
+            print(f"{cat}: not run, {'plates' if cat == 'license plate' else 'faces'} were not run (not scored)")
+            continue
         r = res[cat]
         recall = "n/a" if r["recall"] is None else f"{r['recall']:.3f}"
         print(f"{cat}: boxes {r['boxes']}, covered {r['covered']}, recall {recall}")
@@ -140,12 +161,13 @@ def cmd_score(a: argparse.Namespace) -> int:
         res = score_report(report, labels, report["size"][1])
     except (KeyError, IndexError, TypeError, ValueError) as e:  # a report missing keys, or the wrong shape
         raise die(f"malformed report {a.report}: {type(e).__name__} {e}")
-    _print_score(res)
+    cats = _run_cats(report)
+    _print_score(res, cats)
     floors = {"face": a.min_face, "license plate": a.min_plate}
     fails = []
     if res["blind_share"] > a.max_blind:  # blind frames count as covered, so this is what catches a dead detector
         fails.append(f"blind share {res['blind_share']:.3f} > {a.max_blind:.3f}")
-    for c in CATS:
+    for c in cats:
         r = res[c]
         if r["labeled"] and not r["boxes"]:  # no labeled frame was emitted: the run did not cover the clip
             fails.append(f"{c}: labels contain {r['labeled']} boxes but none were scored")
@@ -198,7 +220,8 @@ def _stub_source(a: argparse.Namespace) -> tuple[str, Optional[str]]:
     return ("yunet", onnx) if onnx else ("none", None)
 
 
-def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int]) -> "Detect":
+def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int],
+                  cats: tuple[str, ...] = CATS) -> "Detect":
     from censor.live import egoblur_detect, sidecar_detect
     w, h = size
     if a.stub:
@@ -206,14 +229,15 @@ def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int]) 
         if kind == "yunet":
             from censor.live import yunet_detect
             try:
-                return yunet_detect(onnx)
+                return yunet_detect(onnx, cats=cats)
             except FileNotFoundError as e:  # the message names the path and where to get opencv_zoo's model
                 raise die(str(e))
-        return sidecar_detect(Path(f"{a.clip}.tracks.json"), src_h=src.height, live_h=h, n_frames=src.n_frames)
+        return sidecar_detect(Path(f"{a.clip}.tracks.json"), src_h=src.height, live_h=h, n_frames=src.n_frames,
+                              cats=cats)
     from censor.vision.specialist import EgoBlurDetector
     det = EgoBlurDetector()
     det.warm_up(sizes=((h, w),))  # before the clock starts, or the first seconds are all blind
-    return egoblur_detect(det.infer)
+    return egoblur_detect(det.infer, cats=cats)
 
 
 def _overlay(img: np.ndarray, age_ms: int | str, blind_n: int, frames_out: int, blind: bool) -> None:
@@ -293,6 +317,10 @@ def _write_report(a: argparse.Namespace, replay: "LiveReplay", rec: Recorder) ->
 
 
 def cmd_run(a: argparse.Namespace) -> int:
+    try:
+        cats = parse_cats(a.cats)
+    except ValueError as e:
+        raise die(str(e))
     if not Path(a.clip).is_file():
         raise die(f"clip not found: {a.clip}")
     if not a.stub and not egoblur_available():
@@ -305,10 +333,10 @@ def cmd_run(a: argparse.Namespace) -> int:
     if shutil.which(FFMPEG) is None:
         raise die(f"ffmpeg not found ({FFMPEG}); set CENSOR_FFMPEG or put it on PATH")
     size = _live_size(a.clip, a.height)
-    detect = _build_detect(a, probe(a.clip), size)
+    detect = _build_detect(a, probe(a.clip), size, cats)
     from censor.live import LiveReplay
     rec = Recorder()
-    replay = LiveReplay(a.clip, detect, height=a.height, delay_s=a.delay, on_emit=rec)
+    replay = LiveReplay(a.clip, detect, height=a.height, delay_s=a.delay, on_emit=rec, cats=cats)
     for p in (a.out, a.report):
         Path(p).parent.mkdir(parents=True, exist_ok=True)
     proc: Optional[subprocess.Popen] = None
@@ -345,6 +373,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--delay", type=float, default=1.0)
     r.add_argument("--out", required=True)
     r.add_argument("--report", required=True)
+    r.add_argument("--cats", default=",".join(CATS), metavar="LIST",
+                   help='what to mask: comma-separated subset of "face" and "license plate" (default both)')
     r.add_argument("--stub", action="store_true",
                    help="no GPU: replay <clip>.tracks.json if present, else detect faces with YuNet (--yunet / CENSOR_YUNET)")
     r.add_argument("--yunet", metavar="ONNX", help="with --stub: YuNet model for a clip without a sidecar "

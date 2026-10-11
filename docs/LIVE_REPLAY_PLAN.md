@@ -433,6 +433,19 @@ clip; bad JPEG; size set on first frame; input_fps); C8 routes `camera` start + 
 mismatch; a push refreshes the watchdog); C9 page camera mode. Then: laptop test with a real camera at
 `http://localhost:8001/api/live/live` (stub + YuNet), then the server over the proxy with EgoBlur.
 
+## 7. Selectable categories (added ~06:30, owner's request: "select what to blur, faces or plates")
+
+The standing rule becomes a per-run setting: `LiveReplay(cats=...)` (subset of `LIVE_CATS`, non-empty),
+`POST /start {"cats": ["face", "license plate"]}` (default both; 422 otherwise), `stats()["cats"]`, CLI `--cats`.
+`egoblur_detect` runs only the requested models (faces only halves the GPU pass). The page gets a "Blur" fieldset
+with **Faces** and **License plates** checkboxes (at least one), the badge names the rule, and `score` only gates
+categories the run masked. YuNet has no plates: requesting them on the laptop yields a `detector_note` the page shows.
+Fail-closed is unchanged: an unselected category is simply not masked, by the owner's explicit choice.
+
+Next request on the table (not started; needs the owner's go and a ~38 MB SFace model download): **"blur everyone
+except me"** live, via face embeddings (enroll "that's me", spare only confident matches on every detection in the
+window, blur every other and every uncertain face).
+
 ## 5. Adversarial review
 
 - **R1 correctness (folded):** maskable needs a ready detection on both sides of f; lead-in sized to the real gap

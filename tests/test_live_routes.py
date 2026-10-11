@@ -75,6 +75,8 @@ def fresh_state(monkeypatch, tmp_path):
     monkeypatch.setitem(live_routes._state, "clip", None)
     monkeypatch.setitem(live_routes._state, "error", None)
     monkeypatch.setitem(live_routes._state, "detector_kind", None)
+    monkeypatch.setitem(live_routes._state, "cats", live_routes.LIVE_CATS)
+    monkeypatch.setitem(live_routes._state, "detector_note", None)
     monkeypatch.setattr(live_routes, "_detectors", {})
     samples = tmp_path / "clips"
     samples.mkdir()
@@ -93,9 +95,10 @@ def fresh_state(monkeypatch, tmp_path):
 def fake(monkeypatch):
     made = []
 
-    def factory(clip, height, stub):
+    def factory(clip, height, stub, cats=live_routes.LIVE_CATS):
         r = FakeReplay(mode="push" if clip == "camera" else "clip")
         made.append((clip, height, stub, r))
+        r.cats = cats
         return r
 
     monkeypatch.setattr(live_routes, "make_replay", factory)
@@ -144,7 +147,7 @@ def test_start_passes_the_requested_height(client, fake):
 def test_warming_reports_itself(client, monkeypatch):
     release = []
 
-    def slow(clip, height, stub):
+    def slow(clip, height, stub, cats=live_routes.LIVE_CATS):
         while not release:
             time.sleep(0.01)
         return FakeReplay()
@@ -152,7 +155,8 @@ def test_warming_reports_itself(client, monkeypatch):
     monkeypatch.setattr(live_routes, "make_replay", slow)
     r = _start(client)
     assert r.status_code == 202
-    assert r.json() == {"phase": "warming", "running": False, "warming": True, "clip": "demo"}
+    assert r.json() == {"phase": "warming", "running": False, "warming": True, "clip": "demo",
+                        "cats": ["face", "license plate"]}
     assert client.get("/api/live/stats").json()["warming"] is True
     assert client.get("/api/live/frame").status_code == 204  # nothing to show yet
     release.append(1)
@@ -234,7 +238,7 @@ def test_stop_when_idle_is_200(client):
 def test_stop_while_warming_discards_the_engine(client, monkeypatch):
     release, built = [], []
 
-    def slow(clip, height, stub):
+    def slow(clip, height, stub, cats=live_routes.LIVE_CATS):
         while not release:
             time.sleep(0.01)
         r = FakeReplay()
@@ -257,7 +261,7 @@ def _slow_factory(monkeypatch):
     """make_replay that blocks until `release` is set, then builds a FakeReplay. engines[i] belongs to call i."""
     release, engines, calls = threading.Event(), {}, []
 
-    def slow(clip, height, stub):
+    def slow(clip, height, stub, cats=live_routes.LIVE_CATS):
         i = len(calls)
         calls.append(clip)
         assert release.wait(5)
@@ -300,7 +304,7 @@ def test_stop_during_engine_start_discards_it(client, monkeypatch):
             assert go.wait(5)
             super().start()
 
-    def factory(clip, height, stub):
+    def factory(clip, height, stub, cats=live_routes.LIVE_CATS):
         made.append(SlowStart())
         return made[0]
 
@@ -342,8 +346,9 @@ def real_mode(monkeypatch):
     monkeypatch.setattr("censor.vision.specialist.EgoBlurDetector", FakeDetector)
     monkeypatch.setattr("censor.core.video.probe", lambda path: types.SimpleNamespace(width=1920, height=1080, n_frames=90))
     engine_mod = types.ModuleType("censor.live")
-    engine_mod.LiveReplay = lambda path, detect, height: types.SimpleNamespace(path=path, detect=detect, height=height)
-    engine_mod.egoblur_detect = lambda infer: infer
+    engine_mod.LiveReplay = lambda path, detect, height, cats=None: types.SimpleNamespace(path=path, detect=detect, height=height,
+                                                                                          cats=cats)
+    engine_mod.egoblur_detect = lambda infer, cats=None: infer
     engine_mod.sidecar_detect = None
     monkeypatch.setitem(sys.modules, "censor.live", engine_mod)
     return FakeDetector
@@ -382,7 +387,7 @@ def test_a_failed_warmup_is_not_cached(real_mode, monkeypatch):
 
 
 def test_failed_start_goes_idle_and_reports_the_error(client, monkeypatch):
-    def boom(clip, height, stub):
+    def boom(clip, height, stub, cats=live_routes.LIVE_CATS):
         raise RuntimeError("no GPU today")
 
     monkeypatch.setattr(live_routes, "make_replay", boom)
@@ -442,7 +447,7 @@ def test_a_failed_clip_start_forgets_the_stub_detector_kind(client, monkeypatch)
     monkeypatch.setenv("CENSOR_STUB", "1")
     monkeypatch.setenv("CENSOR_YUNET", "/nope.onnx")
 
-    def boom(clip, height, stub):
+    def boom(clip, height, stub, cats=live_routes.LIVE_CATS):
         raise FileNotFoundError("YuNet model not found: /nope.onnx")
 
     monkeypatch.setattr(live_routes, "make_replay", boom)
@@ -583,7 +588,7 @@ def test_camera_start_in_stub_mode_needs_no_clip_file_or_sidecar_and_has_no_dete
     r = _start_camera(client, height=540)  # there is no camera.mp4 and no tracks.json anywhere
     assert r.status_code == 202
     assert r.json() == {"phase": "warming", "running": False, "warming": True, "clip": "camera",
-                        "detector_kind": "none"}
+                        "detector_kind": "none", "cats": ["face", "license plate"]}
     s = _wait_phase(client, "running")
     assert s["detector_kind"] == "none" and s["mode"] == "push"
     assert s["detector"]["passes"] == 3  # the engine's own detector stats are untouched
@@ -634,7 +639,7 @@ def test_a_clip_start_has_no_detector_kind(client, fake):
 
 
 def test_a_failed_camera_start_goes_idle_and_forgets_the_detector(client, monkeypatch):
-    def boom(clip, height, stub):
+    def boom(clip, height, stub, cats=live_routes.LIVE_CATS):
         raise FileNotFoundError("yunet.onnx")
 
     monkeypatch.setattr(live_routes, "make_replay", boom)
@@ -671,7 +676,7 @@ def test_push_without_a_running_replay_is_409(client):
 def test_push_while_warming_is_409(client, monkeypatch):
     release = threading.Event()
 
-    def slow(clip, height, stub):
+    def slow(clip, height, stub, cats=live_routes.LIVE_CATS):
         assert release.wait(5)
         return FakeReplay(mode="push")
 
@@ -746,8 +751,8 @@ def test_push_after_stop_is_409(client, camera):
 class RecordingEngine:
     """Stands in for censor.live.LiveReplay in push mode: records how make_replay built it."""
 
-    def __init__(self, clip, detect, height, push=False):
-        self.clip, self.detect, self.height, self.push_mode = clip, detect, height, push
+    def __init__(self, clip, detect, height, push=False, cats=None):
+        self.clip, self.detect, self.height, self.push_mode, self.cats = clip, detect, height, push, cats
 
 
 @pytest.fixture()
@@ -756,10 +761,10 @@ def camera_engine(real_mode, monkeypatch):
     yunet_calls = []
     engine_mod = types.ModuleType("censor.live")
     engine_mod.LiveReplay = RecordingEngine
-    engine_mod.egoblur_detect = lambda infer: ("egoblur", infer)
+    engine_mod.egoblur_detect = lambda infer, cats=None: ("egoblur", infer)
     engine_mod.sidecar_detect = None
 
-    def fake_yunet(path, score=0.6):
+    def fake_yunet(path, score=0.6, cats=None):
         yunet_calls.append(path)
         return ("yunet", path)
 
@@ -806,7 +811,7 @@ def test_make_replay_camera_stub_with_yunet_uses_the_onnx_file(camera_engine, mo
 
 
 def test_make_replay_camera_stub_with_a_missing_yunet_file_raises(camera_engine, monkeypatch):
-    def missing(path, score=0.6):
+    def missing(path, score=0.6, cats=None):
         raise FileNotFoundError(path)
 
     sys.modules["censor.live"].yunet_detect = missing
@@ -820,9 +825,10 @@ def stub_clip(camera_engine, monkeypatch, tmp_path):
     """A clip path in stub mode for make_replay, with sidecar_detect and yunet_detect recorded."""
     calls = []
     mod = sys.modules["censor.live"]
-    mod.sidecar_detect = lambda path, src_h, live_h, n_frames: calls.append(("sidecar", Path(path).name)) or "SIDECAR"
-    mod.yunet_detect = lambda path, score=0.6: calls.append(("yunet", path)) or "YUNET"
-    mod.LiveReplay = lambda path, detect, height: types.SimpleNamespace(path=path, detect=detect, height=height)
+    mod.sidecar_detect = lambda path, src_h, live_h, n_frames, cats=None: calls.append(("sidecar", Path(path).name)) or "SIDECAR"
+    mod.yunet_detect = lambda path, score=0.6, cats=None: calls.append(("yunet", path)) or "YUNET"
+    mod.LiveReplay = lambda path, detect, height, cats=None: types.SimpleNamespace(path=path, detect=detect, height=height,
+                                                                                      cats=cats)
     clip = tmp_path / "c.mp4"
     clip.write_bytes(b"")
     return clip, calls
@@ -854,7 +860,7 @@ def test_make_replay_stub_clip_with_nothing_to_detect_with_raises_the_hint(stub_
 def test_make_replay_stub_clip_with_a_missing_yunet_file_raises(stub_clip, monkeypatch):
     clip, _ = stub_clip
 
-    def missing(path, score=0.6):
+    def missing(path, score=0.6, cats=None):
         raise FileNotFoundError(f"YuNet model not found: {path}")
 
     sys.modules["censor.live"].yunet_detect = missing
@@ -889,3 +895,94 @@ def test_demo_app_has_live_routes_with_the_flag():
     expected = {"/api/live/start", "/api/live/stop", "/api/live/stats", "/api/live/frame", "/api/live/live",
                 "/api/live/push"}
     assert expected <= set(paths)
+
+
+# --- per-run categories -------------------------------------------------------------------------------------------
+
+BOTH = ["face", "license plate"]
+
+
+def test_start_defaults_to_both_cats(client, fake):
+    r = _start(client)
+    assert r.status_code == 202 and r.json()["cats"] == BOTH
+    _wait_phase(client, "running")
+    assert fake[0][3].cats == ("face", "license plate")
+
+
+def test_start_passes_the_requested_cats_to_make_replay(client, fake):
+    r = _start(client, cats=["face"])
+    assert r.status_code == 202 and r.json()["cats"] == ["face"]
+    _wait_phase(client, "running")
+    assert fake[0][3].cats == ("face",)
+
+
+def test_cats_are_deduplicated_and_put_in_live_cats_order(client, fake):
+    r = _start(client, cats=["license plate", "face", "face"])
+    assert r.status_code == 202 and r.json()["cats"] == BOTH
+    _wait_phase(client, "running")
+    assert fake[0][3].cats == ("face", "license plate")
+
+
+@pytest.mark.parametrize("cats", [[], ["person"], ["face", "person"], [""]])
+def test_bad_cats_are_422(client, fake, cats):
+    r = _start(client, cats=cats)
+    assert r.status_code == 422 and r.json()["detail"]
+    assert fake == [] and live_routes._state["phase"] == "idle"
+
+
+def test_stats_carry_cats_while_warming_and_running(client, monkeypatch):
+    release, _, calls = _slow_factory(monkeypatch)
+    _start(client, cats=["license plate"])
+    _wait_for(lambda: len(calls) == 1)
+    assert client.get("/api/live/stats").json()["cats"] == ["license plate"]
+    release.set()
+    assert _wait_phase(client, "running")["cats"] == ["license plate"]
+
+
+def test_a_failed_start_has_no_cats_in_idle_stats(client, monkeypatch):
+    def boom(clip, height, stub, cats=live_routes.LIVE_CATS):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(live_routes, "make_replay", boom)
+    _start(client, cats=["face"])
+    assert "cats" not in _wait_phase(client, "idle")
+
+
+@pytest.mark.parametrize("camera_run", [False, True])
+def test_stub_yunet_with_plates_requested_starts_with_a_note(client, fake, monkeypatch, camera_run):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    r = client.post("/api/live/start", json={"clip": "camera" if camera_run else "demo"})
+    assert r.status_code == 202
+    assert r.json()["detector_note"] == "yunet: faces only, plates not detected"
+    assert _wait_phase(client, "running")["detector_note"] == "yunet: faces only, plates not detected"
+
+
+def test_no_note_when_only_faces_are_requested_or_not_yunet_or_real_mode(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    assert "detector_note" not in _start(client, cats=["face"]).json()
+    client.post("/api/live/stop")
+    Path(f"{live_routes.SAMPLES_DIR / 'demo.mp4'}.tracks.json").write_text("{}")
+    assert "detector_note" not in _start(client).json()  # sidecar wins over YuNet
+    client.post("/api/live/stop")
+    monkeypatch.delenv("CENSOR_STUB")
+    assert "detector_note" not in _start(client).json()
+
+
+def test_make_replay_hands_cats_to_the_detector_and_the_engine(camera_engine):
+    seen = []
+    mod = sys.modules["censor.live"]
+    mod.egoblur_detect = lambda infer, cats=None: seen.append(cats) or ("egoblur", infer)
+    clip = live_routes.make_replay("a.mp4", 720, False, ("face",))
+    cam = live_routes.make_replay("camera", 720, False, ("license plate",))
+    assert (clip.cats, cam.cats, seen) == (("face",), ("license plate",), [("face",), ("license plate",)])
+
+
+def test_make_replay_stub_yunet_gets_cats(stub_clip, monkeypatch):
+    clip, _ = stub_clip
+    got = []
+    sys.modules["censor.live"].yunet_detect = lambda path, score=0.6, cats=None: got.append(cats) or "YUNET"
+    monkeypatch.setenv("CENSOR_YUNET", "/m.onnx")
+    r = live_routes.make_replay(str(clip), 540, True, ("face",))
+    assert got == [("face",)] and r.cats == ("face",)
