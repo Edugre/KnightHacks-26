@@ -2,17 +2,25 @@
 
     python -m censor.live_cli run <clip> [--seconds 30] [--height 720] [--delay 1.0] --out X.mp4 --report X.json [--stub]
     python -m censor.live_cli score X.json bench/labels/<clip>.json [--min-face 0.92] [--min-plate 0.95]
+                                  [--max-blind 0.01]
 
 `run` plays the clip as if it were a live feed (censor.live.LiveReplay), writes the emitted frames to an MP4 with a
 REPLAY / age / blind overlay, and dumps a JSON report of the rects masked on every emitted frame. `--stub`
 replays <clip>.tracks.json instead of running EgoBlur (no GPU).
 
 `score` is the go/no-go gate. A labeled face or plate box is covered when at least COVER_MIN of its area lies
-inside the rects masked on that frame; frames the engine declared blind (it froze the last vouched frame) are
-exempt, and labeled frames that were never emitted are skipped. The gate is recall per category, not "zero bare
-boxes" (plan D6): live has no recheck_tiny / absorb passes, so zero bare boxes is out of reach by construction.
+inside the rects masked on that frame; frames the engine declared blind (it froze the last vouched frame) count as
+covered, and labeled frames that were never emitted are skipped. Because blindness is free for recall, the gate
+has three parts, and any one failing exits 1: recall per category at or above its floor; the share of emitted
+frames that were blind at or below --max-blind (a dead detector is all blind frames and would otherwise score
+1.0); and at least one scored box in every category the labels contain (a run that emitted none of the labeled
+frames did not cover the clip). It is recall, not "zero bare boxes" (plan D6): live has no recheck_tiny / absorb
+passes, so zero bare boxes is out of reach by construction.
 
-Exit codes: 0 ok, 1 score below a threshold, 2 usage or environment problem (missing file, models, ffmpeg).
+A failed `run` (ffmpeg died, the engine stalled) still writes the report with the frames collected so far.
+
+Exit codes: 0 ok, 1 score fails a gate, 2 usage, environment or run problem (missing file, models, ffmpeg,
+a malformed report, a run that failed part-way).
 """
 from __future__ import annotations
 
@@ -23,7 +31,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import cv2
 import numpy as np
@@ -33,12 +41,18 @@ from censor.core.video import probe
 from censor.render.render import FFMPEG
 from censor.vision.specialist import egoblur_available
 
+if TYPE_CHECKING:  # annotations only: bench and the engine are imported lazily where used
+    from bench.gt import LabelSet
+    from censor.live import Detect, LiveReplay
+
 CATS = ("face", "license plate")
 MIN_RECALL = {"face": 0.92, "license plate": 0.95}  # offline recall on the bench clips minus 0.03
 POLL_S = 2.0          # latest() timeout
 MAX_IDLE_POLLS = 5    # consecutive empty polls before the run is declared stalled
 RECORD_WAIT_S = 2.0   # how long the video loop waits for on_emit to have recorded a frame it already holds
 STATS_EVERY = 10      # refresh the age shown in the overlay every n frames (stats() sorts samples)
+FFMPEG_WAIT_S = 30.0  # how long to wait for ffmpeg to finish the file once its stdin is closed
+MAX_BLIND = 0.01      # at most this share of emitted frames may be blind
 Rect = tuple[int, int, int, int]
 
 
@@ -49,7 +63,7 @@ def die(msg: str, code: int = 2) -> "SystemExit":
 
 # ---- score ----------------------------------------------------------------------------------------
 
-def _label_index(labels, live_h: int) -> tuple[dict[int, list[tuple[str, str, Rect]]], dict[str, str]]:
+def _label_index(labels: "LabelSet", live_h: int) -> tuple[dict[int, list[tuple[str, str, Rect]]], dict[str, str]]:
     """clip_f -> [(gt_id, category, label box scaled to the live size and clipped)] for reviewed face/plate boxes."""
     from bench.run_bench import _clip_box
     scale = live_h / labels.video.height
@@ -64,13 +78,18 @@ def _label_index(labels, live_h: int) -> tuple[dict[int, list[tuple[str, str, Re
     return index, cats
 
 
-def score_report(report: dict, labels, live_h: int) -> dict:
-    """Per category {boxes, covered, recall (None without boxes), failing: {gt_id: first bare frame},
-    longest_run_s: {gt_id: seconds}} plus blind_share and frames. See the module docstring for the rules."""
+def score_report(report: dict, labels: "LabelSet", live_h: int) -> dict:
+    """Per category {labeled (label boxes in the file), boxes (scored on emitted frames), covered, recall (None
+    without boxes), failing: {gt_id: first bare frame}, longest_run_s: {gt_id: seconds}} plus blind_share (over the
+    report's frames), engine_blind_share (None if the report has none) and frames. See the module docstring."""
     from bench.run_bench import COVER_MIN, coverage
     index, cats = _label_index(labels, live_h)
     fps, step = float(report["fps"]), labels.every
-    out: dict = {c: {"boxes": 0, "covered": 0, "recall": None, "failing": {}, "longest_run_s": {}} for c in CATS}
+    out: dict = {c: {"labeled": 0, "boxes": 0, "covered": 0, "recall": None, "failing": {}, "longest_run_s": {}}
+                 for c in CATS}
+    for entries in index.values():
+        for _, cat, _ in entries:
+            out[cat]["labeled"] += 1
     run_start: dict[str, Optional[int]] = {}  # gt_id -> stream f where the current bare run began
     for fr in report["frames"]:
         for gid, cat, rect in index.get(fr["clip_f"], []):
@@ -89,12 +108,14 @@ def score_report(report: dict, labels, live_h: int) -> dict:
         res["recall"] = res["covered"] / res["boxes"] if res["boxes"] else None
     n = len(report["frames"])
     out["blind_share"] = sum(fr["blind"] for fr in report["frames"]) / n if n else 0.0
+    out["engine_blind_share"] = (report.get("stats") or {}).get("blind_share")  # the engine's own count, if recorded
     out["frames"] = n
     return out
 
 
 def _print_score(res: dict) -> None:
-    print(f"{res['frames']} frames emitted, blind share {res['blind_share']:.3f}")
+    engine = "" if res["engine_blind_share"] is None else f" (engine blind share {res['engine_blind_share']:.3f})"
+    print(f"{res['frames']} frames emitted, blind share {res['blind_share']:.3f}{engine}")
     for cat in CATS:
         r = res[cat]
         recall = "n/a" if r["recall"] is None else f"{r['recall']:.3f}"
@@ -111,13 +132,24 @@ def cmd_score(a: argparse.Namespace) -> int:
         labels = LabelSet.load(a.labels)
     except (OSError, ValueError) as e:  # ValueError covers bad JSON and pydantic validation
         raise die(f"cannot read inputs: {e}")
-    res = score_report(report, labels, report["size"][1])
+    try:
+        res = score_report(report, labels, report["size"][1])
+    except (KeyError, IndexError, TypeError, ValueError) as e:  # a report missing keys, or the wrong shape
+        raise die(f"malformed report {a.report}: {type(e).__name__} {e}")
     _print_score(res)
     floors = {"face": a.min_face, "license plate": a.min_plate}
-    low = [c for c in CATS if res[c]["recall"] is not None and res[c]["recall"] < floors[c]]
-    for c in low:
-        print(f"FAIL: {c} recall {res[c]['recall']:.3f} < {floors[c]:.2f}")
-    return 1 if low else 0
+    fails = []
+    if res["blind_share"] > a.max_blind:  # blind frames count as covered, so this is what catches a dead detector
+        fails.append(f"blind share {res['blind_share']:.3f} > {a.max_blind:.3f}")
+    for c in CATS:
+        r = res[c]
+        if r["labeled"] and not r["boxes"]:  # no labeled frame was emitted: the run did not cover the clip
+            fails.append(f"{c}: labels contain {r['labeled']} boxes but none were scored")
+        elif r["recall"] is not None and r["recall"] < floors[c]:
+            fails.append(f"{c} recall {r['recall']:.3f} < {floors[c]:.2f}")
+    for msg in fails:
+        print(f"FAIL: {msg}")
+    return 1 if fails else 0
 
 
 # ---- run ------------------------------------------------------------------------------------------
@@ -153,7 +185,7 @@ def _live_size(clip: str, height: int) -> tuple[int, int]:
     return int(round(info.width * height / info.height / 2)) * 2, height
 
 
-def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int]):
+def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int]) -> "Detect":
     from censor.live import egoblur_detect, sidecar_detect
     w, h = size
     if a.stub:
@@ -164,7 +196,7 @@ def _build_detect(a: argparse.Namespace, src: VideoInfo, size: tuple[int, int]):
     return egoblur_detect(det.infer)
 
 
-def _overlay(img: np.ndarray, age_ms, blind_n: int, frames_out: int, blind: bool) -> None:
+def _overlay(img: np.ndarray, age_ms: int | str, blind_n: int, frames_out: int, blind: bool) -> None:
     txt = f"REPLAY · age {age_ms} ms · blind {blind_n}/{frames_out}" + (" · DETECTOR LATE" if blind else "")
     (tw, _), _ = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
     cv2.rectangle(img, (0, 0), (tw + 24, 40), (20, 20, 20), -1)
@@ -176,7 +208,8 @@ def _decode(jpeg: bytes, size: tuple[int, int]) -> np.ndarray:
     if img is None:
         raise RuntimeError("the engine returned an undecodable frame")
     # latest() serves the display size; this is a recording of what the viewer sees, scaled back up to the live size.
-    return img if (img.shape[1], img.shape[0]) == size else cv2.resize(img, size, interpolation=cv2.INTER_LINEAR)
+    img = img if (img.shape[1], img.shape[0]) == size else cv2.resize(img, size, interpolation=cv2.INTER_LINEAR)
+    return np.ascontiguousarray(img)  # the pipe takes the array's buffer as is, which must be C-contiguous
 
 
 def _ffmpeg_cmd(size: tuple[int, int], fps: float, out: str) -> list[str]:
@@ -185,7 +218,7 @@ def _ffmpeg_cmd(size: tuple[int, int], fps: float, out: str) -> list[str]:
             "-pix_fmt", "yuv420p", out]
 
 
-def _record(replay, rec: Recorder, proc: subprocess.Popen, size: tuple[int, int], seconds: float) -> None:
+def _record(replay: "LiveReplay", rec: Recorder, proc: subprocess.Popen, size: tuple[int, int], seconds: float) -> None:
     """Pull emitted frames until `seconds` of stream time have passed; one video frame per stream frame."""
     after, last, idle, blind_n, out_n, age = -1, None, 0, 0, 0, "?"
     while True:
@@ -202,7 +235,7 @@ def _record(replay, rec: Recorder, proc: subprocess.Popen, size: tuple[int, int]
         if meta is None:
             raise RuntimeError(f"frame {f} was served but never reported through on_emit")
         for _ in range(f - after - 1 if last is not None else 0):  # slots the engine dropped: repeat the last frame
-            proc.stdin.write(last.tobytes())
+            proc.stdin.write(last)
             out_n += 1
         blind_n += meta["blind"]
         out_n += 1
@@ -211,8 +244,32 @@ def _record(replay, rec: Recorder, proc: subprocess.Popen, size: tuple[int, int]
             age = "?" if p50 is None else int(round(p50))
         last = _decode(jpeg, size)
         _overlay(last, age, blind_n, out_n, meta["blind"])
-        proc.stdin.write(last.tobytes())
+        proc.stdin.write(last)
         after = f
+
+
+def _close_ffmpeg(proc: subprocess.Popen) -> int:
+    """Close ffmpeg's stdin and wait for it to finish the file. Neither a dead pipe nor an ffmpeg that hangs may
+    mask the error that got us here: the exit status is what the caller reports."""
+    try:
+        proc.stdin.close()
+    except OSError:  # BrokenPipeError flushing into an ffmpeg that already died; its exit status says why
+        pass
+    try:
+        return proc.wait(timeout=FFMPEG_WAIT_S)
+    except subprocess.TimeoutExpired:
+        print(f"ffmpeg did not finish within {FFMPEG_WAIT_S:.0f} s; killing it", file=sys.stderr)
+        proc.kill()
+        return proc.wait()
+
+
+def _write_report(a: argparse.Namespace, replay: "LiveReplay", rec: Recorder) -> dict:
+    """Dump the run report (the rects masked on every emitted frame, plus the engine's stats); returns the stats."""
+    stats = replay.stats()
+    doc = {"clip": a.clip, "size": list(replay.size), "fps": replay.fps, "n_frames": replay.n_frames,
+           "delay_s": a.delay, "stats": stats, "frames": rec.snapshot()}
+    Path(a.report).write_text(json.dumps(doc), encoding="utf-8")
+    return stats
 
 
 def cmd_run(a: argparse.Namespace) -> int:
@@ -231,23 +288,26 @@ def cmd_run(a: argparse.Namespace) -> int:
     replay = LiveReplay(a.clip, detect, height=a.height, delay_s=a.delay, on_emit=rec)
     for p in (a.out, a.report):
         Path(p).parent.mkdir(parents=True, exist_ok=True)
-    proc = subprocess.Popen(_ffmpeg_cmd(replay.size, replay.fps, a.out), stdin=subprocess.PIPE)
-    replay.start()
+    proc: Optional[subprocess.Popen] = None
+    failure, rc = None, None
     try:
+        proc = subprocess.Popen(_ffmpeg_cmd(replay.size, replay.fps, a.out), stdin=subprocess.PIPE)
+        replay.start()
         _record(replay, rec, proc, replay.size, a.seconds)
-    finally:
+    except (OSError, RuntimeError) as e:  # a dead ffmpeg pipe, an ffmpeg that will not start, a stalled engine
+        failure = f"{type(e).__name__}: {e}"
+    finally:  # whatever happened, the frames collected so far are the evidence: never lose a 30 s GPU run
         replay.stop()
-        proc.stdin.close()
-        rc = proc.wait()
-    stats = replay.stats()
-    doc = {"clip": a.clip, "size": list(replay.size), "fps": replay.fps, "n_frames": replay.n_frames,
-           "delay_s": a.delay, "stats": stats, "frames": rec.snapshot()}
-    Path(a.report).write_text(json.dumps(doc), encoding="utf-8")
+        if proc is not None:
+            rc = _close_ffmpeg(proc)
+        stats = _write_report(a, replay, rec)
+    if failure is not None:
+        print(f"run failed: {failure}", file=sys.stderr)
     d = stats["detector"]
-    print(f"{len(doc['frames'])} frames emitted in {a.seconds:g} s of stream, ffmpeg exit {rc}\n"
+    print(f"{len(rec.snapshot())} frames emitted in {a.seconds:g} s of stream, ffmpeg exit {rc}\n"
           f"blind share {stats['blind_share']:.3f} ({stats['blind']} frames), dropped {stats['dropped_out']}\n"
           f"detector p50 {d['p50_ms']} ms, p95 {d['p95_ms']} ms over {d['passes']} passes")
-    return 0 if rc == 0 else 2
+    return 0 if failure is None and rc == 0 else 2
 
 
 # ---- cli ------------------------------------------------------------------------------------------
@@ -264,11 +324,13 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--report", required=True)
     r.add_argument("--stub", action="store_true", help="replay <clip>.tracks.json instead of running EgoBlur")
     r.set_defaults(fn=cmd_run)
-    s = sub.add_parser("score", help="check a run report against ground-truth labels (exit 1 below the recall floors)")
+    s = sub.add_parser("score", help="check a run report against ground-truth labels "
+                                     "(exit 1 below the recall floors or above the blind ceiling)")
     s.add_argument("report")
     s.add_argument("labels")
     s.add_argument("--min-face", type=float, default=MIN_RECALL["face"])
     s.add_argument("--min-plate", type=float, default=MIN_RECALL["license plate"])
+    s.add_argument("--max-blind", type=float, default=MAX_BLIND, help="fail above this share of blind emitted frames")
     s.set_defaults(fn=cmd_score)
     return ap
 
