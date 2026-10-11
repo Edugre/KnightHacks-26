@@ -7,9 +7,12 @@
   GET  /api/videos/{id}/source          original video
   POST /api/videos/{id}/request         {"text": str}  -> agent result
   POST /api/videos/{id}/box             {"frame": int, "box": [x1,y1,x2,y2], "effect": "blur"} -> track + op
+  POST /api/videos/{id}/targets         {"action": "add"|"remove"|"effect", "track_ids": [...], "effect": "blur"}
+                                        mask, unmask or restyle chosen tracks by hand -> {op_id, summary}
   POST /api/videos/{id}/undo            -> {undone, summary}
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
+  GET  /api/videos/{id}/masks           per-frame masked rectangles, exactly as the renderer applies them (UI preview)
   GET  /api/videos/{id}/preview/{f}.jpg masked frame f
   POST /api/videos/{id}/export          render -> {url, stats}  (waits for a running request; 409 if it takes too long)
   GET  /api/videos/{id}/export.mp4      rendered video (the url from export carries ?v=<render time>)
@@ -31,6 +34,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -40,8 +44,9 @@ from pydantic import BaseModel
 from censor import netguard
 from censor.agent.agent import Agent
 from censor.agent.tools import Session, ToolError
+from censor.core.timeline import Timeline
 from censor.core.video import read_frame
-from censor.render.render import FrameMasker, render_video
+from censor.render.render import FrameMasker, _padded, render_video
 
 netguard.install_from_env()  # YOLOE runs in this process; refuse and log any outbound connection
 
@@ -112,6 +117,12 @@ def session(vid: str) -> Session:
 
 class RequestIn(BaseModel):
     text: str
+
+
+class TargetsIn(BaseModel):
+    action: Literal["add", "remove", "effect"]
+    track_ids: list[str]
+    effect: str = "blur"
 
 
 class BoxIn(BaseModel):
@@ -217,6 +228,24 @@ def box(vid: str, body: BoxIn):
     return {"track": t, "op_id": op, "summary": s.summarize()}
 
 
+@app.post("/api/videos/{vid}/targets")
+def targets(vid: str, body: TargetsIn):
+    """Hand edits from the UI on tracks the user picked: mask a detected track that wasn't (add), unmask one
+    (remove), or change its effect. Same toolbox calls as the agent, so each is one op that Undo reverts."""
+    s = session(vid)
+    try:
+        with turn(vid, f"a hand edit ({body.action})"):
+            if body.action == "add":
+                op = s.add_masks(body.track_ids, effect=body.effect, request_id="ui_edit")
+            elif body.action == "remove":
+                op = s.remove_masks(body.track_ids, request_id="ui_edit")
+            else:
+                op = s.set_effect(body.track_ids, body.effect, request_id="ui_edit")
+    except ToolError as e:
+        raise HTTPException(400, str(e))
+    return {"op_id": op, "summary": s.summarize()}
+
+
 @app.post("/api/videos/{vid}/undo")
 def undo(vid: str):
     s = session(vid)
@@ -227,6 +256,22 @@ def undo(vid: str):
 @app.get("/api/videos/{vid}/timeline")
 def timeline(vid: str):
     return session(vid).timeline.model_dump()
+
+
+@app.get("/api/videos/{vid}/masks")
+def masks(vid: str):
+    """Every masked rectangle per frame, from the renderer's own FrameMasker (interpolation, lead-in, hold after
+    loss, padding), so the UI's live preview shows exactly where the export will blur. Integer pixels, grouped
+    by target: {track_id: {effect, frames: [[f, x1, y1, x2, y2], ...]}}."""
+    tl = session(vid).timeline
+    v = tl.video
+    out: dict[str, dict] = {}
+    for tid, target in tl.targets.items():
+        one = Timeline(video=v, targets={tid: target})
+        frames = [[f, *_padded(box, pad, v.width, v.height)]
+                  for f, items in sorted(FrameMasker(one).per_frame.items()) for box, pad, _ in items]
+        out[tid] = {"effect": target.effect, "frames": frames}
+    return {"fps": v.fps, "n_frames": v.n_frames, "width": v.width, "height": v.height, "targets": out}
 
 
 @app.get("/api/videos/{vid}/tracks")
