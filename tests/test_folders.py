@@ -92,3 +92,32 @@ def test_rename_and_delete(client, clip):
     assert c.get("/api/folders").json() == []
     assert c.get(f"/api/videos/{vid}").status_code == 200  # the clip itself is still there
     assert c.delete(f"/api/folders/{f['id']}").status_code == 404
+
+
+def test_file_move_and_take_out_existing_clips(client, clip):
+    c, _ = client
+    a = c.post("/api/folders", json={"name": "A"}).json()
+    b = c.post("/api/folders", json={"name": "B"}).json()
+    vid = upload(c, clip, name="tuesday.mp4").json()["video_id"]  # uploaded with no folder
+    assert c.post(f"/api/folders/{a['id']}/clips", json={"video_id": vid, "name": "tuesday.mp4"}).json()["clipCount"] == 1
+    assert c.post(f"/api/folders/{a['id']}/clips", json={"video_id": vid}).json()["clipCount"] == 1  # again: no duplicate
+    has = {f["name"]: f["has"] for f in c.get(f"/api/folders?video={vid}").json()}
+    assert has == {"A": True, "B": False}
+    # move A -> B in one call; the name it was filed under comes along
+    c.post(f"/api/folders/{b['id']}/clips", json={"video_id": vid, "from": a["id"]})
+    assert c.get(f"/api/folders/{a['id']}").json()["clips"] == []
+    assert [x["name"] for x in c.get(f"/api/folders/{b['id']}").json()["clips"]] == ["tuesday.mp4"]
+    # take it out: the clip itself stays
+    assert c.delete(f"/api/folders/{b['id']}/clips/{vid}").json()["clipCount"] == 0
+    assert c.get(f"/api/videos/{vid}").status_code == 200
+    assert c.delete(f"/api/folders/{b['id']}/clips/{vid}").status_code == 404
+
+
+def test_filing_needs_a_real_clip_and_folder(client, clip):
+    c, _ = client
+    a = c.post("/api/folders", json={"name": "A"}).json()
+    vid = upload(c, clip).json()["video_id"]
+    assert c.post(f"/api/folders/{a['id']}/clips", json={"video_id": "nope"}).status_code == 404
+    assert c.post(f"/api/folders/{a['id']}/clips", json={"video_id": "../etc"}).status_code == 404
+    assert c.post("/api/folders/nope/clips", json={"video_id": vid}).status_code == 404
+    assert c.post(f"/api/folders/{a['id']}/clips", json={"video_id": vid, "from": "nope"}).status_code == 404
