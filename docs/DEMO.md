@@ -1,10 +1,12 @@
 # Demo script (3 minutes)
 
-Live on the R9700 through the AUP proxy, with `street_walk` as the main clip and `street_plates` as the speed shot. Every number below was measured on the R9700 (IMPLEMENTATION.md, "Where we are"). Don't quote laptop timings.
+Live through the AUP proxy, with `street_walk` as the main clip and `street_plates` as the speed shot.
+
+**Demo hardware: TBD, Strix Halo** (Radeon 8060S, gfx1151, 64 GB, on the San Jose hub) until the benchmark is re-run there. Every number below is an **R9700 (Dublin)** number (Radeon AI PRO R9700, gfx1201, 32 GB; IMPLEMENTATION.md, "Where we are"), measured before the Dublin hub went down, and the lines that quote one name the R9700. If you demo on the Strix Halo before it's re-measured, say the numbers are from the R9700, or swap in the Strix Halo ones from docs/STACK.md once they're filled in. Don't quote laptop timings.
 
 ## Before you go on (10 minutes ahead)
 
-1. Relaunch the server if it's older than about 3 hours (sessions end at 4 h), then `cd ~/kh-alex && git pull && ./run.sh`. Wait for `/health` to say `"offline": true` (the model loads in about 3.5 min).
+1. Relaunch the server on the San Jose hub (README, "If the Dublin hub is down") if it's older than about 3 hours (sessions end at 4 h), then `cd ~/KnightHacks-26 && git pull && ./run.sh`. Wait for `/health` to say `"offline": true` (the model loaded in about 3.5 min on the R9700; Strix Halo: TBD).
 2. Open the app, pick `street_walk` and `street_plates` once each, so the detectors are warm and the clips are scanned, then reload the page with no `?video=` so you start from the start screen.
 3. Open a second tab with a terminal showing `logs/egress.log` (it should be empty) and `curl -s localhost:8100/health`.
 4. Have the backup video open in a third tab (see "If live fails").
@@ -35,7 +37,7 @@ Live on the R9700 through the AUP proxy, with `street_walk` as the main clip and
 - **Fail closed:** unsure answers stay masked; low-confidence moments show as the bright marks on the strip and are masked anyway, with extra padding (**Check N low-confidence spots** steps through them). On a crowd like `street_plates` the strip groups targets into one bar per kind, so the frame stays in view.
 - **Fix by hand (if a judge asks, or a mask is wrong live):** click the box in the Preview, then **Unmask**, another effect, or drag it / a corner to where it should be (re-tracked from that frame on). Each fix is one Undo.
 - **Offline:** the empty egress log and `"offline": true`.
-- **AMD numbers** (R9700, IMPLEMENTATION.md): upload scan 0.76x real time at 1080p (24x the CPU); EgoBlur fp16 cut the per-frame cost 3x with the same boxes; export of `street_plates` in 2.8 s; planner call about 1.8 s; requests 2-7 s; 18 GB peak with every model loaded.
+- **AMD numbers** (R9700 (Dublin) numbers, IMPLEMENTATION.md; Strix Halo: TBD): upload scan 0.76x real time at 1080p (24x the CPU); EgoBlur fp16 cut the per-frame cost 3x with the same boxes; export of `street_plates` in 2.8 s; planner call about 1.8 s; requests 2-7 s; 18 GB peak with every model loaded.
 
 ## If live fails
 
@@ -43,9 +45,9 @@ Live on the R9700 through the AUP proxy, with `street_walk` as the main clip and
 | --- | --- |
 | The proxy times out on a request (no answer after ~100 s) | The page keeps waiting for the server and shows the result when it finishes. Keep talking over it, or switch to the backup video. |
 | The model server is down (requests answer "clarify", or "unknown" for every person) | Stick to plain requests ("blur all faces and plates" on `street_plates`) and draw-a-box: neither needs the LLM. Say the attribute step is shown in the backup video. |
-| The whole server is down | Play the backup video (the full script above, recorded on the R9700). Then show stub mode on a laptop (`./run.sh stub`, pick **synthetic**) to prove the UI is real: requests, coverage strips, draw-a-box, undo and export all work without a GPU. |
+| The whole server is down | Play the backup video (the full script above, recorded on the demo server: TBD, Strix Halo). Then show stub mode on a laptop (`./run.sh stub`, pick **synthetic**) to prove the UI is real: requests, coverage strips, draw-a-box, undo and export all work without a GPU. |
 | A wrong blur on stage | Say it: "the detector missed / over-blurred that one", click **Undo**, and point out that fail-closed means a miss is rare and visible. |
 
-**Backup video:** record the whole script on the R9700 the night before, screen plus voice, and keep it in two places (a laptop's disk and the team drive).
+**Backup video:** record the whole script on the demo server (TBD, Strix Halo) the night before, screen plus voice, and keep it in two places (a laptop's disk and the team drive).
 
-**Backup exports (already made, Sat 23:30):** `python scripts/make_backup.py` runs the real detectors on any CUDA GPU (or the R9700) and writes blurred exports of the real clips, a before/after still for each, and a `README.md` with the agent's message and timings, into `data/backup/`. The set: `street_plates` "blur all faces and plates" (113 faces, 14 plates), `street_walk` "blur all faces and plates" and "pixelate everyone", `street_talk` "blur all faces". `data/` is gitignored, so they're shared on the team drive, not git. They use the template path (no language model), so they show detection and rendering, not the attribute step ("blur the woman"); that still needs the screen recording on the R9700. Checked by eye: one small false face blur on a shirt at the right edge of `street_talk`.
+**Backup exports (already made, Sat 23:30):** `python scripts/make_backup.py` runs the real detectors on any CUDA GPU (or the AMD server) and writes blurred exports of the real clips, a before/after still for each, and a `README.md` with the agent's message and timings, into `data/backup/`. The set: `street_plates` "blur all faces and plates" (113 faces, 14 plates), `street_walk` "blur all faces and plates" and "pixelate everyone", `street_talk` "blur all faces". `data/` is gitignored, so they're shared on the team drive, not git. They use the template path (no language model), so they show detection and rendering, not the attribute step ("blur the woman"); that still needs the screen recording on the AMD server. Checked by eye: one small false face blur on a shirt at the right edge of `street_talk`.

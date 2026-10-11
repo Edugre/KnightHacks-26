@@ -1,6 +1,6 @@
 # Devpost write-up (draft)
 
-*Draft. Numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700. Update them if they change before submitting, and fill in the request success rate once `./run.sh bench` has run with the real models.*
+*Draft. Speed and memory numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 on the Dublin hub ("R9700 (Dublin) numbers"). That hub went down, and the demo now runs on a Radeon 8060S (Strix Halo, gfx1151) on the San Jose hub: demo hardware **TBD, Strix Halo** until the benchmark is re-run there (docs/STACK.md). Say which GPU each number came from, update them if they change before submitting, and fill in the request success rate once `./run.sh bench` has run with the real models.*
 
 ## Censor: redaction you can ask for
 
@@ -34,7 +34,7 @@ Stack: FastAPI backend, PyTorch on ROCm, transformers, Ultralytics, OpenCV, and 
 
 ## The AMD story
 
-Everything runs on **one AMD Radeon AI PRO R9700** (RDNA 4, gfx1201, 32 GB) with ROCm and the preinstalled PyTorch 2.9.1+rocm7.13.
+Everything runs on one AMD GPU with ROCm. We built and measured it on **one AMD Radeon AI PRO R9700** (RDNA 4, gfx1201, 32 GB) with the preinstalled PyTorch 2.9.1+rocm7.13; every number in this section is from that card. When that hub went down we moved to a **Radeon 8060S** (Strix Halo iGPU, gfx1151, 64 GB shared LPDDR5X) on the San Jose hub, which is the demo hardware (TBD, Strix Halo: its numbers aren't measured yet).
 
 - **Every model on one card:** detection, the 8B vision-language model and the planner share 32 GB, at **17.9 GB peak** with everything loaded. One Qwen3-VL process serves both the planner and the attribute checks, loaded once and kept resident.
 - **Upload scan at 0.76x real time at 1080p**, 17.2 s for a 13 s clip, down from 48.1 s. On a 720p clip the GPU scans at 1.12x real time against 0.05x on a 64-thread Threadripper PRO CPU alone: **24x faster**.
@@ -48,15 +48,16 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 
 ## Results
 
-| | Measured |
+| | Measured (GPU) |
 | --- | --- |
 | Plates masked (share of plate frames), `street_plates` / `street_walk` | **100% / 94.6%** |
 | Longest a plate stays visible | 0 s / 0.16 s (one 11x7 px plate) |
 | Plate over-blur, mean | 3.0% / 0.1% of the frame |
 | Person questions on the three people in focus on `street_walk` | every answer right, at p 0.00 or 1.00 |
-| Upload scan, 1080p | 0.76x real time |
-| Peak GPU memory, all models | 17.9 GB of 32 GB |
+| Upload scan, 1080p | 0.76x real time (R9700) |
+| Peak GPU memory, all models | 17.9 GB of 32 GB (R9700) |
 | Request success rate (20 benchmark requests) | *TODO after `./run.sh bench`* |
+| Demo hardware | TBD, Strix Halo (Radeon 8060S, gfx1151) |
 
 ## Challenges
 

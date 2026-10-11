@@ -1,6 +1,6 @@
 # Censor Agent (Knight Hacks 2026, AMD challenge)
 
-Say what to hide in a video ("blur every license plate and the person in the red shirt around halfway") or draw a box. A local agent turns the request into a **mask timeline**, and a deterministic renderer applies it. Uncertain frames fail closed (more blur, never less). Everything runs on one AMD Radeon AI PRO R9700 with ROCm. No footage leaves the machine.
+Say what to hide in a video ("blur every license plate and the person in the red shirt around halfway") or draw a box. A local agent turns the request into a **mask timeline**, and a deterministic renderer applies it. Uncertain frames fail closed (more blur, never less). Everything runs on one AMD GPU with ROCm: built and measured on a Radeon AI PRO R9700, now running on a Radeon 8060S (Strix Halo) while the Dublin hub is down. No footage leaves the machine.
 
 - What and why: [PLAN.md](PLAN.md)
 - How, milestones and contracts: [IMPLEMENTATION.md](IMPLEMENTATION.md). **Current status and next steps are in section 5**; working agreements (branches, sharing the AUP server) in section 8.
@@ -16,8 +16,10 @@ bash scripts/setup.sh      # once per fresh environment; never replaces the ROCm
 bash scripts/fetch_clips.sh   # optional: the three Pexels test clips
 ./run.sh                   # starts the model server (3.5-9 min to load), then the app on :8000
 ```
-Faces and plates use Meta's EgoBlur models (Apache 2.0), which `setup.sh` can't fetch: get `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` from https://www.projectaria.com/tools/egoblur/ (email form) on a laptop, since Meta's CDN refuses the AUP server, and upload them to `~/datasets/egoblur/`. Without them the app warns and falls back to YOLOE, which misses faces.
+Faces and plates use Meta's EgoBlur models (Apache 2.0), which `setup.sh` can't fetch: get `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` from https://www.projectaria.com/tools/egoblur/ (email form) on a laptop, since Meta's CDN refuses the AUP servers, and upload them to `~/datasets/egoblur/`. A fresh server (a new hub, or a new home directory) needs them uploaded again. Without them the app warns and falls back to YOLOE, which misses faces.
 Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
+
+**If the Dublin hub is down:** use the San Jose hub, https://sjc.aupcloud.io. Pick resource **VSCode Server GPU** and node **AMD Radeon 8060S (Strix Halo iGPU)** (gfx1151, 64 GB LPDDR5X shared with the CPU, 240-minute runtime). Don't pick the Radeon 890M: its 4 GB can't hold Qwen3-VL-8B (about 18 GB). Put `https://github.com/Edugre/KnightHacks-26.git` in the launch form's git repository field, so the session starts with the clone in `~/KnightHacks-26`; then `cd ~/KnightHacks-26` and run the commands above from `bash scripts/setup.sh` on, after uploading the EgoBlur files. Open `https://sjc.aupcloud.io/user/<your-user>/proxy/8000/`. The timings in the docs are R9700 (Dublin) numbers; Strix Halo numbers go in [docs/STACK.md](docs/STACK.md) as they're measured.
 
 **Using the app:**
 1. Pick a clip on the start screen (the clips in `bench/clips`; Claude's in-app browser can't open a file picker, so this is the reliable way) or upload your own.
