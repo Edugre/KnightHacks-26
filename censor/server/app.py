@@ -8,7 +8,9 @@
   POST /api/videos/{id}/request         {"text": str}  -> agent result
   POST /api/videos/{id}/box             {"frame": int, "box": [x1,y1,x2,y2], "effect": "blur"} -> track + op
   POST /api/videos/{id}/targets         {"action": "add"|"remove"|"effect", "track_ids": [...], "effect": "blur"}
-                                        mask, unmask or restyle chosen tracks by hand -> {op_id, summary}
+                                        mask, unmask or restyle chosen tracks by hand -> {op_id, summary};
+                                        {"action": "move", "track_ids": [one], "frame": f, "box": [x1,y1,x2,y2]}
+                                        re-tracks from the corrected box from frame f on -> {op_ids, track, summary}
   POST /api/videos/{id}/undo            -> {undone, summary}
   GET  /api/videos/{id}/timeline        derived Timeline JSON (what the renderer uses)
   GET  /api/videos/{id}/tracks          TrackStore JSON
@@ -34,7 +36,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -120,9 +122,11 @@ class RequestIn(BaseModel):
 
 
 class TargetsIn(BaseModel):
-    action: Literal["add", "remove", "effect"]
+    action: Literal["add", "remove", "effect", "move"]
     track_ids: list[str]
     effect: str = "blur"
+    frame: Optional[int] = None  # move only
+    box: Optional[list[float]] = None  # move only: the corrected [x1, y1, x2, y2] at that frame
 
 
 class BoxIn(BaseModel):
@@ -235,6 +239,11 @@ def targets(vid: str, body: TargetsIn):
     s = session(vid)
     try:
         with turn(vid, f"a hand edit ({body.action})"):
+            if body.action == "move":
+                if len(body.track_ids) != 1 or body.frame is None or body.box is None:
+                    raise ToolError("move takes one track id, a frame and a box")
+                moved = s.move_box(body.track_ids[0], body.frame, body.box, request_id=f"ui_move_{uuid.uuid4().hex[:6]}")
+                return {**moved, "summary": s.summarize()}
             if body.action == "add":
                 op = s.add_masks(body.track_ids, effect=body.effect, request_id="ui_edit")
             elif body.action == "remove":

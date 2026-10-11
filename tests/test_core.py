@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from censor.agent import intents
-from censor.core.timeline import Op, OpLog, Timeline, VideoInfo, fold
+from censor.core.timeline import SCHEMA_VERSION, Op, OpLog, Timeline, VideoInfo, fold
 from censor.core.tracks import Keyframe, Track, TrackStore
 from censor.render.render import HOLD_FRAMES, MAX_GAP, FrameMasker, expand_target
 
@@ -27,12 +27,38 @@ def trk(tid, frames, label="face", state="detected"):
 @pytest.mark.parametrize("name", ["plate_moving.json", "face_and_box.json"])
 def test_examples_validate(name):
     tl = Timeline.load(ROOT / "schema" / "examples" / name)
-    assert tl.version == 1 and tl.targets
+    assert tl.version == SCHEMA_VERSION and tl.targets
 
 
 def test_ops_example_validates():
     log = OpLog.model_validate_json((ROOT / "schema" / "examples" / "ops.json").read_text())
     assert [o.op_id for o in log.ops] == ["op_1", "op_2", "op_3"]
+
+
+def test_move_example_folds_to_old_box_then_new_box():
+    log = OpLog.model_validate_json((ROOT / "schema" / "examples" / "ops_move.json").read_text())
+    tl = fold(log.ops, store_with(trk("trk_1", range(0, 180)), trk("trk_6", range(60, 180), label="user box")), VIDEO)
+    assert [k.f for k in tl.targets["trk_1"].keyframes] == list(range(0, 60))
+    assert [k.f for k in tl.targets["trk_6"].keyframes] == list(range(60, 180))
+
+
+def test_remove_with_time_range_unmasks_only_that_window():
+    s = store_with(trk("trk_1", range(0, 180)))
+    add = Op(op_id="op_1", kind="add_targets", targets=["trk_1"])
+    middle = fold([add, Op(op_id="op_2", kind="remove_targets", targets=["trk_1"], time_range=(1.0, 2.0))], s, VIDEO)
+    assert [k.f for k in middle.targets["trk_1"].keyframes] == list(range(0, 30)) + list(range(61, 180))
+    everything = fold([add, Op(op_id="op_2", kind="remove_targets", targets=["trk_1"], time_range=(0.0, 6.0))], s, VIDEO)
+    assert "trk_1" not in everything.targets          # nothing left: the target goes, like a full remove
+    log = OpLog(ops=[add])
+    log.append(Op(op_id="op_2", kind="remove_targets", targets=["trk_1"], time_range=(2.0, 6.0)))
+    assert fold(log.ops, s, VIDEO).targets["trk_1"].keyframes[-1].f == 59
+    log.undo()
+    assert len(fold(log.ops, s, VIDEO).targets["trk_1"].keyframes) == 180
+    # a partial remove on a target that isn't masked is a no-op, and re-adding brings the window back
+    assert fold([Op(op_id="op_1", kind="remove_targets", targets=["trk_1"], time_range=(1.0, 2.0))], s, VIDEO).targets == {}
+    back = fold([add, Op(op_id="op_2", kind="remove_targets", targets=["trk_1"], time_range=(1.0, 2.0)),
+                 Op(op_id="op_3", kind="add_targets", targets=["trk_1"], time_range=(1.0, 2.0))], s, VIDEO)
+    assert len(back.targets["trk_1"].keyframes) == 180
 
 
 def test_empty_targets_rejected():

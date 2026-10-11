@@ -1,0 +1,7 @@
+{
+  "ops": [
+    {"op_id": "op_1", "request_id": "r_1", "kind": "add_targets", "targets": ["trk_1"], "effect": "blur", "padding": 0.15, "time_range": null},
+    {"op_id": "op_2", "request_id": "ui_move_a1b2c3", "kind": "remove_targets", "targets": ["trk_1"], "time_range": [2.0, 6.0]},
+    {"op_id": "op_3", "request_id": "ui_move_a1b2c3", "kind": "add_targets", "targets": ["trk_6"], "effect": "blur", "padding": 0.15, "time_range": [2.0, 6.0]}
+  ]
+}

@@ -801,6 +801,7 @@ function editControls(id, compact = false) {
     for (const [fx, name] of EFFECTS) kids.push(el('button', { class: fx === target.effect ? 'primary' : '', 'aria-pressed': String(fx === target.effect),
       disabled: busy ? '' : null, onclick: () => fx !== target.effect && editTargets('effect', [id], fx) }, name));
     kids.push(el('button', { class: 'danger', disabled: busy ? '' : null, title: 'Stop masking it (Delete key)', onclick: () => editTargets('remove', [id]) }, 'Unmask'));
+    if (!compact) kids.push(el('span', { class: 'hint' }, 'In the wrong place? Drag the box or a corner in the Preview.'));
   } else {
     kids.push(el('span', { class: 'hint' }, 'Mask it with'));
     for (const [fx, name] of EFFECTS) kids.push(el('button', { disabled: busy ? '' : null, onclick: () => editTargets('add', [id], fx) }, name));
@@ -825,11 +826,16 @@ async function editTargets(action, ids, effect = 'blur') {
   } catch (e) { status(`That edit failed: ${errText(e)}`, true); }
   setBusy();
 }
+// Preview geometry: a pointer event -> video pixels, and the scale (screen px per video px)
+function previewPoint(ev) {
+  const r = $('layers').getBoundingClientRect(), W = S.info.width, H = S.info.height;
+  const s = Math.min(r.width / W, r.height / H);
+  return { x: (ev.clientX - r.left - (r.width - W * s) / 2) / s, y: (ev.clientY - r.top - (r.height - H * s) / 2) / s, s };
+}
 // The box under a point of the Preview at the frame shown, smallest first (a face inside a person wins)
 function boxAtPoint(ev) {
   if (!P.layers.boxes || !S.trackList || !S.info) return null;
-  const r = $('layers').getBoundingClientRect(), W = S.info.width, H = S.info.height;
-  const s = Math.min(r.width / W, r.height / H), x = (ev.clientX - r.left - (r.width - W * s) / 2) / s, y = (ev.clientY - r.top - (r.height - H * s) / 2) / s;
+  const { x, y, s } = previewPoint(ev);
   let best = null, area = Infinity;
   for (const t of S.trackList) {
     if (P.hiddenKinds.has(t.label)) continue;
@@ -840,11 +846,77 @@ function boxAtPoint(ev) {
   }
   return best;
 }
-$('hit').onclick = ev => {
+// The selected target's masked box at the frame shown, if it can be moved there (masked, and on screen now)
+function movableBox() {
+  const id = S.selected, t = id && S.timeline && S.timeline.targets[id];
+  if (!t || !P.layers.boxes || P.src !== 'source') return null;
+  const k = trackBox({ keyframes: [...t.keyframes].sort((a, b) => a.f - b.f) }, P.frame);
+  return k ? { id, box: k.box } : null;
+}
+// Which part of the movable box a point is on: a corner (resize), inside (move) or nothing
+function grabAt(ev) {
+  const mb = movableBox(); if (!mb) return null;
+  const { x, y, s } = previewPoint(ev), [x1, y1, x2, y2] = mb.box, near = 9 / s;
+  const cx = Math.abs(x - x1) <= near ? 'w' : Math.abs(x - x2) <= near ? 'e' : '';
+  const cy = Math.abs(y - y1) <= near ? 'n' : Math.abs(y - y2) <= near ? 's' : '';
+  if (cx && cy) return { ...mb, handle: cy + cx };
+  if (x >= x1 && x <= x2 && y >= y1 && y <= y2) return { ...mb, handle: 'move' };
+  return null;
+}
+// Drag the selected box (or a corner) to fix where it is; letting go re-tracks from this frame on.
+// A press without a drag is a click: select the box under it, or play / pause.
+let drag = null;
+$('hit').onpointerdown = ev => {
+  if (!S.info || ev.button !== 0) return;
+  const g = !S.busy && grabAt(ev);
+  drag = { x0: ev.clientX, y0: ev.clientY, grab: g || null, start: previewPoint(ev), frame: P.frame };
+  if (g) { $('player').pause(); $('hit').setPointerCapture(ev.pointerId); }
+};
+$('hit').onpointermove = ev => {
+  if (drag && drag.grab) {
+    const p = previewPoint(ev), dx = p.x - drag.start.x, dy = p.y - drag.start.y, [x1, y1, x2, y2] = drag.grab.box, h = drag.grab.handle;
+    let b = h === 'move' ? [x1 + dx, y1 + dy, x2 + dx, y2 + dy]
+      : [h.includes('w') ? x1 + dx : x1, h.includes('n') ? y1 + dy : y1, h.includes('e') ? x2 + dx : x2, h.includes('s') ? y2 + dy : y2];
+    b = [Math.min(b[0], b[2]), Math.min(b[1], b[3]), Math.max(b[0], b[2]), Math.max(b[1], b[3])];
+    const W = S.info.width, H = S.info.height;
+    P.dragBox = [Math.max(0, b[0]), Math.max(0, b[1]), Math.min(W, b[2]), Math.min(H, b[3])];
+    drawLayers(); return;
+  }
+  const g = !S.busy && grabAt(ev), id = g ? g.id : boxAtPoint(ev), hit = $('hit');
+  hit.style.cursor = !g ? (id ? 'pointer' : '') : g.handle === 'move' ? 'move' : (g.handle === 'nw' || g.handle === 'se' ? 'nwse-resize' : 'nesw-resize');
+  hit.title = g ? 'Drag to move this mask, or a corner to resize it, from this frame on'
+    : id ? `${tid(id)} ${tname(id, (S.trackList.find(t => t.track_id === id) || {}).label)}: click to select` : '';
+};
+$('hit').onpointerup = ev => {
+  const d = drag; drag = null; if (!d) return;
+  const moved = Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 3;
+  if (d.grab && moved && P.dragBox) {
+    const box = P.dragBox.map(Math.round); P.dragBox = null;
+    if (box[2] - box[0] >= 4 && box[3] - box[1] >= 4) moveTarget(d.grab.id, d.frame, box); else drawLayers();
+    return;
+  }
+  P.dragBox = null;
+  if (moved) return;
   const id = boxAtPoint(ev), v = $('player');
-  if (id) { select(id); return; }
+  if (id) { if (id !== S.selected) select(id); return; }
   v.paused ? v.play() : v.pause();  // like clicking the video itself
 };
+async function moveTarget(id, frame, box) {
+  if (S.busy || !S.vid) return;
+  const label = (S.timeline.targets[id] || {}).label, name = `${tid(id)} (${tname(id, label)})`;
+  setBusy(`Following ${name} from the corrected box…`);
+  try {
+    const j = await post(`api/videos/${S.vid}/targets`, { action: 'move', track_ids: [id], frame, box });
+    const nid = j.track.track_id;
+    S.versions.push({ key: `move_${j.op_ids.join('_')}_${Date.now()}`, text: `Moved ${name} at frame ${frame}`, at: Date.now(),
+      opIds: j.op_ids, n: j.summary.n_targets, undone: false });
+    if (S.desc[id]) S.desc[nid] = S.desc[id];
+    S.selected = nid; tid(nid);
+    await refreshState();
+    note(`Moved ${name}: from ${fmtF(frame / S.info.fps)} on, ${tid(nid)} follows the corrected box (until ${fmt(j.track.end)}); before that the old box stays. Undo reverts it.`);
+  } catch (e) { status(`Couldn't move it: ${errText(e)}`, true); }
+  setBusy(); drawLayers();
+}
 // Our own controls (the browser's covered the bottom of the picture, where plates often are)
 (function playerControls() {
   const v = $('player'), sc = $('scrub');
@@ -865,11 +937,6 @@ $('hit').onclick = ev => {
     else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
   });
 })();
-$('hit').onmousemove = ev => {
-  const id = boxAtPoint(ev);
-  $('hit').classList.toggle('over', !!id);
-  $('hit').title = id ? `${tid(id)} ${tname(id, (S.trackList.find(t => t.track_id === id) || {}).label)}: click to select` : '';
-};
 function renderVersions() {
   const live = S.versions.filter(v => !v.undone);
   const cur = live[live.length - 1];
@@ -933,16 +1000,18 @@ function trackBox(t, f) {
 // The decoded frame's RGBA pixels inside the box around all of this frame's masks, read once per frame shown.
 // Only that box: copying a whole 720p frame to the CPU and reading it back cost 12 ms of the 15 ms per frame.
 function framePixels(v, f, rects) {
-  const key = `${v.currentSrc}|${f}`;
-  if (P.px && P.pxKey === key) return P.px;
   let bx1 = Infinity, by1 = Infinity, bx2 = 0, by2 = 0;
   for (const m of rects) { bx1 = Math.min(bx1, m.r[0]); by1 = Math.min(by1, m.r[1]); bx2 = Math.max(bx2, m.r[2]); by2 = Math.max(by2, m.r[3]); }
   const bw = Math.max(1, bx2 - bx1), bh = Math.max(1, by2 - by1);
+  // Keyed on the crop too: after an edit the same frame has other masks, and reading them from the old crop
+  // gave zeros (black masks). Not cached mid-seek, when the video may still show the previous frame.
+  const key = `${v.currentSrc}|${f}|${bx1},${by1},${bw},${bh}`;
+  if (P.px && P.pxKey === key) return P.px;
   const c = P.full || (P.full = document.createElement('canvas'));
   c.width = bw; c.height = bh;
   const cg = c.getContext('2d', { willReadFrequently: true });
   cg.drawImage(v, bx1, by1, bw, bh, 0, 0, bw, bh);
-  P.pxKey = key;
+  P.pxKey = v.seeking ? '' : key;
   return P.px = { data: cg.getImageData(0, 0, bw, bh).data, x0: bx1, y0: by1, w: bw };
 }
 // 1-D INTER_AREA weights: output i averages source [i * n / m, (i + 1) * n / m), partial pixels weighted
@@ -1052,13 +1121,14 @@ function drawLayers(mediaTime) {
     }
   }
   if (P.layers.boxes && S.trackList) {
-    const masked = S.timeline ? S.timeline.targets : {};
+    // Solid only where the export masks it on this frame (a time window or a move can end a mask mid-track)
+    const masked = new Set(((S.maskFrames && S.maskFrames.get(f)) || []).map(m => m.id));
     g.font = '600 11px ui-monospace, Menlo, monospace'; g.textBaseline = 'bottom';
     for (const t of S.trackList) {
       if (P.hiddenKinds.has(t.label)) continue;
       const k = trackBox(t, f); if (!k) continue;
       nBoxes++;
-      const [x1, y1, x2, y2] = k.box, sel = t.track_id === S.selected, on = t.track_id in masked;
+      const [x1, y1, x2, y2] = k.box, sel = t.track_id === S.selected, on = masked.has(t.track_id);
       const color = sel ? '#4d6bff' : kindOf(t.label).color;
       g.globalAlpha = on || sel ? 1 : .7;
       g.setLineDash(on || sel ? [] : [5, 4]); g.lineWidth = sel ? 3 : on ? 2 : 1.5; g.strokeStyle = color;
@@ -1077,6 +1147,18 @@ function drawLayers(mediaTime) {
       }
       g.globalAlpha = 1;
     }
+  }
+  // The selected mask's corner handles (it can be dragged), and the box being dragged
+  const mb = !P.dragBox && !S.busy && movableBox();
+  if (mb) {
+    g.fillStyle = '#4d6bff';
+    const [x1, y1, x2, y2] = mb.box;
+    for (const [cx, cy] of [[x1, y1], [x2, y1], [x1, y2], [x2, y2]]) g.fillRect(X(cx) - 4, Y(cy) - 4, 8, 8);
+  }
+  if (P.dragBox) {
+    const [x1, y1, x2, y2] = P.dragBox;
+    g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#fff';
+    g.strokeRect(X(x1), Y(y1), (x2 - x1) * s, (y2 - y1) * s); g.setLineDash([]);
   }
   $('stageTime').textContent = `${fmtF(f / S.info.fps)} · frame ${f}`;
   const ph = $('ph'); if (ph) ph.style.left = pct(f / S.info.fps);

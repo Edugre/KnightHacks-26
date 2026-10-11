@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from censor.core.tracks import Keyframe, TrackStore
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: remove_targets honors time_range (unmask only that window); used to move a mask by hand
 
 Effect = Literal["blur", "pixelate", "box"]
 OpKind = Literal["add_targets", "remove_targets", "set_effect", "add_rule"]
@@ -36,7 +36,10 @@ class Op(BaseModel):
     targets: list[str] = Field(default_factory=list)
     effect: Effect = "blur"
     padding: float = Field(0.15, ge=0.0, le=2.0)
-    time_range: Optional[tuple[float, float]] = None  # seconds
+    time_range: Optional[tuple[float, float]] = Field(None, description=(
+        "Seconds, inclusive. add_targets: mask only this window of the track. remove_targets: unmask only this "
+        "window and keep the rest (moving a mask is remove_targets [f, end] on the old track plus add_targets "
+        "[f, end] on a track re-tracked from the corrected box). None means the whole track."))
     category: Optional[str] = None  # add_rule only (live mode, stretch)
 
     @field_validator("targets")
@@ -108,7 +111,15 @@ def fold(ops: list[Op], tracks: TrackStore, video: VideoInfo) -> Timeline:
                                              effect=op.effect, padding=op.padding, keyframes=list(kfs))
         elif op.kind == "remove_targets":
             for tid in op.targets:
-                tl.targets.pop(tid, None)
+                if op.time_range is None or tid not in tl.targets:
+                    tl.targets.pop(tid, None)
+                    continue
+                f0, f1 = video.frame_at(op.time_range[0]), video.frame_at(op.time_range[1])
+                kept = [k for k in tl.targets[tid].keyframes if not f0 <= k.f <= f1]
+                if kept:
+                    tl.targets[tid].keyframes = kept
+                else:
+                    tl.targets.pop(tid)
         elif op.kind == "set_effect":
             for tid in op.targets:
                 if tid in tl.targets:

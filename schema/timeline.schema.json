@@ -132,7 +132,7 @@
     },
     "properties": {
       "version": {
-        "default": 1,
+        "default": 2,
         "title": "Version",
         "type": "integer"
       },
@@ -218,6 +218,7 @@
           }
         ],
         "default": null,
+        "description": "Seconds, inclusive. add_targets: mask only this window of the track. remove_targets: unmask only this window and keep the rest (moving a mask is remove_targets [f, end] on the old track plus add_targets [f, end] on a track re-tracked from the corrected box). None means the whole track.",
         "title": "Time Range"
       },
       "category": {
