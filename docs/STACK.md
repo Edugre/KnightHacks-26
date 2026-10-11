@@ -2,7 +2,58 @@
 
 Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 
-## Hardware and environment
+**Sun Oct 11: the Dublin hub went down and we moved to the San Jose hub's Strix Halo (gfx1151).** Every measurement below the Strix Halo section is an R9700 (Dublin) number, kept as history; don't quote it as the Strix Halo's speed.
+
+## Strix Halo (gfx1151) on the San Jose hub
+
+Measured Sun Oct 11, ~00:30-01:00 ET. Anything not listed here is not measured yet; don't copy R9700 numbers across.
+
+| Item | Value |
+| --- | --- |
+| Platform | AUP Learning Cloud San Jose (sjc.aupcloud.io), resource **VSCode Server GPU**, node **AMD Radeon 8060S (Strix Halo iGPU)**, runtime 240 |
+| GPU | Radeon 8060S iGPU, **gfx1151**, **64 GB LPDDR5X** shared with the CPU (`rocm-smi` reports 68.7 GB VRAM) |
+| CPU, RAM, disk | 32 cores, 62 GB RAM, ~984 GB disk |
+| ROCm | 7.13 (hip 7.13.99004) |
+| PyTorch | 2.9.1+rocm7.13.0 and torchvision 0.24.0+rocm7.13.0, preinstalled; `scripts/setup.sh` left torch unchanged |
+| Python and libraries | Python 3.12.3, Ultralytics 8.4.175, transformers 5.19.0, OpenCV 5.0.0 (headless), ffmpeg 7.0.2 static |
+| Session limit | **240 minutes** per launch |
+| Clone and ports | `~/KnightHacks-26` (repo URL in the launch form's git repository field); model server on :8100, app on :8000, `https://sjc.aupcloud.io/user/<user>/proxy/8000/` |
+| EgoBlur | Re-upload `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` to `~/datasets/egoblur/` on every fresh server: Meta's CDN refuses AUP hosts (upload gotchas: README, "If the Dublin hub is down") |
+| `scripts/setup.sh` | Ran clean once the MobileCLIP download completed. The first run was cut off mid-download by a browser disconnect; rerunning fixed it (the script is idempotent) |
+| `./run.sh test` | 114 passed, 1 failed: `tests/test_e2e_stub.py::test_sample_clips_load_without_a_file_picker` (OSError opening a copied clip under pytest's temp dir). Cause not investigated; known failure, not fixed |
+| Offline | Model server `/health` says `"offline": true`; `logs/egress.log` was never created, so nothing tried to connect out |
+| Not an option | Radeon 890M node: 4 GB can't hold Qwen3-VL-8B |
+
+| Measurement (Strix Halo) | Result |
+| --- | --- |
+| Qwen3-VL-8B model server load | **8 s** (`/health`: `load_s` 8, `gpu_mem_gb` 17.5). Probably storage, not the GPU: don't claim the GPU is faster for this |
+| YOLOE + EgoBlur warm-up at app start | **21.3 s** ("detectors ready in 21.3 s") |
+| GPU memory, model server + app | ~18.7 GB right after model-server start, ~20.3 GB with EgoBlur loaded and a request run |
+| `./run.sh bench`, `street_walk` (1280x720, 221 frames) | detect **45.4 ms/frame**, render **3.5 ms/frame**, offline speed **0.8x real time** |
+| `./run.sh bench`, `synthetic` (1280x720, 180 frames) | detect 140.5 ms/frame, render 3.7 ms/frame, 0.2x; agent 1.07 s mean / 7.52 s max per request. Not the product's speed: detect time here is dominated by test setup |
+| `./run.sh bench`, GPU memory | detector (bench process) 1.25 GB, model server 17.6 GB, **18.9 GB peak** with all models loaded (target <= 28 GB: pass) |
+| `./run.sh bench`, fail-closed on uncertain keyframes | 100% (pass) |
+| YOLOE-11s-seg at 640 px (`scripts/smoke_yoloe.py`) | not measured |
+| VLM yes/no latency (`scripts/smoke_vlm.py`) | not measured |
+| EgoBlur per model, 1080p frame (`bench.egoblur_speed`) | not measured |
+| Upload scan, `street_plates` 1080p (`bench.profile_scan`) | not measured |
+| Plate recall and over-blur on the labeled clips (`bench.review`) | not measured; the comparison with the R9700 is pending |
+| Request success rate | not measured (rerun with `--clip`, see below) |
+| gfx1151 stability under load, attention settings (PLAN.md concerns 1-2) | no crash seen in the runs above; not stress-tested |
+
+**The bench report's quality numbers don't measure the product.** The run (bench/report.md generated 2026-10-11T05:00:59Z on the Strix Halo; the report wasn't committed) scored only `synthetic` and `street_walk`: `street_talk` and `street_plates` were skipped because `run_bench` expects `bench/labels/<clip>.json`. All 7 requests it ran are written for the synthetic clip, whose drawn shapes real detectors can't find, so its face recall, plate recall, over-blur and request success are not results. That run predates PR #18, which added labels for all three clips and 20 real-clip requests: rerun with `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk`. The R9700 plate numbers (100% / 94.6% masked, 3% over-blur) came from `bench/review.py`, not `run_bench`.
+
+**R9700 vs Strix Halo, figures measured on both:**
+
+| | R9700 (Dublin) | Strix Halo (San Jose) |
+| --- | --- | --- |
+| Qwen3-VL-8B load | 211 s to about 9 min (NFS storage) | 8 s (likely storage, not GPU) |
+| Model server GPU memory (`/health`) | 17.7 GB | 17.5 GB |
+| Peak GPU memory, all models loaded | 17.9 GB (M0 smoke test) | 18.9 GB (`./run.sh bench`) |
+| Detector warm-up at app start (YOLOE + EgoBlur) | 18.5 s | 21.3 s |
+| YOLOE fps, EgoBlur per frame, VLM latency, upload scan, plate recall | measured (below) | not measured |
+
+## Hardware and environment (R9700, Dublin)
 
 | Item | Value |
 | --- | --- |
@@ -15,9 +66,9 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 | Session limit | **240 minutes max** per launch, about 4 credits/min. Relaunch from the hub when it expires |
 | Tools | git and uv present; ffmpeg 7.0.2 static installed into `~/bin`; no conda, no llama.cpp |
 
-**Why the R9700 and not the Strix Halo option:** gfx1201 is officially supported by ROCm and has much faster memory. That avoids the gfx1151 segfault and Flash Attention risks from PLAN.md (concerns 1–2). 32 GB holds every model we need. The hub's Strix Halo option (gfx1151, 64 GB) is still available if judges want it; everything below is plain PyTorch, so it should port.
+**Why the R9700 and not the Strix Halo option (Sat; superseded Sun when Dublin went down):** gfx1201 is officially supported by ROCm and has much faster memory. That avoids the gfx1151 segfault and Flash Attention risks from PLAN.md (concerns 1–2). 32 GB holds every model we need. The hub's Strix Halo option (gfx1151, 64 GB) is still available if judges want it; everything below is plain PyTorch, so it should port.
 
-## Models and measured performance
+## Models and measured performance (R9700 (Dublin) numbers)
 
 | Role | Model | Backend | Result |
 | --- | --- | --- | --- |
@@ -28,7 +79,7 @@ Measured Sat Oct 10, 02:20–02:35 ET. **Gate 1 passed.**
 | Face + plate detector (added Sat 05:25) | EgoBlur Gen1 face and plate (`~/datasets/egoblur`, Apache 2.0) | TorchScript on PyTorch ROCm, fp16 autocast | **0.049 s per model per 1080p frame** in fp16 (0.147 s in fp32, 1.5 s on the 64-core CPU); PP4AV recall 0.74 faces / 0.65 plates (conf 0.1, face padding 0.5) vs YOLOE's 0.00 / 0.07, the same in fp16 |
 | Upload scan (Sat 07:50) | EgoBlur face + plate every 3rd frame, YOLOE person every frame | | **17.2 s for a 13 s 1080p clip (0.76x real time)**, 48.1 s before; 720p clip 1.12x real time on the GPU vs 0.05x on the CPU alone (24x). `bench/profile_scan.py` |
 
-## Re-check (Sat Oct 10, ~03:15 ET, commit ccfc82f)
+## Re-check (Sat Oct 10, ~03:15 ET, commit ccfc82f, R9700)
 
 Run on the shared session while the model server and app were already up (GPU memory at 56% before the checks).
 
@@ -57,7 +108,7 @@ Run on the shared session while the model server and app were already up (GPU me
 
 ## Known noise (harmless)
 
-- `MIOpen(HIP): Warning [ParseAndLoadDb] File is unreadable ... gfx1201_32.HIP.fdb.txt`: no prebuilt tuning DB, so the first run of a new layer shape is slightly slower.
+- `MIOpen(HIP): Warning [ParseAndLoadDb] File is unreadable ... gfx1201_32.HIP.fdb.txt` (R9700; expect the gfx1151 name on Strix Halo): no prebuilt tuning DB, so the first run of a new layer shape is slightly slower.
 - `warning: xnack 'Off' was requested for a processor that does not support it!`: compiler noise.
 - `WARNING NMS time limit 2.050s exceeded` from Ultralytics on the first frame: warm-up only.
 
@@ -71,4 +122,4 @@ python3 scripts/check_offline.py [clip.mp4]   # every model loads with the netwo
 ```
 `smoke_vlm.py` loads its own 18 GB copy of the model, so skip it while the resident model server is running; check `curl -s localhost:8100/health` instead.
 
-Model load time from the NFS home varies with load on the storage: 211 s at M0, 311 s and about 9 minutes on two restarts on Sat morning. Plan demo restarts with that in mind.
+Model load time from the NFS home varies with load on the storage (R9700, Dublin): 211 s at M0, 311 s and about 9 minutes on two restarts on Sat morning. Plan demo restarts with that in mind.
