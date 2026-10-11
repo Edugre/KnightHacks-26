@@ -31,6 +31,21 @@ class FakeReplay:
         self.started = self.stopped = False
         self.alive = True  # a test flips this to False to play an engine whose thread died
         self.afters: list[int] = []
+        self.is_push = mode == "push"
+        self.embedder = "sface"  # what stats()["identity"]["embedder"] reports
+        self.enroll_result = {"ok": True, "faces_seen": 1, "box": [10, 20, 60, 80]}
+        self.enroll_calls = 0
+        self.enrolled = False
+        self.cleared = 0
+
+    def enroll(self, timeout=2.0):
+        self.enroll_calls += 1
+        self.enrolled = bool(self.enroll_result["ok"])
+        return self.enroll_result
+
+    def clear_enrolled(self):
+        self.cleared += 1
+        self.enrolled = False
 
     @property
     def running(self):
@@ -63,7 +78,9 @@ class FakeReplay:
                 "blind_share": 0.0, "dropped_out": 0, "emit_errors": 0,
                 "detector": {"passes": 3, "p50_ms": 120.0, "p95_ms": 140.0, "baseline_p95_ms": 140.0, "errors": 0},
                 "emit": {"p50_ms": 5.0, "p95_ms": 9.0}, "detected_share": 0.2,
-                "gap_frames": {"mean": 5.0, "max": 6}, "hold_frames": 15, "frame_age_ms": {"p50": 1000.0}}
+                "gap_frames": {"mean": 5.0, "max": 6}, "hold_frames": 15, "frame_age_ms": {"p50": 1000.0},
+                "identity": {"enabled": self.embedder == "sface", "enrolled": self.enrolled, "spared_now": 0,
+                             "embedder": self.embedder, "spare_cos": 0.45, "skipped_embeds": 0, "embed_ms_p50": 0.0}}
 
 
 @pytest.fixture(autouse=True)
@@ -77,7 +94,11 @@ def fresh_state(monkeypatch, tmp_path):
     monkeypatch.setitem(live_routes._state, "detector_kind", None)
     monkeypatch.setitem(live_routes._state, "cats", live_routes.LIVE_CATS)
     monkeypatch.setitem(live_routes._state, "detector_note", None)
+    monkeypatch.setitem(live_routes._state, "embedder", "none")
+    monkeypatch.setitem(live_routes._state, "except_me", False)
     monkeypatch.setattr(live_routes, "_detectors", {})
+    monkeypatch.setattr(live_routes, "_embedders", {})
+    monkeypatch.delenv("CENSOR_SFACE", raising=False)
     samples = tmp_path / "clips"
     samples.mkdir()
     (samples / "demo.mp4").write_bytes(b"")  # the fake never opens it
@@ -139,9 +160,9 @@ def test_start_answers_202_then_runs(client, fake):
 
 
 def test_start_passes_the_requested_height(client, fake):
-    _start(client, height=480)
+    _start(client, height=540)
     _wait_phase(client, "running")
-    assert fake[0][1] == 480
+    assert fake[0][1] == 540
 
 
 def test_warming_reports_itself(client, monkeypatch):
@@ -156,7 +177,7 @@ def test_warming_reports_itself(client, monkeypatch):
     r = _start(client)
     assert r.status_code == 202
     assert r.json() == {"phase": "warming", "running": False, "warming": True, "clip": "demo",
-                        "cats": ["face", "license plate"]}
+                        "cats": ["face", "license plate"], "embedder": "none", "except_me": False}
     assert client.get("/api/live/stats").json()["warming"] is True
     assert client.get("/api/live/frame").status_code == 204  # nothing to show yet
     release.append(1)
@@ -177,7 +198,7 @@ def test_unknown_clip_is_404(client, fake):
     assert client.get("/api/live/stats").json()["phase"] == "idle"
 
 
-@pytest.mark.parametrize("height", [2000, 100, 1081, 359])
+@pytest.mark.parametrize("height", [2000, 100, 1081, 359, 360, 1080, 480, 719])
 def test_height_out_of_range_is_422(client, fake, height):
     assert _start(client, height=height).status_code == 422
 
@@ -225,14 +246,14 @@ def test_stop_returns_final_stats_and_goes_idle(client, fake):
     assert r.status_code == 200
     assert r.json()["frames_out"] == 7 and r.json()["phase"] == "idle" and r.json()["running"] is False
     assert fake[0][3].stopped
-    assert client.get("/api/live/stats").json() == {"phase": "idle", "running": False}
+    assert client.get("/api/live/stats").json() == {"phase": "idle", "running": False, "embedder": "none"}
     assert client.get("/api/live/frame").status_code == 204
     assert _start(client).status_code == 202  # can start again
 
 
 def test_stop_when_idle_is_200(client):
     r = client.post("/api/live/stop")
-    assert r.status_code == 200 and r.json() == {"phase": "idle", "running": False}
+    assert r.status_code == 200 and r.json() == {"phase": "idle", "running": False, "embedder": "none"}
 
 
 def test_stop_while_warming_discards_the_engine(client, monkeypatch):
@@ -320,7 +341,7 @@ def test_stop_during_engine_start_discards_it(client, monkeypatch):
 
 
 def test_stats_idle_shape(client):
-    assert client.get("/api/live/stats").json() == {"phase": "idle", "running": False}
+    assert client.get("/api/live/stats").json() == {"phase": "idle", "running": False, "embedder": "none"}
 
 
 class FakeDetector:
@@ -346,8 +367,8 @@ def real_mode(monkeypatch):
     monkeypatch.setattr("censor.vision.specialist.EgoBlurDetector", FakeDetector)
     monkeypatch.setattr("censor.core.video.probe", lambda path: types.SimpleNamespace(width=1920, height=1080, n_frames=90))
     engine_mod = types.ModuleType("censor.live")
-    engine_mod.LiveReplay = lambda path, detect, height, cats=None: types.SimpleNamespace(path=path, detect=detect, height=height,
-                                                                                          cats=cats)
+    engine_mod.LiveReplay = lambda path, detect, height, cats=None, embed=None: types.SimpleNamespace(
+        path=path, detect=detect, height=height, cats=cats, embed=embed)
     engine_mod.egoblur_detect = lambda infer, cats=None: infer
     engine_mod.sidecar_detect = None
     monkeypatch.setitem(sys.modules, "censor.live", engine_mod)
@@ -515,7 +536,7 @@ def _start_and_kill(client, fake):
 def test_dead_engine_is_reaped_by_stats(client, fake):
     dead = _start_and_kill(client, fake)
     s = client.get("/api/live/stats").json()
-    assert s == {"phase": "idle", "running": False, "error": live_routes.ENGINE_DIED}
+    assert s == {"phase": "idle", "running": False, "embedder": "none", "error": live_routes.ENGINE_DIED}
     assert dead.stopped  # its leftover threads are stopped too
     assert client.get("/api/live/frame").status_code == 204
     assert _start(client).status_code == 202  # not 409
@@ -588,7 +609,7 @@ def test_camera_start_in_stub_mode_needs_no_clip_file_or_sidecar_and_has_no_dete
     r = _start_camera(client, height=540)  # there is no camera.mp4 and no tracks.json anywhere
     assert r.status_code == 202
     assert r.json() == {"phase": "warming", "running": False, "warming": True, "clip": "camera",
-                        "detector_kind": "none", "cats": ["face", "license plate"]}
+                        "detector_kind": "none", "cats": ["face", "license plate"], "embedder": "none", "except_me": False}
     s = _wait_phase(client, "running")
     assert s["detector_kind"] == "none" and s["mode"] == "push"
     assert s["detector"]["passes"] == 3  # the engine's own detector stats are untouched
@@ -627,6 +648,7 @@ def test_camera_start_without_egoblur_is_503_in_real_mode(client, fake, monkeypa
 def test_camera_start_height_is_validated_like_a_clip(client, fake):
     assert _start_camera(client, height=2000).status_code == 422
     assert _start_camera(client, height=100).status_code == 422
+    assert _start_camera(client, height=1080).status_code == 422
 
 
 def test_camera_start_while_running_is_409(client, camera):
@@ -751,8 +773,9 @@ def test_push_after_stop_is_409(client, camera):
 class RecordingEngine:
     """Stands in for censor.live.LiveReplay in push mode: records how make_replay built it."""
 
-    def __init__(self, clip, detect, height, push=False, cats=None):
+    def __init__(self, clip, detect, height, push=False, cats=None, embed=None):
         self.clip, self.detect, self.height, self.push_mode, self.cats = clip, detect, height, push, cats
+        self.embed = embed
 
 
 @pytest.fixture()
@@ -827,8 +850,8 @@ def stub_clip(camera_engine, monkeypatch, tmp_path):
     mod = sys.modules["censor.live"]
     mod.sidecar_detect = lambda path, src_h, live_h, n_frames, cats=None: calls.append(("sidecar", Path(path).name)) or "SIDECAR"
     mod.yunet_detect = lambda path, score=0.6, cats=None: calls.append(("yunet", path)) or "YUNET"
-    mod.LiveReplay = lambda path, detect, height, cats=None: types.SimpleNamespace(path=path, detect=detect, height=height,
-                                                                                      cats=cats)
+    mod.LiveReplay = lambda path, detect, height, cats=None, embed=None: types.SimpleNamespace(
+        path=path, detect=detect, height=height, cats=cats, embed=embed)
     clip = tmp_path / "c.mp4"
     clip.write_bytes(b"")
     return clip, calls
@@ -986,3 +1009,160 @@ def test_make_replay_stub_yunet_gets_cats(stub_clip, monkeypatch):
     monkeypatch.setenv("CENSOR_YUNET", "/m.onnx")
     r = live_routes.make_replay(str(clip), 540, True, ("face",))
     assert got == [("face",)] and r.cats == ("face",)
+
+
+# --- blur everyone except me: /enroll, /enroll/clear, the embedder switch -------------------------------------------
+
+def _running(client, fake):
+    _start(client)
+    _wait_phase(client, "running")
+    return fake[0][3]
+
+
+def test_enroll_when_idle_is_409(client):
+    r = client.post("/api/live/enroll")
+    assert r.status_code == 409 and r.json() == {"detail": "no live replay is running"}
+
+
+def test_enroll_without_an_embedder_is_503(client, fake):
+    replay = _running(client, fake)
+    replay.embedder = "none"
+    r = client.post("/api/live/enroll")
+    assert r.status_code == 503
+    assert r.json() == {"detail": "no embedder: set CENSOR_SFACE"}
+    assert replay.enroll_calls == 0
+
+
+def test_enroll_returns_the_engines_dict(client, fake):
+    replay = _running(client, fake)
+    r = client.post("/api/live/enroll")
+    assert r.status_code == 200 and r.json() == {"ok": True, "faces_seen": 1, "box": [10, 20, 60, 80]}
+    assert replay.enroll_calls == 1
+    assert client.get("/api/live/stats").json()["identity"]["enrolled"] is True
+
+
+def test_enroll_ok_false_is_still_200(client, fake):
+    replay = _running(client, fake)
+    replay.enroll_result = {"ok": False, "faces_seen": 0, "box": None, "reason": "no face in view"}
+    r = client.post("/api/live/enroll")
+    assert r.status_code == 200 and r.json() == replay.enroll_result
+
+
+def test_enroll_on_a_dead_engine_is_409_and_reaped(client, fake):
+    replay = _running(client, fake)
+    replay.alive = False
+    assert client.post("/api/live/enroll").status_code == 409
+    assert client.get("/api/live/stats").json()["phase"] == "idle"
+
+
+def test_enroll_clear_when_idle_is_409(client):
+    assert client.post("/api/live/enroll/clear").status_code == 409
+
+
+def test_enroll_clear_forgets_and_returns_identity(client, fake):
+    replay = _running(client, fake)
+    client.post("/api/live/enroll")
+    r = client.post("/api/live/enroll/clear")
+    assert r.status_code == 200
+    assert r.json() == {"ok": True}
+    assert replay.cleared == 1
+
+
+def test_stats_carry_identity_and_embedder(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_SFACE", "/models/sface.onnx")
+    r = _start(client)
+    assert r.json()["embedder"] == "sface"  # the 202 / warming body, before any engine exists
+    s = _wait_phase(client, "running")
+    assert s["embedder"] == "sface"
+    assert s["identity"] == {"enabled": True, "enrolled": False, "spared_now": 0, "embedder": "sface", "spare_cos": 0.45,
+                             "skipped_embeds": 0, "embed_ms_p50": 0.0}
+
+
+def test_embedder_is_none_without_the_env(client, fake):
+    assert _start(client).json()["embedder"] == "none"
+    assert _wait_phase(client, "running")["embedder"] == "none"
+
+
+def test_make_replay_passes_the_sface_embedder_to_every_engine(camera_engine, monkeypatch):
+    built = []
+    sentinel = object()
+
+    def fake_sface(path):
+        built.append(path)
+        return sentinel
+
+    sys.modules["censor.live"].sface_embed = fake_sface
+    monkeypatch.setenv("CENSOR_SFACE", "/models/sface.onnx")
+    assert live_routes.make_replay("a.mp4", 540, False).embed is sentinel
+    assert live_routes.make_replay("camera", 540, False).embed is sentinel
+    assert live_routes.make_replay("camera", 540, True).embed is sentinel  # stub camera, nothing to detect with
+    assert built == ["/models/sface.onnx"]  # loaded once, shared
+
+
+def test_make_replay_stub_clip_gets_the_embedder_too(stub_clip, monkeypatch):
+    clip, _ = stub_clip
+    Path(f"{clip}.tracks.json").write_text("{}")
+    sys.modules["censor.live"].sface_embed = lambda path: "EMBED"
+    monkeypatch.setenv("CENSOR_SFACE", "/models/sface.onnx")
+    assert live_routes.make_replay(str(clip), 540, True).embed == "EMBED"
+
+
+def test_make_replay_without_the_env_passes_no_embedder(camera_engine):
+    def boom(path):
+        raise AssertionError("sface_embed must not run without CENSOR_SFACE")
+
+    sys.modules["censor.live"].sface_embed = boom
+    assert live_routes.make_replay("a.mp4", 540, False).embed is None
+    assert live_routes.make_replay("camera", 540, False).embed is None
+
+
+def test_a_missing_sface_file_fails_the_start_into_idle(client, monkeypatch, camera_engine):
+    def missing(path):
+        raise FileNotFoundError(f"SFace model not found: {path}")
+
+    sys.modules["censor.live"].sface_embed = missing
+    monkeypatch.setenv("CENSOR_SFACE", "/nope/sface.onnx")
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    r = client.post("/api/live/start", json={"clip": "camera"})
+    assert r.status_code == 202
+    s = _wait_phase(client, "idle")
+    assert s["running"] is False and "/nope/sface.onnx" in s["error"] and "FileNotFoundError" in s["error"]
+    assert live_routes._embedders == {}  # a failed load is not cached
+
+
+def test_start_except_me_without_an_embedder_is_503(client, fake):
+    r = _start(client, except_me=True)
+    assert r.status_code == 503 and r.json() == {"detail": "no embedder: set CENSOR_SFACE"}
+    assert live_routes._state["phase"] == "idle" and not fake
+
+
+def test_start_except_me_with_an_embedder_is_reported(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_SFACE", "/models/sface.onnx")
+    r = _start(client, except_me=True)
+    assert r.status_code == 202 and r.json()["except_me"] is True
+    assert _wait_phase(client, "running")["except_me"] is True
+
+
+def test_push_busy_is_429_before_the_generic_409(client, camera, monkeypatch):
+    import censor.live as engine
+
+    class Busy(RuntimeError):
+        pass
+
+    monkeypatch.setattr(engine, "Busy", Busy, raising=False)
+    camera.fail_push = Busy("busy")
+    r = _push(client)
+    assert r.status_code == 429 and r.json() == {"detail": "too many frames in flight; slow down"}
+    camera.fail_push = RuntimeError("stopped")
+    assert _push(client).status_code == 409
+
+
+def test_push_with_a_malformed_content_length_is_400(client, camera):
+    r = _push(client, headers={"Content-Length": "12x"})
+    assert r.status_code == 400 and camera.pushed == []
+
+
+def test_push_to_a_clip_run_is_409_via_is_push(client, fake):
+    _start(client)
+    _wait_phase(client, "running")
+    assert _push(client).status_code == 409
