@@ -5,7 +5,8 @@ Rules (IMPLEMENTATION.md section 3), all fail-closed:
 - after a target's track is lost, keep masking for HOLD_FRAMES: the box keeps moving at the target's last
   speed and grows HOLD_GROWTH per frame;
 - start masking LEAD_FRAMES before the first keyframe (detectors that check every few frames see an object
-  up to that late), moving back at the first speed;
+  up to that late), moving back at the first speed; live replay passes a longer lead (its detections are
+  4-12 frames apart);
 - 'uncertain' keyframes double the padding; every box gets at least MIN_PAD_PX on each side;
 - an error while processing a frame blurs the whole frame and is counted in the stats.
 
@@ -70,7 +71,18 @@ def _moved(box: Box, v: Box, k: int) -> Box:
     return tuple(box[i] + v[i] * k for i in range(4))  # type: ignore[return-value]
 
 
-def expand_target(target: Target, n_frames: int) -> dict[int, tuple[Box, float]]:
+def _lead_box(first_box: Box, v: Box, k: int) -> Box:
+    """Box k frames before the first keyframe. Past LEAD_FRAMES we cannot tell whether the object was moving
+    or standing still (the live replay detects every 4-12 frames instead of every 3, so something that walked
+    in just after the previous detection must be covered back to it), so cover both guesses."""
+    moved = _moved(first_box, v, -k)
+    if k <= LEAD_FRAMES:
+        return moved
+    return (min(moved[0], first_box[0]), min(moved[1], first_box[1]),
+            max(moved[2], first_box[2]), max(moved[3], first_box[3]))
+
+
+def expand_target(target: Target, n_frames: int, lead_frames: int = LEAD_FRAMES) -> dict[int, tuple[Box, float]]:
     """Per-frame (box, padding) for one target, with interpolation, lead-in and hold-after-loss applied."""
     out: dict[int, tuple[Box, float]] = {}
     kfs = sorted(target.keyframes, key=lambda k: k.f)
@@ -91,9 +103,9 @@ def expand_target(target: Target, n_frames: int) -> dict[int, tuple[Box, float]]
 
     first = kfs[0]
     v0 = _speed(kfs, end=False)
-    for k in range(1, LEAD_FRAMES + 1):
+    for k in range(1, lead_frames + 1):
         if first.f - k >= 0:
-            out[first.f - k] = (_moved(first.box, v0, -k), pad_for(first.state) + HOLD_GROWTH * k)
+            out[first.f - k] = (_lead_box(first.box, v0, k), pad_for(first.state) + HOLD_GROWTH * k)
 
     for i, kf in enumerate(kfs):
         out[kf.f] = (kf.box, pad_for(kf.state))
