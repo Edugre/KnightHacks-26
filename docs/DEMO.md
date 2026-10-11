@@ -4,6 +4,8 @@ Live through the AUP proxy, with `street_walk` as the main clip and `street_plat
 
 **Demo hardware: Strix Halo** (Radeon 8060S, gfx1151, 64 GB, on the San Jose hub). Every number below names the GPU and resolution it was measured on. Strix Halo figures (docs/STACK.md) exist only for detection speed, offline speed on `street_walk` at 1280x720, GPU memory, request success, labeled-box recall and plate masking; everything else is an **R9700 (Dublin)** number (Radeon AI PRO R9700, gfx1201, 32 GB; IMPLEMENTATION.md, "Where we are"), measured before the Dublin hub went down, so say so when you quote it. Don't quote laptop timings.
 
+- **No sample loads on :8000 within 2 minutes of a live replay run**, and never record the main demo while `censor.live_cli run` or the :8001 live page is running: the live loop keeps the GPU ~100% busy and the editor's scans slow 2x (docs/STACK.md).
+
 ## Before you go on (10 minutes ahead)
 
 1. Relaunch the server on the San Jose hub (README, "If the Dublin hub is down") if it's older than about 3 hours (sessions end at 4 h), then `cd ~/KnightHacks-26 && git pull && ./run.sh`. Wait for `/health` to say `"offline": true` (the model server loaded in 8 s on the Strix Halo).
