@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -19,7 +20,7 @@ from bench.run_bench import COVER_MIN, _clip_box, coverage
 from censor.core.timeline import Target
 from censor.core.tracks import Keyframe, Track, TrackStore
 from censor.live import (EGOBLUR_CONF, FACE_EXPAND, LIVE_CATS, WINDOW_BACK, BoxCache, Detection, LiveReplay,
-                         egoblur_detect, mask_boxes, plate_ok, sidecar_detect)
+                         egoblur_detect, mask_boxes, plate_ok, sidecar_detect, yunet_detect)
 from censor.render.render import HOLD_FRAMES, LEAD_FRAMES, expand_target
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -321,8 +322,9 @@ def test_stats_before_any_pass_has_the_documented_keys_with_nulls_for_percentile
     s = eng.stats()
     assert set(s) == {"phase", "running", "warming", "run", "clip", "size", "fps", "n_frames", "delay_s",
                       "frames_out", "blind", "blind_share", "dropped_out", "emit_errors", "detector", "emit",
-                      "detected_share", "gap_frames", "hold_frames", "frame_age_ms"}
+                      "detected_share", "gap_frames", "hold_frames", "frame_age_ms", "input_fps", "gaps_in", "mode"}
     assert s["phase"] == "idle" and s["size"] == [W, H] and s["hold_frames"] == HOLD_FRAMES
+    assert s["mode"] == "clip" and s["input_fps"] is None and s["gaps_in"] == 0
     assert s["detector"] == {"passes": 0, "p50_ms": None, "p95_ms": None, "baseline_p95_ms": None, "errors": 0}
     assert s["emit"] == {"p50_ms": None, "p95_ms": None}
     assert s["gap_frames"] == {"mean": None, "max": None} and s["frame_age_ms"] == {"p50": None}
@@ -361,3 +363,320 @@ def test_a_wide_plate_is_kept_and_a_square_one_is_dropped_unless_it_touches_the_
     assert not plate_ok(pair((300.0, 400.0, 360.0, 460.0)), W, H)  # 1:1, 60 px
     assert plate_ok(pair((0.0, 400.0, 60.0, 460.0)), W, H)         # cut off by the left edge
     assert plate_ok(pair((300.0, 400.0, 310.0, 410.0)), W, H)       # tiny: shape not judged
+
+
+# ---- camera / push mode ---------------------------------------------------------------------------------------
+
+def jpeg_of(img: np.ndarray, quality: int = 90) -> bytes:
+    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    assert ok
+    return buf.tobytes()
+
+
+def flat_jpeg(w: int, h: int, grey: int = 90) -> bytes:
+    return jpeg_of(np.full((h, w, 3), grey, np.uint8))
+
+
+def shape_of(jpeg: bytes) -> tuple[int, int]:
+    h, w = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR).shape[:2]
+    return w, h
+
+
+@pytest.fixture(scope="module")
+def jpegs(clip):
+    """Every frame of the fixture clip as a camera upload would send it."""
+    cap, out = cv2.VideoCapture(str(clip)), []
+    ok, img = cap.read()
+    while ok:
+        out.append(jpeg_of(img))
+        ok, img = cap.read()
+    cap.release()
+    assert len(out) == 90
+    return out
+
+
+def camera_detect(clip: Path, idx_of: dict):
+    """The sidecar replay for a pushed stream: stream frame f carries clip frame idx_of[f]. The test thread fills
+    idx_of right after push() returns f, so the detector may be a moment ahead of it: wait for the entry."""
+    inner = sidecar_for(clip)
+
+    def detect(f, frame):
+        deadline = time.monotonic() + 1.0
+        while f not in idx_of and time.monotonic() < deadline:
+            time.sleep(0.0005)
+        return inner(idx_of[f], frame)
+    return detect
+
+
+def push_at_30fps(eng: LiveReplay, jpegs: list[bytes], seconds: float, idx_of: dict) -> None:
+    t0 = time.monotonic()
+    for i in range(int(seconds * 30)):
+        time.sleep(max(0.0, t0 + i / 30 - time.monotonic()))
+        idx_of[eng.push(jpegs[i % len(jpegs)])] = i % len(jpegs)
+
+
+def test_push_mode_end_to_end_every_emitted_frame_is_blind_or_covers_every_face_and_plate(clip, jpegs):
+    idx_of, emitted, lock = {}, [], threading.Lock()
+
+    def record(f, clip_f, blind, rects):
+        with lock:
+            emitted.append((f, clip_f, blind, rects))
+
+    eng = LiveReplay(None, camera_detect(clip, idx_of), height=H, delay_s=0.4, push=True, on_emit=record)
+    eng.start()
+    try:
+        push_at_30fps(eng, jpegs, 1.5, idx_of)
+        pushing = eng.stats()  # read while the pushes are inside the 2 s input window
+        time.sleep(0.8)        # let the delay buffer drain
+    finally:
+        eng.stop()
+    s = eng.stats()
+    assert emitted and [e[0] for e in emitted] == sorted({e[0] for e in emitted})
+    assert any(not blind for _, _, blind, _ in emitted), "nothing was ever vouched: the test would be vacuous"
+    assert s["mode"] == "push" and s["clip"] == "camera" and s["n_frames"] == 0
+    assert eng.size == (1280, 720) and s["size"] == [1280, 720] and eng.fps == 30.0
+    assert 20 <= pushing["input_fps"] <= 35, pushing["input_fps"]
+    assert s["detector"]["passes"] > 0 and s["emit_errors"] == 0 and s["dropped_out"] == 0
+    # every number below the last emitted one either arrived and was sent, or never arrived
+    assert s["frames_out"] + s["gaps_in"] == emitted[-1][0] + 1
+    for f, clip_f, blind, rects in emitted:
+        assert clip_f == f  # no clip in push mode: the clip frame is the stream frame
+        if blind:
+            continue
+        for box in sidecar_boxes(clip, idx_of[f]):
+            assert coverage(_clip_box(box, W, H), rects) >= COVER_MIN, (f, idx_of[f], box)
+
+
+def test_push_rejects_bytes_that_are_not_a_jpeg_and_counts_nothing():
+    eng = LiveReplay(None, lambda f, frame: {}, height=H, push=True)
+    eng.start()
+    try:
+        for junk in (b"junk", b"", b"\xff\xd8\xff truncated"):
+            with pytest.raises(ValueError, match="JPEG"):
+                eng.push(junk)
+        assert eng._n["frames_in"] == 0 and eng.size == (0, 0) and eng.stats()["input_fps"] == 0.0
+        assert eng.push(flat_jpeg(640, 360)) == 0  # and the engine still takes a good one
+        assert eng._n["frames_in"] == 1
+    finally:
+        eng.stop()
+
+
+def patch_sof(jpeg: bytes, w: int, h: int) -> bytes:
+    i = jpeg.index(b"\xff\xc0") if b"\xff\xc0" in jpeg else jpeg.index(b"\xff\xc2")
+    return jpeg[:i + 5] + h.to_bytes(2, "big") + w.to_bytes(2, "big") + jpeg[i + 9:]
+
+
+def test_push_refuses_a_jpeg_that_declares_a_huge_frame_before_decoding_it(monkeypatch):
+    good = flat_jpeg(64, 48)
+    bomb = patch_sof(good, 20000, 20000)
+    assert len(bomb) == len(good) and len(bomb) < 2000
+    decoded = []
+    real = cv2.imdecode
+    monkeypatch.setattr("censor.live.cv2.imdecode", lambda *a: decoded.append(1) or real(*a))
+    eng = LiveReplay(None, lambda f, frame: {}, height=360, push=True)
+    eng.start()
+    try:
+        with pytest.raises(ValueError, match="too large or malformed"):
+            eng.push(bomb)
+        with pytest.raises(ValueError, match="too large or malformed"):
+            eng.push(patch_sof(good, 0, 0))
+        assert decoded == [] and eng._n["frames_in"] == 0 and eng.size == (0, 0)
+        assert eng.push(good) == 0 and decoded == [1]  # a real small JPEG passes
+    finally:
+        eng.stop()
+
+
+def test_push_needs_a_running_push_engine(clip):
+    eng = LiveReplay(None, lambda f, frame: {}, height=H, push=True)
+    with pytest.raises(RuntimeError):
+        eng.push(flat_jpeg(640, 360))  # not started
+    eng.start()
+    assert eng.push(flat_jpeg(640, 360)) == 0
+    eng.stop()
+    with pytest.raises(RuntimeError):
+        eng.push(flat_jpeg(640, 360))  # stopped
+    assert eng._n["frames_in"] == 1
+    with pytest.raises(RuntimeError):
+        LiveReplay(str(clip), lambda f, frame: {}).push(flat_jpeg(640, 360))  # a clip engine has no camera
+
+
+def test_a_clip_is_required_unless_the_engine_is_in_push_mode():
+    with pytest.raises(ValueError):
+        LiveReplay(None, lambda f, frame: {})
+
+
+def test_a_push_engine_before_its_first_frame_has_size_zero_and_stats_and_latest_do_not_crash():
+    eng = LiveReplay(None, lambda f, frame: {}, height=H, push=True)
+    s = eng.stats()
+    assert eng.size == (0, 0) and s["size"] == [0, 0] and s["mode"] == "push" and s["clip"] == "camera"
+    assert s["fps"] == 30.0 and s["n_frames"] == 0 and s["input_fps"] == 0.0 and s["gaps_in"] == 0
+    assert s["frames_out"] == 0 and s["detected_share"] == 0.0 and s["phase"] == "idle"
+    assert eng.latest(-1, 0.2) is None
+    eng.start()
+    try:
+        assert eng.latest(-1, 0.2) is None  # running, nothing pushed yet
+        assert eng.stats()["size"] == [0, 0]
+    finally:
+        eng.stop()
+
+
+def test_the_first_frame_sets_the_size_from_its_aspect_even_width_and_later_frames_conform_to_it():
+    eng = LiveReplay(None, lambda f, frame: {}, height=540, out_w=2000, delay_s=0.1, push=True)
+    eng.start()
+    try:
+        eng.push(flat_jpeg(641, 360))  # 641 * 540 / 360 = 961.5: rounds to the even 962
+        assert eng.size == (962, 540) and eng.stats()["size"] == [962, 540]
+        first = eng.latest(-1, 3.0)
+        eng.push(flat_jpeg(400, 400))  # another aspect later (camera switched): stretched to the live size
+        second = eng.latest(first[0], 3.0)
+    finally:
+        eng.stop()
+    assert shape_of(first[1]) == (962, 540) and shape_of(second[1]) == (962, 540)  # a 641 px upload is upscaled
+
+
+def test_the_display_size_follows_the_first_frame_not_a_clip():
+    eng = LiveReplay(None, lambda f, frame: {}, height=H, out_w=960, delay_s=0.1, push=True)
+    eng.start()
+    try:
+        eng.push(flat_jpeg(1280, 720))
+        shown = eng.latest(-1, 3.0)
+    finally:
+        eng.stop()
+    assert eng.size == (1280, 720) and shape_of(shown[1]) == (960, 540)  # downscaled for the wire, masked at 720p
+
+
+def test_frame_numbers_follow_elapsed_time_so_a_stall_is_a_gap_in_the_numbers_not_a_neighbour():
+    emitted = []
+    eng = LiveReplay(None, lambda f, frame: {}, height=360, delay_s=0.3, push=True,
+                     on_emit=lambda f, c, blind, rects: emitted.append(f))
+    jpeg = flat_jpeg(640, 360)
+    eng.start()
+    try:
+        a, b = eng.push(jpeg), eng.push(jpeg)  # a burst: consecutive numbers
+        time.sleep(2.0)                          # a Wi-Fi stall
+        c, d = eng.push(jpeg), eng.push(jpeg)
+        time.sleep(0.8)
+    finally:
+        eng.stop()
+    s = eng.stats()
+    assert (a, b) == (0, 1) and d == c + 1
+    assert 57 <= c - b <= 62, (b, c)        # 2 s at the nominal 30 fps, not 1
+    assert emitted == [a, b, c, d]
+    assert s["gaps_in"] == c - b - 1 and s["dropped_out"] == 0 and s["frames_out"] == 4
+    assert s["frames_out"] + s["gaps_in"] == d + 1
+    assert s["detector"]["passes"] >= 2 and s["gap_frames"]["max"] >= 55  # detections on both sides of the stall: far apart
+    assert s["gap_frames"]["max"] > HOLD_FRAMES + 1  # so the vouch rule will not bridge them
+
+
+def test_a_full_ring_counts_true_evictions_as_dropped_out_and_never_arrived_numbers_as_gaps_in():
+    release = threading.Event()
+
+    def stuck_emit(f, clip_f, blind, rects):
+        release.wait(5.0)  # the emitter stalls on its first frame; pushes keep coming
+
+    eng = LiveReplay(None, lambda f, frame: {}, height=360, delay_s=0.05, push=True, on_emit=stuck_emit)
+    jpeg = flat_jpeg(640, 360)
+    depth = eng._ring.maxlen
+    eng.start()
+    try:
+        assert eng.push(jpeg) == 0
+        time.sleep(0.4)  # the emitter has claimed frame 0 and is stuck inside on_emit with it; ~12 numbers go by
+        fs = [eng.push(jpeg) for _ in range(depth + 10)]  # back to back: consecutive numbers, the ring keeps `depth`
+        stuck = eng.stats()
+        release.set()
+        time.sleep(0.6)  # the emitter catches up on what the ring kept
+        drained = eng.stats()
+    finally:
+        release.set()
+        eng.stop()
+    assert fs == list(range(fs[0], fs[0] + depth + 10)) and fs[0] >= 10
+    # depth + 11 pushed, `depth` kept: 11 left the ring; frame 0 was claimed (and went out), the next 10 were not
+    assert stuck["dropped_out"] == 10 and drained["dropped_out"] == 10, (stuck, drained)
+    assert drained["gaps_in"] == fs[0] - 1  # numbers 1..fs[0]-1 (the 0.4 s of silence) never arrived
+    assert drained["frames_out"] == 1 + depth
+    assert drained["frames_out"] + drained["dropped_out"] + drained["gaps_in"] == fs[-1] + 1  # every number accounted
+
+
+def test_input_fps_counts_the_pushes_of_the_last_two_seconds():
+    eng = LiveReplay(None, lambda f, frame: {}, height=360, delay_s=0.1, push=True)
+    jpeg = flat_jpeg(640, 360)
+    eng.start()
+    try:
+        for _ in range(20):
+            eng.push(jpeg)
+            time.sleep(0.02)
+        assert eng.stats()["input_fps"] == pytest.approx(10.0)  # 20 pushes / 2 s
+    finally:
+        eng.stop()
+
+
+# ---- yunet_detect ---------------------------------------------------------------------------------------------
+
+def test_yunet_detect_without_the_model_file_names_where_to_get_it(tmp_path):
+    with pytest.raises(FileNotFoundError, match="opencv_zoo") as e:
+        yunet_detect(tmp_path / "nope.onnx")
+    assert "face_detection_yunet_2023mar.onnx" in str(e.value)
+
+
+def test_yunet_detect_maps_columns_resizes_the_input_only_on_a_new_size_and_widens_faces(tmp_path, monkeypatch):
+    model = tmp_path / "yunet.onnx"
+    model.write_bytes(b"not a real model: the detector is faked")
+    seen = {"sizes": []}
+
+    class FakeDetector:
+        def setInputSize(self, size):
+            seen["sizes"].append(size)
+
+        def detect(self, frame):
+            if frame.shape[1] != 640:
+                return 1, None  # no face: OpenCV answers None, not an empty array
+            return 1, np.array([[100, 50, 40, 60, *range(10), 0.93],      # x, y, w, h, 5 landmarks, score
+                                [300, 80, 20, 20, *range(10), 0.71]], np.float32)
+
+    def create(path, config, size, **kw):
+        seen.update(path=path, config=config, size=size, kw=kw)
+        return FakeDetector()
+
+    monkeypatch.setattr("censor.live.cv2", SimpleNamespace(FaceDetectorYN=SimpleNamespace(create=create)))
+    detect = yunet_detect(model, score=0.7)
+    assert seen["path"] == str(model) and seen["config"] == "" and seen["size"] == (320, 320)
+    assert seen["kw"] == {"score_threshold": 0.7, "nms_threshold": 0.3, "top_k": 50}
+
+    frame = np.zeros((360, 640, 3), np.uint8)
+    out = detect(0, frame)
+    assert set(out) == {"face", "license plate"} and out["license plate"] == []
+    (box1, s1), (box2, s2) = out["face"]
+    assert box1 == pytest.approx((100 - 40 * FACE_EXPAND, 50 - 60 * FACE_EXPAND, 140 + 40 * FACE_EXPAND,
+                                 110 + 60 * FACE_EXPAND)) and s1 == pytest.approx(0.93)
+    assert box2 == pytest.approx((300 - 20 * FACE_EXPAND, 80 - 20 * FACE_EXPAND, 320 + 20 * FACE_EXPAND,
+                                 100 + 20 * FACE_EXPAND)) and s2 == pytest.approx(0.71)
+    detect(1, frame)
+    assert seen["sizes"] == [(640, 360)]  # set once, not per call
+    assert detect(2, np.zeros((480, 800, 3), np.uint8)) == {"face": [], "license plate": []}
+    assert seen["sizes"] == [(640, 360), (800, 480)]
+
+
+@pytest.mark.skipif(not os.environ.get("CENSOR_YUNET"), reason="set CENSOR_YUNET to the YuNet ONNX file to run this")
+def test_yunet_detect_runs_the_real_model_on_a_synthetic_frame():
+    detect = yunet_detect(os.environ["CENSOR_YUNET"])
+    frame = np.random.default_rng(0).integers(0, 255, (720, 1280, 3), dtype=np.uint8)
+    out = detect(0, frame)
+    assert set(out) == {"face", "license plate"} and out["license plate"] == []
+    assert all(len(box) == 4 and 0.0 <= score <= 1.0 for box, score in out["face"])
+
+
+def test_camera_mode_keeps_a_big_faint_face_that_the_clip_rule_drops():
+    w, h = 960, 540
+    big = (330.0, 120.0, 630.0, 420.0)  # 300 px tall on a 540 px frame: over the rule's 20% height at a score of 0.6
+    ready = [Detection(0, {"face": [(big, 0.6)]}, 0.1), Detection(3, {"face": [(big, 0.6)]}, 0.1)]
+    assert mask_boxes(1, ready, w, h) == []                      # the scan's rule: a faint big "face" is a car back
+    kept = mask_boxes(1, ready, w, h, face_rule=None)
+    assert kept and contains(kept[0][0], big)
+    cache = BoxCache()
+    assert cache.boxes(1, ready, w, h, face_rule=None) == kept   # the cache key sees the rule
+    assert cache.boxes(1, ready, w, h) == []
+
+
+def test_a_push_engine_masks_with_no_face_rule_and_a_clip_engine_keeps_it(clip):
+    assert LiveReplay(None, lambda f, fr: {}, push=True)._face_rule is None
+    assert LiveReplay(str(clip), lambda f, fr: {})._face_rule is not None

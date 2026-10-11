@@ -14,6 +14,17 @@ frame is "blind": the last vouched frame goes out again with a DETECTOR LATE bad
 before the first vouched frame the whole frame is blurred. A late detector therefore shows as a frozen picture,
 never as a bare face. Any error while masking blurs the whole frame. A thread that dies stops the engine.
 
+Camera / push mode (LiveReplay(..., push=True)): the source is the caller, not a clip. push(jpeg) decodes an upload and
+puts it in the ring; the detector and emitter threads are unchanged and pace on each frame's arrival time. Frame
+numbers follow elapsed time at a nominal 30 fps (f = max(last f + 1, round(elapsed * 30))), not the arrival count.
+The vouch rule and HOLD_FRAMES are in frame numbers, so a Wi-Fi stall followed by a burst must not be numbered
+consecutively: two detections 2 s apart in real time would sit 1 frame apart, and a box would be interpolated across
+the stall, i.e. masked in the wrong place. Numbered by time, the stall is a ~60-frame gap that the vouch rule
+refuses to bridge (frozen picture, DETECTOR LATE). The emitter takes the first slot at or after the next number;
+numbers that never arrived count as gaps_in, frames lost from a full ring as dropped_out. Push mode also drops the
+big-faint-face rule (face_rule=None): that rule is for car backs in street footage; a webcam scene has none and every
+face there is "big", so it would turn a dim or turned face into "vouched, no box", i.e. bare and without a badge.
+
 Only the shape half of the scan's confirmation rules runs here (faces: confirmed(); plates: plate_ok()), because the
 history half needs the whole clip. The face rules are judged on the keyframes inside the window (WINDOW_BACK +
 HOLD_FRAMES frames), so a big face whose only confident detections are older than the window could be dropped by the
@@ -62,6 +73,12 @@ RING_SLACK_S = 0.5     # ring depth beyond the delay: room for a slow emit befor
 HISTORY = 4            # recent JPEGs kept for latest()
 BASELINE_PASSES, RECENT_PASSES, SAMPLES = 50, 100, 300
 BADGE_TEXT = "DETECTOR LATE"
+PUSH_FPS = 30.0        # nominal rate of a pushed stream: frame numbers follow elapsed time at this rate; sizes the ring
+INPUT_FPS_WINDOW_S = 2.0
+CAMERA_CLIP = "camera"
+YUNET_SCORE, YUNET_NMS, YUNET_TOP_K = 0.6, 0.3, 50
+YUNET_URL = ("https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/"
+             "face_detection_yunet_2023mar.onnx")
 
 
 @dataclass(frozen=True)
@@ -108,13 +125,14 @@ def _vouched(f: int, ready: list[Detection], hold: int) -> bool:
     return bool(before) and bool(after) and min(after) - max(before) <= hold + 1
 
 
-def _table(ready: list[Detection], frame_w: int, frame_h: int, n_frames: int) -> dict[int, list]:
-    """Frame -> [(box, padding, effect)] from the tracks the detections link into."""
+def _table(ready: list[Detection], frame_w: int, frame_h: int, n_frames: int,
+           face_rule: dict | None = CONFIRM["face"]) -> dict[int, list]:
+    """Frame -> [(box, padding, effect)] from the tracks the detections link into. `face_rule` None keeps every face."""
     out: dict[int, list] = {}
     for cat in LIVE_CATS:
         seq = [(d.f, d.dets.get(cat, [])) for d in ready]
         for kfs in link(seq, uncertain_below=UNCERTAIN_BELOW):
-            keep = (confirmed(kfs, CONFIRM["face"], frame_h, frame_w) if cat == "face"
+            keep = ((face_rule is None or confirmed(kfs, face_rule, frame_h, frame_w)) if cat == "face"
                     else plate_ok(kfs, frame_w, frame_h))
             if not keep:
                 continue
@@ -127,14 +145,15 @@ def _table(ready: list[Detection], frame_w: int, frame_h: int, n_frames: int) ->
     return out
 
 
-def mask_boxes(f: int, ready: list[Detection], frame_w: int, frame_h: int,
-               hold: int = HOLD_FRAMES) -> list[tuple[Box, float, str]] | None:
+def mask_boxes(f: int, ready: list[Detection], frame_w: int, frame_h: int, hold: int = HOLD_FRAMES,
+               face_rule: dict | None = CONFIRM["face"]) -> list[tuple[Box, float, str]] | None:
     """Boxes to mask on frame f as (box, padding, effect), or None when f is not vouched. `ready` is windowed by
     the caller to [f - WINDOW_BACK, f + hold] and sorted by f. `hold` sets the vouch distance (b.f - a.f <= hold + 1)
-    and the table horizon; how long a lost box is held is always render.py's HOLD_FRAMES."""
+    and the table horizon; how long a lost box is held is always render.py's HOLD_FRAMES. `face_rule` is the scan's
+    face confirmation rule; None keeps every face track (camera mode)."""
     if not _vouched(f, ready, hold):
         return None
-    return _table(ready, frame_w, frame_h, f + hold + 1).get(f, [])
+    return _table(ready, frame_w, frame_h, f + hold + 1, face_rule).get(f, [])
 
 
 class BoxCache:
@@ -149,13 +168,13 @@ class BoxCache:
         self._key: tuple | None = None
         self._table: dict[int, list] = {}
 
-    def boxes(self, f: int, ready: list[Detection], frame_w: int, frame_h: int,
-              hold: int = HOLD_FRAMES) -> list[tuple[Box, float, str]] | None:
+    def boxes(self, f: int, ready: list[Detection], frame_w: int, frame_h: int, hold: int = HOLD_FRAMES,
+              face_rule: dict | None = CONFIRM["face"]) -> list[tuple[Box, float, str]] | None:
         if not _vouched(f, ready, hold):
             return None
-        key = (tuple(d.f for d in ready), frame_w, frame_h, hold)
+        key = (tuple(d.f for d in ready), frame_w, frame_h, hold, face_rule is None)
         if key != self._key:
-            self._table = _table(ready, frame_w, frame_h, max(d.f for d in ready) + hold + 1)
+            self._table = _table(ready, frame_w, frame_h, max(d.f for d in ready) + hold + 1, face_rule)
             self._key = key
         return self._table.get(f, [])
 
@@ -189,6 +208,30 @@ def sidecar_detect(tracks_json: Path, src_h: int, live_h: int, n_frames: int) ->
     return lambda clip_f, frame: table.get(clip_f % n_frames, empty)
 
 
+def yunet_detect(onnx_path: str | Path, score: float = YUNET_SCORE) -> Detect:
+    """Faces only, on the CPU (OpenCV's YuNet, ~15-25 ms at 720p): the camera demo on a laptop with no GPU. Boxes are
+    widened by FACE_EXPAND like EgoBlur's; there are no plates. The model file is fetched by hand, never here."""
+    path = Path(onnx_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"YuNet model not found: {path}. Download it once (about 230 KB) from {YUNET_URL}")
+    net = cv2.FaceDetectorYN.create(str(path), "", (320, 320), score_threshold=score, nms_threshold=YUNET_NMS,
+                                    top_k=YUNET_TOP_K)
+    lock, input_size = threading.Lock(), [(320, 320)]
+
+    def detect(clip_f: int, frame: np.ndarray) -> Dets:
+        h, w = frame.shape[:2]
+        with lock:  # the detector thread is the only caller; setInputSize + detect must not interleave anyway
+            if input_size[0] != (w, h):
+                net.setInputSize((w, h))
+                input_size[0] = (w, h)
+            _, faces = net.detect(frame)
+        rows = [] if faces is None else faces  # N x 15: x, y, w, h, five landmarks (x, y), score
+        return {"face": [(_expand((float(r[0]), float(r[1]), float(r[0] + r[2]), float(r[1] + r[3])), FACE_EXPAND),
+                          float(r[-1])) for r in rows],
+                "license plate": []}
+    return detect
+
+
 # ---- the engine ---------------------------------------------------------------------------------------------
 
 def _pct(samples: Sequence[float], key: str) -> float | None:
@@ -206,16 +249,45 @@ def _badge(image: np.ndarray) -> np.ndarray:
     return out
 
 
+MAX_JPEG_PIXELS = 4096 * 2304  # a bigger upload is refused before it is decoded (a tiny file can declare 20000 x 20000)
+
+
+def _jpeg_pixels(b: bytes) -> int:
+    """Pixels the first SOFn marker declares (0 if none is found), read without decoding anything."""
+    i = 2
+    while i + 9 < len(b) and b[i] == 0xFF:
+        if 0xC0 <= b[i + 1] <= 0xCF and b[i + 1] not in (0xC4, 0xC8, 0xCC):  # FF Cn len(2) prec(1) h(2) w(2)
+            return int.from_bytes(b[i + 5:i + 7], "big") * int.from_bytes(b[i + 7:i + 9], "big")
+        i += 2 + int.from_bytes(b[i + 2:i + 4], "big")
+    return 0
+
+
+def _live_size(src_w: int, src_h: int, height: int) -> tuple[int, int]:
+    """(w, h) of a source scaled to `height` rows, aspect kept, width even."""
+    return max(2, int(round(src_w * height / src_h / 2)) * 2), height
+
+
 class LiveReplay:
-    def __init__(self, clip: str, detect: Detect, height: int = LIVE_HEIGHT, delay_s: float = LIVE_DELAY_S,
-                 out_w: int = LIVE_OUT_W, on_emit: OnEmit | None = None) -> None:
-        info = probe(str(clip))
-        self.clip, self.fps, self.n_frames = str(clip), info.fps, max(1, info.n_frames)
-        self.size = (int(round(info.width * height / info.height / 2)) * 2, height)  # even width (w, h)
+    def __init__(self, clip: str | None, detect: Detect, height: int = LIVE_HEIGHT, delay_s: float = LIVE_DELAY_S,
+                 out_w: int = LIVE_OUT_W, on_emit: OnEmit | None = None, push: bool = False) -> None:
+        """Clip mode (default): `clip` is played back at its own fps, looping. Push mode (`push=True`, `clip` may be
+        None): the caller feeds frames with push(); fps is a nominal 30 (it sizes the ring and numbers the frames),
+        n_frames is 0 and size is (0, 0) until the first frame fixes it."""
+        self.is_push = push
+        self._face_rule = None if push else CONFIRM["face"]  # camera: every face is kept (see the module docstring)
+        self._height, self._out_w = height, out_w
+        if push:
+            self.clip, self.fps, self.n_frames = str(clip) if clip else CAMERA_CLIP, PUSH_FPS, 0
+            self.size = (0, 0)
+        else:
+            if clip is None:
+                raise ValueError("a clip is required unless push=True")
+            info = probe(str(clip))
+            self.clip, self.fps, self.n_frames = str(clip), info.fps, max(1, info.n_frames)
+            self.size = _live_size(info.width, info.height, height)  # (w, h)
         self.run, self.warming, self.delay_s = uuid.uuid4().hex[:8], False, delay_s
         self._detect, self._on_emit = detect, on_emit
-        w, h = self.size
-        self._display = (out_w, int(round(h * out_w / w))) if out_w < w else self.size
+        self._display = self._display_for(self.size)
         self._stop = threading.Event()
         self._cv = threading.Condition()  # guards everything below
         self._ring: deque[_Slot] = deque(maxlen=int((delay_s + RING_SLACK_S) * self.fps) + 2)
@@ -224,11 +296,22 @@ class LiveReplay:
         self._threads: list[threading.Thread] = []
         self._logged: set[tuple[str, str]] = set()
         self._n = dict(frames_in=0, frames_out=0, blind=0, dropped_out=0, emit_errors=0, det_errors=0, passes=0,
-                       gaps=0, gap_sum=0, gap_max=0, last_det_f=-1)
+                       gaps=0, gap_sum=0, gap_max=0, last_det_f=-1, gaps_in=0)
+        # push mode only (all under _cv)
+        self._t0: float | None = None             # monotonic time of the first push: frame 0
+        self._last_f = -1                         # number of the previous push
+        self._arrivals: deque[float] = deque()    # push times of the last INPUT_FPS_WINDOW_S
+        self._claimed_to = 0                      # the emitter has claimed every number below this
+        self._evicted_unclaimed = 0               # slots evicted from the ring before the emitter claimed them
         self._first_passes: list[float] = []
         self._recent_passes: deque[float] = deque(maxlen=RECENT_PASSES)
         self._emit_s: deque[float] = deque(maxlen=SAMPLES)
         self._age_s: deque[float] = deque(maxlen=SAMPLES)
+
+    def _display_for(self, size: tuple[int, int]) -> tuple[int, int]:
+        """The size sent to viewers: `out_w` wide when the live size is wider, else the live size itself."""
+        w, h = size
+        return (self._out_w, int(round(h * self._out_w / w))) if self._out_w < w else size
 
     # -- control --
     @property
@@ -239,9 +322,11 @@ class LiveReplay:
         with self._cv:
             if self._threads:
                 return
+            steps = [("detector", self._detector), ("emitter", self._emitter)]
+            if not self.is_push:
+                steps.insert(0, ("source", self._pump))  # in push mode the caller is the source
             self._threads = [threading.Thread(target=self._guarded, args=(name, fn), daemon=True, name=f"live-{name}")
-                             for name, fn in (("source", self._pump), ("detector", self._detector),
-                                              ("emitter", self._emitter))]
+                             for name, fn in steps]
         for t in self._threads:
             t.start()
 
@@ -313,6 +398,50 @@ class LiveReplay:
             if cap is not None:
                 cap.release()
 
+    def push(self, jpeg: bytes) -> int:
+        """Camera mode: decode one upload, scale it to the live height (aspect kept, even width; a smaller upload is
+        upscaled, so a 640-wide frame at height 540 is stretched to 960) and put it in the ring. Returns its frame
+        number. The first frame fixes `size`; a later frame of another aspect is stretched to it. Raises ValueError
+        for bytes that are not a JPEG (nothing is counted) and RuntimeError when the engine is not running.
+
+        Frame numbers follow elapsed time, not the arrival count (see the module docstring): a stall leaves a gap."""
+        if not self.is_push:
+            raise RuntimeError("push() needs an engine built with push=True")
+        if not self.running:
+            raise RuntimeError("the engine is not running")
+        if not 0 < _jpeg_pixels(jpeg) <= MAX_JPEG_PIXELS:
+            raise ValueError("JPEG too large or malformed")  # before imdecode allocates what the header claims
+        try:
+            img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+        except cv2.error:
+            img = None
+        if img is None:
+            raise ValueError("not a decodable JPEG")
+        size = self.size if self.size != (0, 0) else _live_size(img.shape[1], img.shape[0], self._height)
+        if img.shape[1::-1] != size:
+            img = cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+        with self._cv:
+            if self._stop.is_set():
+                raise RuntimeError("the engine is not running")
+            if self.size == (0, 0):
+                self.size, self._display = size, self._display_for(size)
+            elif img.shape[1::-1] != self.size:  # two first frames raced with different aspects: the loser conforms
+                img = cv2.resize(img, self.size, interpolation=cv2.INTER_AREA)
+            now = time.monotonic()
+            self._t0 = now if self._t0 is None else self._t0
+            f = max(self._last_f + 1, round((now - self._t0) * self.fps))
+            self._last_f = f
+            if len(self._ring) == self._ring.maxlen and self._ring[0].f >= self._claimed_to:
+                self._n["dropped_out"] += 1  # a frame nobody emitted is about to leave the full ring
+                self._evicted_unclaimed += 1
+            self._ring.append(_Slot(f, f, img, now))
+            self._n["frames_in"] += 1
+            self._arrivals.append(now)
+            while self._arrivals[0] < now - INPUT_FPS_WINDOW_S:
+                self._arrivals.popleft()
+            self._cv.notify_all()
+            return f
+
     # -- detector --
     def _detector(self) -> None:
         last = -1
@@ -356,7 +485,8 @@ class LiveReplay:
                 return
             t_start = time.monotonic()
             with self._cv:
-                self._n["dropped_out"] += slot.f - next_f
+                if not self.is_push:  # a clip's numbers are contiguous: a skipped one was evicted
+                    self._n["dropped_out"] += slot.f - next_f
                 self._dets = [d for d in self._dets if d.f >= slot.f - WINDOW_BACK]
                 ready = [d for d in self._dets if d.f <= slot.f + HOLD_FRAMES]
             next_f = slot.f + 1
@@ -376,6 +506,13 @@ class LiveReplay:
             self._cv.wait_for(lambda: self._stop.is_set() or (self._ring and self._ring[-1].f >= next_f))
             if self._stop.is_set():
                 return None
+            if self.is_push:
+                # Numbers follow elapsed time, so the ring has holes: take the first slot at or after next_f. The
+                # numbers before it never arrived (gaps_in), except the ones evicted unclaimed (counted in push()).
+                slot = next(s for s in self._ring if s.f >= next_f)
+                self._n["gaps_in"] += slot.f - next_f - self._evicted_unclaimed
+                self._evicted_unclaimed, self._claimed_to = 0, slot.f + 1
+                return slot
             first = self._ring[0].f  # evicted frames are skipped (and counted as dropped_out by the caller)
             return self._ring[max(next_f, first) - first]
 
@@ -383,7 +520,7 @@ class LiveReplay:
         w, h = self.size
         img = slot.frame.copy()  # the ring frame is the detector's input and apply_effect draws in place
         try:
-            boxes = cache.boxes(slot.f, ready, w, h)
+            boxes = cache.boxes(slot.f, ready, w, h, face_rule=self._face_rule)
             if boxes is None:
                 if frozen is not None:
                     return _Out(_badge(frozen), [], True, False)
@@ -445,4 +582,11 @@ class LiveReplay:
                 "gap_frames": {"mean": n["gap_sum"] / n["gaps"] if n["gaps"] else None,
                                "max": n["gap_max"] if n["gaps"] else None},
                 "hold_frames": HOLD_FRAMES, "frame_age_ms": {"p50": _pct(self._age_s, "p50")},
+                "input_fps": self._input_fps() if self.is_push else None, "gaps_in": n["gaps_in"],
+                "mode": "push" if self.is_push else "clip",
             }
+
+    def _input_fps(self) -> float:
+        """Pushes in the last INPUT_FPS_WINDOW_S seconds, per second (under-reads for the first 2 s). Caller holds _cv."""
+        since = time.monotonic() - INPUT_FPS_WINDOW_S
+        return sum(1 for t in self._arrivals if t >= since) / INPUT_FPS_WINDOW_S
