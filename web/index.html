@@ -1589,12 +1589,15 @@ function setProgramSource() {
 const srcShown = () => S.drawMode || isPhoto() || (!S.srcOff && (S.srcSeen || !$('player').paused));
 const setSrcOff = off => { S.srcOff = off; if (off && S.expanded === 'src') S.expanded = null; layoutMonitors(); };
 // Expand one monitor to fill the well on its own; again (or Esc) puts both back. Drawing needs Source, so it
-// takes over from an expanded Program.
+// takes over from an expanded Program. Only offered while both monitors are up: with Program alone (before the
+// first play, or the Source switch off) it already fills the well, and expanding then minimizing it would show
+// Source early.
 const setExpanded = which => { S.expanded = which; layoutMonitors(); };
 function renderExpand() {
   for (const b of document.querySelectorAll('.expBtn')) {
     const on = S.expanded === b.dataset.mon, name = b.dataset.mon === 'src' ? 'Source' : 'Program';
     b.disabled = !S.info;
+    b.hidden = !S.info || !srcShown();
     b.classList.toggle('on', on);
     b.title = on ? `Back to both monitors (Esc)` : `Expand ${name}`;
     b.setAttribute('aria-label', b.title); b.setAttribute('aria-pressed', String(on));
@@ -1609,6 +1612,7 @@ function renderSrcSwitch() {
 function layoutMonitors() {
   renderSrcSwitch();
   if (S.drawMode && S.expanded === 'prog') S.expanded = null;
+  if (!srcShown()) S.expanded = null;  // Program alone: nothing to expand from or back to
   renderExpand();
   if (!S.info) return;
   const well = $('well'), r = well.getBoundingClientRect(), W = S.info.width, H = S.info.height, head = 25 + 4;
@@ -1631,9 +1635,11 @@ function layoutMonitors() {
   const w = Math.floor(W * s), h = Math.floor(H * s);
   for (const id of ['srcScreen', 'progScreen']) { $(id).style.width = `${w}px`; $(id).style.height = `${h}px`; $(id).parentNode.style.width = `${w}px`; }
   for (const id of ['srcCv', 'progCv']) { const c = $(id); if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); } }
-  // Draw box sits over whichever monitor leads: Source when it's up, otherwise Program
-  const lead = (show ? srcMon : progMon).querySelector('.monHead');
-  lead.insertBefore($('drawBtn'), lead.querySelector('.expBtn'));
+  // Draw box belongs to Source (boxes are drawn there), so it shows only with Source: not over Program alone
+  // (before the first play, after a refresh, Source switched off) and not over an expanded Program
+  const srcHead = srcMon.querySelector('.monHead');
+  if ($('drawBtn').parentNode !== srcHead) srcHead.insertBefore($('drawBtn'), srcHead.querySelector('.expBtn'));
+  $('drawBtn').hidden = !show;
   drawAll();
 }
 let layoutQueued = false;
