@@ -59,7 +59,7 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 **Files:** `censor/agent/intents.py`, `censor/agent/agent.py`, `censor/agent/planner.py`, `censor/server/app.py` (logging only), `tests/test_core.py`, `tests/test_planner.py`.
 **Needs:** no GPU.
 
-### Worker 3: labels and the 20 benchmark requests (bench) — `street_walk` faces and people done (Pablo); read IMPLEMENTATION.md open item 3 before labeling more faces: draw face boxes, not head boxes
+### Worker 3: labels and the 20 benchmark requests (bench) — done Sun (Pablo, PR #18): all three clips labeled, 20 real-clip requests; how to score them: README "Benchmark", details and caveats: IMPLEMENTATION.md open items 3 and 7
 
 **Problem:** the request success rate (target: at least 15 of 20) can't be measured: `bench/requests.yaml` has 7 requests, all on the synthetic clip, and the real clips only have plate labels (`bench/labels/street_plates.plate.json`, `street_walk.plate.json`).
 
@@ -112,6 +112,6 @@ The AUP R9700 host is down, so nobody can run the full app with real models for 
 
 1. **Back on the San Jose hub since Sun Oct 11 ~01:00 (Dublin's R9700 was down).** Relaunch at https://sjc.aupcloud.io: VSCode Server GPU, node "AMD Radeon 8060S (Strix Halo iGPU)" (not the 890M), git repository `https://github.com/Edugre/KnightHacks-26.git`, runtime 240. Upload the EgoBlur Gen1 files (`ego_blur_face_gen1.jit`, `ego_blur_lp_gen1.jit`) to `~/datasets/egoblur/` and wait for the upload to finish, then `cd ~/KnightHacks-26 && git pull && bash scripts/setup.sh && ./run.sh`, and open `https://sjc.aupcloud.io/user/<user>/proxy/8000/`. Details and gotchas: README, "If the Dublin hub is down"; measurements so far: docs/STACK.md, "Strix Halo".
 2. Measure what's still "not measured" in docs/STACK.md's Strix Halo section (first the `bench.review` plate comparison), then re-measure Worker 1's stitching on the server (person tracks per clip, request time for "blur the woman").
-3. `./run.sh bench` has run on the Strix Halo (2026-10-11T05:00:59Z), but all 7 requests in `bench/requests.yaml` target the synthetic clip and only `street_walk` has labels in the format it reads. Add labels for `street_talk` and `street_plates` and requests for the real clips, then rerun it and record the request success rate.
+3. `./run.sh bench` has run on the Strix Halo (2026-10-11T05:00:59Z), but before PR #18's labels and real-clip requests, so it only scored synthetic requests. Rerun it on the real clips, `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk`, and record the request success rate.
 4. Try Worker 2's request list against the real planner; add any phrasing it gets wrong as a test.
 5. Delete this file, or move what's left into IMPLEMENTATION.md.

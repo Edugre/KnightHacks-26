@@ -38,10 +38,10 @@ Measured Sun Oct 11, ~00:30-01:00 ET. Anything not listed here is not measured y
 | EgoBlur per model, 1080p frame (`bench.egoblur_speed`) | not measured |
 | Upload scan, `street_plates` 1080p (`bench.profile_scan`) | not measured |
 | Plate recall and over-blur on the labeled clips (`bench.review`) | not measured; the comparison with the R9700 is pending |
-| Request success rate | not measured (see below) |
+| Request success rate | not measured (rerun with `--clip`, see below) |
 | gfx1151 stability under load, attention settings (PLAN.md concerns 1-2) | no crash seen in the runs above; not stress-tested |
 
-**The bench report's quality numbers don't measure the product.** The run (bench/report.md generated 2026-10-11T05:00:59Z on the Strix Halo; the report wasn't committed) scored only `synthetic` and `street_walk`: `street_talk` and `street_plates` were skipped because `run_bench` expects `bench/labels/<clip>.json`. All 7 requests in `bench/requests.yaml` are written for the synthetic clip, whose drawn shapes real detectors can't find, so its face recall, plate recall, over-blur and request success are not results. The R9700 plate numbers (100% / 94.6% masked, 3% over-blur) came from `bench/review.py`, not `run_bench`.
+**The bench report's quality numbers don't measure the product.** The run (bench/report.md generated 2026-10-11T05:00:59Z on the Strix Halo; the report wasn't committed) scored only `synthetic` and `street_walk`: `street_talk` and `street_plates` were skipped because `run_bench` expects `bench/labels/<clip>.json`. All 7 requests it ran are written for the synthetic clip, whose drawn shapes real detectors can't find, so its face recall, plate recall, over-blur and request success are not results. That run predates PR #18, which added labels for all three clips and 20 real-clip requests: rerun with `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk`. The R9700 plate numbers (100% / 94.6% masked, 3% over-blur) came from `bench/review.py`, not `run_bench`.
 
 **R9700 vs Strix Halo, figures measured on both:**
 

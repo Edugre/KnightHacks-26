@@ -1,6 +1,6 @@
 # Devpost write-up (draft)
 
-*Draft. Every speed and memory number names the GPU and resolution it was measured on. R9700 (Dublin) numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 before the Dublin hub went down; Strix Halo numbers are from docs/STACK.md, measured Sun Oct 11 on the San Jose hub's Radeon 8060S, which is the demo hardware. Plate recall, over-blur and request success on the Strix Halo are TODO (`bench.review` comparison pending; the current `bench/requests.yaml` only targets the synthetic clip). Don't invent numbers to fill them.*
+*Draft. Every speed and memory number names the GPU and resolution it was measured on. R9700 (Dublin) numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 before the Dublin hub went down; Strix Halo numbers are from docs/STACK.md, measured Sun Oct 11 on the San Jose hub's Radeon 8060S, which is the demo hardware. Plate recall, over-blur and request success on the Strix Halo are TODO (`bench.review` comparison pending). For the request success rate, run the 20 real-clip requests: `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk` (without `--clip` the synthetic ones are pooled in). Don't invent numbers to fill them.*
 
 ## Censor: redaction you can ask for
 
@@ -58,7 +58,7 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 | Upload scan, `street_plates` 1080p | 0.76x real time | not measured |
 | Detection and offline speed, `street_walk` 1280x720 | not measured | 45.4 ms/frame detect, 3.5 ms/frame render, 0.8x real time |
 | Peak GPU memory, all models | 17.9 GB of 32 GB | 18.9 GB (64 GB shared with the CPU) |
-| Request success rate (benchmark requests for the real clips) | *TODO* | *TODO* |
+| Request success rate (20 real-clip requests) | *TODO* | *TODO after the `--clip` run above* |
 
 ## Challenges
 
