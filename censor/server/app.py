@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 import cv2
+import yaml
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
@@ -201,9 +202,12 @@ def samples(kind: str = Query("video", pattern="^(video|image)$")):
     """Clips already on the server (bench/clips), so a demo needs no file picker. Length and size for the home
     screen's list, and whether a stub-mode sidecar (ground-truth tracks) comes along. kind=image: the photos in
     bench/photos, with their size and a thumbnail URL instead of a length."""
+    hidden = _synthetic_clips()
     if kind == "image":
         out = []
         for p in _sample_photos():
+            if p.stem in hidden:
+                continue
             c = {"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1), "sidecar": Path(f"{p}.tracks.json").exists(),
                  "url": f"api/samples/{p.stem}/photo"}
             try:
@@ -215,6 +219,8 @@ def samples(kind: str = Query("video", pattern="^(video|image)$")):
         return out
     out = []
     for p in sorted(SAMPLES_DIR.glob("*.mp4")):
+        if p.stem in hidden:
+            continue
         c = {"id": p.stem, "mb": round(p.stat().st_size / 1e6, 1), "sidecar": Path(f"{p}.tracks.json").exists()}
         try:
             v = probe(str(p))
@@ -223,6 +229,17 @@ def samples(kind: str = Query("video", pattern="^(video|image)$")):
             pass
         out.append(c)
     return out
+
+
+def _synthetic_clips() -> set[str]:
+    """Test clips (synthetic: true in the bench manifest) stay off the home screen, and so does the photo
+    make_test_clip.py writes under the same name (bench/photos/synthetic.png). The bench and stub mode still use
+    them, and they still load by id."""
+    try:
+        clips = yaml.safe_load((SAMPLES_DIR / "manifest.yaml").read_text()).get("clips") or []
+    except (OSError, AttributeError, yaml.YAMLError):
+        return set()
+    return {c["id"] for c in clips if isinstance(c, dict) and c.get("synthetic") and "id" in c}
 
 
 def _sample_photos() -> list[Path]:
