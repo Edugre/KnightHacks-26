@@ -1,6 +1,6 @@
 # Devpost write-up (draft)
 
-*Draft. Every speed and memory number names the GPU and resolution it was measured on. R9700 (Dublin) numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 before the Dublin hub went down; Strix Halo numbers are from docs/STACK.md, measured Sun Oct 11 on the San Jose hub's Radeon 8060S, which is the demo hardware. Plate recall, over-blur and request success on the Strix Halo are TODO (`bench.review` comparison pending). For the request success rate, run the 20 real-clip requests: `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk` (without `--clip` the synthetic ones are pooled in). Don't invent numbers to fill them.*
+*Draft. Every speed and memory number names the GPU and resolution it was measured on. R9700 (Dublin) numbers are from IMPLEMENTATION.md, measured on the AUP Learning Cloud's Radeon AI PRO R9700 before the Dublin hub went down; Strix Halo numbers are from docs/STACK.md, measured Sun Oct 11 on the San Jose hub's Radeon 8060S, which is the demo hardware. Request success and labeled-box recall on the Strix Halo were measured Sun ~01:40 ET with `python -m bench.run_bench --clip street_walk --clip street_plates --clip street_talk` (docs/STACK.md; why each request fails: IMPLEMENTATION.md open item 7). The `bench.review` plate comparison (plate frames masked, longest visible, plate over-blur) is still TODO. Don't invent numbers to fill them.*
 
 ## Censor: redaction you can ask for
 
@@ -37,7 +37,7 @@ Stack: FastAPI backend, PyTorch on ROCm, transformers, Ultralytics, OpenCV, and 
 Everything runs on one AMD GPU with ROCm. We built and measured it on **one AMD Radeon AI PRO R9700** (RDNA 4, gfx1201, 32 GB) with the preinstalled PyTorch 2.9.1+rocm7.13; each number below says which card it's from. When that hub went down we moved to a **Radeon 8060S** (Strix Halo iGPU, gfx1151, 64 GB shared LPDDR5X) on the San Jose hub, which is the demo hardware. It has the same ROCm 7.13 and PyTorch 2.9.1, and runs the same code.
 
 - **Every model on one card:** detection, the 8B vision-language model and the planner peak at **17.9 GB of 32 GB on the R9700** and **18.9 GB on the Strix Halo** (`./run.sh bench`) with everything loaded. One Qwen3-VL process serves both the planner and the attribute checks, loaded once and kept resident.
-- **Strix Halo, `street_walk` at 1280x720 (`./run.sh bench`):** detection 45.4 ms/frame, rendering 3.5 ms/frame, 0.8x real time offline. Its upload scan, EgoBlur per-frame time and VLM latency are not measured yet.
+- **Strix Halo, `street_walk` at 1280x720 (`./run.sh bench`):** detection 45.4 ms/frame, rendering 3.5 ms/frame, 0.8x real time offline, finding faces and people. On the three real clips with plates as well (one detection pass per category), 0.40x real time overall, 0.43x and 0.39x on the two 1080p clips. Its upload scan, EgoBlur per-frame time and VLM latency are not measured yet.
 - **R9700: upload scan at 0.76x real time at 1080p**, 17.2 s for a 13 s clip, down from 48.1 s. On a 720p clip the GPU scans at 1.12x real time against 0.05x on a 64-thread Threadripper PRO CPU alone: **24x faster**.
 - **How we got there (R9700):** we profiled first. Decoding was 0.2 s of a 48 s scan, and EgoBlur was 87% of it. **fp16 autocast** cut each EgoBlur call 3x (0.147 s to 0.049 s per 1080p frame) with the same boxes (mean IoU 0.999 on faces against fp32, none lost), and a warm-up at startup removed about 6 s of first-call cost per model. Batching, two streams, MIOpen autotuning and smaller inputs didn't help, and we measured each of them.
 - **ROCm lessons:** MIOpen couldn't read its kernel database on the cloud image, so every new crop size triggered a kernel search (~15 s per VLM call). Fixed crop sizes plus `MIOPEN_FIND_MODE=FAST` fixed it. Asking the model for only the last position's logits (`logits_to_keep=1`) avoided a 16 GB spike with three images per call.
@@ -54,11 +54,13 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 | Plates masked (share of plate frames), `street_plates` 1080p / `street_walk` 720p | **100% / 94.6%** | *TODO (`bench.review` comparison pending)* |
 | Longest a plate stays visible | 0 s / 0.16 s (one 11x7 px plate) | *TODO* |
 | Plate over-blur, mean | 3.0% / 0.1% of the frame | *TODO* |
-| Person questions on the three people in focus on `street_walk` | every answer right, at p 0.00 or 1.00 | not measured |
+| Person questions on the three people in focus on `street_walk` | every answer right, at p 0.00 or 1.00 | every answer right, at p 0.00 or 1.00 |
 | Upload scan, `street_plates` 1080p | 0.76x real time | not measured |
-| Detection and offline speed, `street_walk` 1280x720 | not measured | 45.4 ms/frame detect, 3.5 ms/frame render, 0.8x real time |
-| Peak GPU memory, all models | 17.9 GB of 32 GB | 18.9 GB (64 GB shared with the CPU) |
-| Request success rate (20 real-clip requests) | *TODO* | *TODO after the `--clip` run above* |
+| Detection and offline speed, `street_walk` 1280x720, faces and people | not measured | 45.4 ms/frame detect, 3.5 ms/frame render, 0.8x real time |
+| Offline speed, three real clips, faces, plates and people (`./run.sh bench`) | not measured | 0.40x real time (1080p clips: 0.43x and 0.39x) |
+| Peak GPU memory, all models | 17.9 GB of 32 GB | 18.9 GB; 19.3 GB on the three real clips (64 GB shared with the CPU) |
+| Labeled boxes masked, three real clips (90% of a box counts) | not measured | plates 95%, people 99%, faces 92% (face labels are head boxes: every missed `street_walk` face had its face masked) |
+| Request success rate (20 real-clip requests) | not measured (the labels came after the hub went down) | **9 / 20**, **10 / 20** after two fixes the run found (keyword-only baseline 4 / 20; target 15) |
 
 ## Challenges
 
@@ -66,6 +68,7 @@ Inference never touches the network. `./run.sh` puts Hugging Face and Ultralytic
 - **Small, fast plates.** A 13 px plate moving 10 px between checked frames doesn't overlap itself, so the tracker split it. Linking by size and distance, and starting masks a few frames early, took `street_walk` from 72% to 94.6% of plate frames masked.
 - **Step-by-step agents are slow.** Our first LLM loop picked one tool at a time and took over two minutes for "everyone except the guy in the red hoodie". One JSON plan per request, run by plain code, does it in 7 s.
 - **Fragmented person tracks.** The tracker sometimes loses a pedestrian for a few frames and starts a "new" person, so one person gets several tracks and the vision model gets asked several times. A stitcher now joins a track to one that starts nearby moments later, heading the same way, at the same size and with similar colors (`street_walk`: 15 -> 11 person tracks). Every join on our three clips was checked by eye, because merging two different people is worse than leaving a piece: one answer would apply to both. Most of what's left is many different people each seen briefly, not broken tracks.
+- **Our own benchmark says we're not there yet.** 20 plain-language requests on three labeled street clips, each passing only if the right people and objects end up masked and the rest stay visible: 9 right at first, 10 after fixing two bugs the run exposed (a tie between equally sure answers spared a blurry passer-by instead of the woman in focus, and weak plate-shaped "faces" on car backs blurred the plates). A keyword-only baseline gets 4. What's left: masked faces in a night crowd the face detector misses, a cut-off plate the mask loses for a frame, a shirt the vision model won't call denim, and two habits of our own labels: faces drawn hair to chin, which a face mask can't cover to 90%, and one woman's box that includes the tote bag at her side.
 
 ## What we learned
 
