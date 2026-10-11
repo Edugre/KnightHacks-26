@@ -1,10 +1,13 @@
 <!doctype html>
 <!-- Blurr editor: the dual-monitor workspace (design_handoff_censor_workspace/README.md), in the Blurr identity
      (design_handoff_blurr_rebrand/README.md). Plain HTML and JS,
-     no build step: censor/server/app.py serves this file as is. Talks only to the /api routes in that file. -->
+     no build step: censor/server/app.py serves this file as is. Talks only to the /api routes in that file.
+     Hosted anywhere else, censor-api below is the server's URL (e.g. https://<tunnel>/), and the server's
+     CENSOR_CORS_ORIGINS has to list this page's origin. Empty: the server that served the page. -->
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="censor-api" content="">
 <title>Blurr</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CclipPath id='l'%3E%3Crect width='16' height='32'/%3E%3C/clipPath%3E%3CclipPath id='r'%3E%3Crect x='16' width='16' height='32'/%3E%3C/clipPath%3E%3Cfilter id='b' x='-50%' y='-50%' width='200%' height='200%'%3E%3CfeGaussianBlur stdDeviation='.84'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='32' height='32' rx='7' fill='%23111111'/%3E%3Cg font-family='Geist,Helvetica,Arial,sans-serif' font-weight='700' font-size='24' text-anchor='middle'%3E%3Ctext x='16' y='24.5' fill='%23FFFFFF' clip-path='url(%23l)'%3EB%3C/text%3E%3Cg clip-path='url(%23r)'%3E%3Ctext x='16' y='24.5' fill='%23E5484D' filter='url(%23b)'%3EB%3C/text%3E%3C/g%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -474,8 +477,8 @@
     <div class="tlScroll"><div id="tlGrid"></div></div>
   </section>
 </div>
-<video id="player" class="decoder" preload="auto" playsinline></video>
-<video id="expPlayer" class="decoder" preload="auto" playsinline muted></video>
+<video id="player" class="decoder" preload="auto" playsinline crossorigin="anonymous"></video>
+<video id="expPlayer" class="decoder" preload="auto" playsinline muted crossorigin="anonymous"></video>
 <script>
 // ---------- state ----------
 const S = {
@@ -504,8 +507,12 @@ const el = (tag, attrs = {}, ...kids) => {
   for (const k of kids.flat()) if (k !== null && k !== undefined && k !== false) e.append(k.nodeType ? k : String(k));
   return e;
 };
+// Where the /api routes are: the page's own server, or the censor-api meta tag's URL when it's hosted elsewhere.
+// Media from there is loaded with crossOrigin so the monitors can still read its pixels (pixelate does).
+const API = (m => m ? m.replace(/\/?$/, '/') : '')(document.querySelector('meta[name="censor-api"]').content.trim());
+const url = path => API + path;
 const api = async (path, opts) => {
-  const r = await fetch(path, opts);
+  const r = await fetch(url(path), opts);
   let j; try { j = await r.json(); } catch { j = { detail: `${r.status} ${r.statusText}` }; }
   if (!r.ok) throw Object.assign(j || {}, { status: r.status });
   return j;
@@ -686,10 +693,10 @@ async function openVideo(j, name) {
   S.exportImg = null; S.still = null;
   if (document.body.dataset.kind === 'image') {
     const v = $('player'); v.pause(); v.removeAttribute('src'); v.load();
-    S.still = new Image();
+    S.still = new Image(); S.still.crossOrigin = 'anonymous';
     S.still.onload = () => layoutMonitors();
-    S.still.src = `api/videos/${S.vid}/source`;
-  } else $('player').src = `api/videos/${S.vid}/source`;
+    S.still.src = url(`api/videos/${S.vid}/source`);
+  } else $('player').src = url(`api/videos/${S.vid}/source`);
   $('expPlayer').removeAttribute('src');
   renderExamples();
   $('text').disabled = false; $('text').placeholder = 'What should be hidden?';
@@ -765,7 +772,7 @@ function listSamples() {
   const thumbs = $('photoRows');
   api('api/samples?kind=image').then(ps => {
     thumbs.replaceChildren(...ps.map(c => el('button', { class: 'hThumb', title: `Open ${c.id}`, onclick: () => loadSample(c.id, 'image', `${c.id} (photo)`) },
-      el('img', { src: c.url, alt: '', loading: 'lazy' }), el('span', { class: 'id' }, c.id),
+      el('img', { src: url(c.url), alt: '', loading: 'lazy' }), el('span', { class: 'id' }, c.id),
       el('span', { class: 'meta' }, c.width ? `${c.width}×${c.height}${c.sidecar ? ' · stub' : ''}` : `${c.mb} MB`))));
   }).catch(() => thumbs.replaceChildren());
 }
@@ -990,7 +997,7 @@ async function doExport() {
   setBusy('export'); notice('');
   try {
     const j = await post(`api/videos/${S.vid}/export`);
-    S.exportUrl = j.url; S.exportStats = j.stats; S.exportSig = opsSig();
+    S.exportUrl = url(j.url); S.exportStats = j.stats; S.exportSig = opsSig();
     setProgramSource();
   } catch (e) { notice(errText(e) || 'Export failed.', true); }
   setBusy();
@@ -1174,7 +1181,7 @@ function renderExport() {
     p.replaceChildren(head('Exported', `v${vNum(curVersion())} · ${targets}`),
       el('span', { class: 'exSub' }, photo ? `${file} · ${S.info.width}×${S.info.height} · no metadata${st.failed_frames ? ' · masking failed, the whole photo is blurred' : ''}`
         : `${file} · ${st.frames.toLocaleString()} frames · ${st.failed_frames} failed segments`),
-      el('a', { class: 'primary', href: S.exportUrl, download: file }, 'Download', svg('download')));
+      el('a', { class: 'primary', href: `${S.exportUrl}&download=1`, download: file }, 'Download', svg('download')));
   } else {
     p.replaceChildren(head('Export', S.vid ? `v${vNum(curVersion())} · ${targets}` : '', !n),
       el('span', { class: 'exSub' }, n || !S.vid ? sub : 'Nothing masked yet. Send a request or draw a box first.'), btn(!S.vid || !n || !!S.busy));
@@ -1365,7 +1372,7 @@ function setProgramSource() {
   if (isPhoto()) {  // Program shows the exported photo itself until the next edit
     if (!fresh) S.exportImg = null;
     else if (!S.exportImg || S.exportImg.dataset.url !== S.exportUrl) {
-      const img = S.exportImg = new Image();
+      const img = S.exportImg = new Image(); img.crossOrigin = 'anonymous';
       img.dataset.url = S.exportUrl; img.onload = () => drawProgram(); img.src = S.exportUrl;
     }
     return;
@@ -1906,6 +1913,12 @@ window.addEventListener('resize', () => renderTimeline());
 
 // ---------- start ----------
 renderAll();
+// Hosted elsewhere, the server can't put its flags on <body> (index() in app.py), so ask for them
+if (API) api('api/config').then(c => {
+  if (c.offline) document.body.dataset.offline = '1';
+  if (c.stub) document.body.dataset.stub = '1';
+  renderAll();
+}).catch(e => notice(`Can't reach the server at ${API}: ${errText(e)}`, true));
 // ?video=<id> reopens a video uploaded earlier, with its masks so far
 const reopen = new URLSearchParams(location.search).get('video');
 if (reopen) {

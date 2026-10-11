@@ -42,6 +42,8 @@ Open `https://dub.aupcloud.io/user/<your-user>/proxy/8000/`.
 
 `setup.sh` downloads every model; `./run.sh` then runs fully offline: any outbound connection is refused and logged to `logs/egress.log`, so an empty log after the demo shows nothing left the machine. Set `CENSOR_ALLOW_NETWORK=1` to turn that off.
 
+**Frontend hosted on its own** (e.g. a static host, with the backend on AUP): the AUP proxy URL needs the hub login, so the backend needs a public URL of its own, e.g. `cloudflared tunnel --url http://localhost:8000` on the server (Cloudflare cuts requests at 100 s). Start the app with `CENSOR_CORS_ORIGINS=https://<frontend origin>` (comma-separated for several), and set `<meta name="censor-api" content="https://<tunnel>/">` in the copy of `web/index.html` you host. Left empty, the page talks to whichever server served it, as before.
+
 **Laptop, no GPU (stub detector, no models):**
 ```bash
 uv venv --python 3.12 .venv && source .venv/bin/activate     # or any venv; run.sh uses whatever python3 is first on PATH
