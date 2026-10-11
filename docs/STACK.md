@@ -20,7 +20,7 @@ Measured Sun Oct 11, ~00:30-01:00 ET. Anything not listed here is not measured y
 | Clone and ports | `~/KnightHacks-26` (repo URL in the launch form's git repository field); model server on :8100, app on :8000, `https://sjc.aupcloud.io/user/<user>/proxy/8000/` |
 | EgoBlur | Re-upload `ego_blur_face_gen1.jit` and `ego_blur_lp_gen1.jit` to `~/datasets/egoblur/` on every fresh server: Meta's CDN refuses AUP hosts (upload gotchas: README, "If the Dublin hub is down") |
 | `scripts/setup.sh` | Ran clean once the MobileCLIP download completed. The first run was cut off mid-download by a browser disconnect; rerunning fixed it (the script is idempotent) |
-| `./run.sh test` | 114 passed, 1 failed: `tests/test_e2e_stub.py::test_sample_clips_load_without_a_file_picker` (OSError opening a copied clip under pytest's temp dir). Cause not investigated; known failure, not fixed |
+| `./run.sh test` | 114 passed, 1 failed: `tests/test_e2e_stub.py::test_sample_clips_load_without_a_file_picker` (OSError opening a copied clip under pytest's temp dir). **Fixed Sun (Alex):** reopening a video took the first `source.*` in its folder, and on this Linux filesystem that can be the stub sidecar `source.mp4.tracks.json`; the same bug made loading **synthetic** in the app fail with a 500. Test: `test_reopening_a_video_skips_its_sidecar` |
 | Offline | Model server `/health` says `"offline": true`; `logs/egress.log` was never created, so nothing tried to connect out |
 | Not an option | Radeon 890M node: 4 GB can't hold Qwen3-VL-8B |
 

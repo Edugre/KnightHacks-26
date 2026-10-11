@@ -111,6 +111,19 @@ def test_sample_clips_load_without_a_file_picker(clip, client, tmp_path, monkeyp
     assert c.post("/api/samples/missing").status_code == 404
 
 
+def test_reopening_a_video_skips_its_sidecar(clip, client, monkeypatch):
+    """A video folder holds source.mp4 and, for samples, source.mp4.tracks.json; both match source.*. On the Strix
+    Halo the glob listed the sidecar first and loading the synthetic sample failed (500, "cannot open video")."""
+    _, app_mod = client
+    d = app_mod.DATA_DIR / "abcd1234"
+    d.mkdir(parents=True)
+    shutil.copyfile(clip, d / "source.mp4")
+    shutil.copyfile(str(clip) + ".tracks.json", d / "source.mp4.tracks.json")
+    real = Path.glob
+    monkeypatch.setattr(Path, "glob", lambda self, pat: reversed(sorted(real(self, pat))))  # sidecar first
+    assert Path(app_mod.session("abcd1234").video).name == "source.mp4"
+
+
 def _upload(c, clip):
     with open(clip, "rb") as f:
         vid = c.post("/api/videos", files={"file": ("synthetic.mp4", f, "video/mp4")}).json()["video_id"]

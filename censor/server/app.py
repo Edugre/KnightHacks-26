@@ -110,7 +110,9 @@ def turn(vid: str, what: str, timeout: float = -1):
 def session(vid: str) -> Session:
     if vid not in _sessions:
         d = DATA_DIR / vid
-        src = next(d.glob("source.*"), None) if d.exists() else None
+        # The video, not its stub-mode sidecar (source.mp4.tracks.json also matches source.*, and on Linux
+        # the glob can list it first, which made loading the synthetic sample fail with "cannot open video")
+        src = next((p for p in sorted(d.glob("source.*")) if not p.name.endswith(".json")), None) if d.exists() else None
         if src is None:
             raise HTTPException(404, f"no video {vid}")
         _sessions[vid] = Session(src, d)
