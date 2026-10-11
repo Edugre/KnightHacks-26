@@ -20,8 +20,11 @@ JPEG = b"\xff\xd8jpegbytes\xff\xd9"
 class FakeReplay:
     """Same surface as censor.live.LiveReplay, scripted."""
 
-    def __init__(self, frames=((5, JPEG),)):
+    def __init__(self, frames=((5, JPEG),), mode="clip"):
         self.run = "abc12345"
+        self.mode = mode  # "push" for a camera run, "clip" otherwise
+        self.pushed: list[bytes] = []  # every push() call that reached the engine, in order
+        self.fail_push: Exception | None = None  # a test sets this to script a RuntimeError from push()
         self.warming = False
         self.fps, self.size, self.n_frames = 30.0, (1280, 720), 90
         self.frames = list(frames)
@@ -39,6 +42,14 @@ class FakeReplay:
     def stop(self):
         self.stopped = True
 
+    def push(self, jpeg):
+        self.pushed.append(jpeg)
+        if self.fail_push is not None:
+            raise self.fail_push
+        if jpeg == b"junk":
+            raise ValueError("not a decodable JPEG")
+        return sum(1 for j in self.pushed if j != b"junk")  # the stream frame number: 1, 2, ...
+
     def latest(self, after, timeout):
         self.afters.append(after)
         if not self.frames or self.stopped:
@@ -47,7 +58,7 @@ class FakeReplay:
         return newer[0] if newer else self.frames[-1] if after > self.frames[-1][0] else None
 
     def stats(self):
-        return {"run": self.run, "clip": "demo", "running": not self.stopped, "size": list(self.size),
+        return {"run": self.run, "clip": "demo", "mode": self.mode, "running": not self.stopped, "size": list(self.size),
                 "fps": self.fps, "n_frames": self.n_frames, "delay_s": 1.0, "frames_out": 7, "blind": 0,
                 "blind_share": 0.0, "dropped_out": 0, "emit_errors": 0,
                 "detector": {"passes": 3, "p50_ms": 120.0, "p95_ms": 140.0, "baseline_p95_ms": 140.0, "errors": 0},
@@ -63,12 +74,14 @@ def fresh_state(monkeypatch, tmp_path):
     monkeypatch.setitem(live_routes._state, "last_poll", 0.0)
     monkeypatch.setitem(live_routes._state, "clip", None)
     monkeypatch.setitem(live_routes._state, "error", None)
+    monkeypatch.setitem(live_routes._state, "detector_kind", None)
     monkeypatch.setattr(live_routes, "_detectors", {})
     samples = tmp_path / "clips"
     samples.mkdir()
     (samples / "demo.mp4").write_bytes(b"")  # the fake never opens it
     monkeypatch.setattr(live_routes, "SAMPLES_DIR", samples)
     monkeypatch.delenv("CENSOR_STUB", raising=False)
+    monkeypatch.delenv("CENSOR_YUNET", raising=False)
     monkeypatch.setattr(live_routes, "egoblur_available", lambda: True)
     yield
     replay = live_routes._state["replay"]
@@ -81,7 +94,7 @@ def fake(monkeypatch):
     made = []
 
     def factory(clip, height, stub):
-        r = FakeReplay()
+        r = FakeReplay(mode="push" if clip == "camera" else "clip")
         made.append((clip, height, stub, r))
         return r
 
@@ -502,6 +515,271 @@ def test_live_page_is_served(client, monkeypatch, tmp_path):
     assert "LIVE PAGE" in client.get("/api/live/live").text
 
 
+# ---- camera mode: POST /start {"clip": "camera"} and POST /push -------------------------------------------------------
+
+RUN = "abc12345"
+PUSH_LIMIT = 2_000_000
+
+
+def _start_camera(c, **body):
+    return c.post("/api/live/start", json={"clip": "camera", **body})
+
+
+def _push(c, data=JPEG, run=RUN, headers=None):
+    run_header = {} if run is None else {"X-Live-Run": run}
+    return c.post("/api/live/push", content=data, headers={**run_header, **(headers or {})})
+
+
+@pytest.fixture()
+def camera(client, fake):
+    """A running push-mode (camera) fake engine; the fixture yields the engine."""
+    assert _start_camera(client).status_code == 202
+    _wait_phase(client, "running")
+    return fake[0][3]
+
+
+def test_camera_start_in_stub_mode_needs_no_clip_file_or_sidecar_and_has_no_detector(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    r = _start_camera(client, height=540)  # there is no camera.mp4 and no tracks.json anywhere
+    assert r.status_code == 202
+    assert r.json() == {"phase": "warming", "running": False, "warming": True, "clip": "camera",
+                        "detector_kind": "none"}
+    s = _wait_phase(client, "running")
+    assert s["detector_kind"] == "none" and s["mode"] == "push"
+    assert s["detector"]["passes"] == 3  # the engine's own detector stats are untouched
+    assert fake[0][:3] == ("camera", 540, True) and fake[0][3].started
+
+
+def test_camera_start_with_yunet_configured_reports_yunet(client, fake, monkeypatch):
+    monkeypatch.setenv("CENSOR_STUB", "1")
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    assert _start_camera(client).json()["detector_kind"] == "yunet"
+    assert _wait_phase(client, "running")["detector_kind"] == "yunet"
+
+
+def test_camera_start_in_real_mode_reports_egoblur(client, fake):
+    assert _start_camera(client).json()["detector_kind"] == "egoblur"
+    assert _wait_phase(client, "running")["detector_kind"] == "egoblur"
+    assert fake[0][:3] == ("camera", 720, False)
+
+
+def test_camera_start_wins_over_a_sample_called_camera(client, fake):
+    (live_routes.SAMPLES_DIR / "camera.mp4").write_bytes(b"")
+    assert _start_camera(client).status_code == 202
+    _wait_phase(client, "running")
+    assert fake[0][0] == "camera"  # the id, not the sample's path
+
+
+def test_camera_start_without_egoblur_is_503_in_real_mode(client, fake, monkeypatch):
+    monkeypatch.delenv("CENSOR_STUB", raising=False)
+    monkeypatch.setattr(live_routes, "egoblur_available", lambda: False)
+    r = _start_camera(client)
+    assert r.status_code == 503
+    assert r.json()["detail"] == f"EgoBlur models not found in {live_routes.EGOBLUR_DIR}; live replay needs them"
+    assert live_routes._state["phase"] == "idle" and not fake
+
+
+def test_camera_start_height_is_validated_like_a_clip(client, fake):
+    assert _start_camera(client, height=2000).status_code == 422
+    assert _start_camera(client, height=100).status_code == 422
+
+
+def test_camera_start_while_running_is_409(client, camera):
+    assert _start_camera(client).status_code == 409
+
+
+def test_a_clip_start_has_no_detector_kind(client, fake):
+    assert "detector_kind" not in _start(client).json()
+    assert "detector_kind" not in _wait_phase(client, "running")
+
+
+def test_a_failed_camera_start_goes_idle_and_forgets_the_detector(client, monkeypatch):
+    def boom(clip, height, stub):
+        raise FileNotFoundError("yunet.onnx")
+
+    monkeypatch.setattr(live_routes, "make_replay", boom)
+    assert _start_camera(client).status_code == 202
+    s = _wait_phase(client, "idle")
+    assert "yunet.onnx" in s["error"] and "detector_kind" not in s
+
+
+def test_push_returns_the_frame_number_and_refreshes_the_poll_clock(client, camera, monkeypatch):
+    stale = time.monotonic() - live_routes.AUTO_STOP_S - 1
+    monkeypatch.setitem(live_routes._state, "last_poll", stale)
+    r = _push(client)
+    assert r.status_code == 200 and r.json() == {"f": 1}
+    assert _push(client).json() == {"f": 2}
+    assert camera.pushed == [JPEG, JPEG]
+    assert live_routes._state["last_poll"] > stale
+    live_routes._auto_stop_check()  # a pushing client is alive
+    assert not camera.stopped and client.get("/api/live/stats").json()["phase"] == "running"
+
+
+def test_push_does_not_enforce_a_content_type(client, camera):
+    assert _push(client, headers={"Content-Type": "image/jpeg"}).status_code == 200
+    assert _push(client, headers={"Content-Type": "application/octet-stream"}).status_code == 200
+    assert _push(client).status_code == 200  # a bare body with no content-type at all
+    assert len(camera.pushed) == 3
+
+
+def test_push_without_a_running_replay_is_409(client):
+    r = _push(client)
+    assert r.status_code == 409 and r.json() == {"detail": "no live replay is running"}
+    assert live_routes._state["last_poll"] == 0.0
+
+
+def test_push_while_warming_is_409(client, monkeypatch):
+    release = threading.Event()
+
+    def slow(clip, height, stub):
+        assert release.wait(5)
+        return FakeReplay(mode="push")
+
+    monkeypatch.setattr(live_routes, "make_replay", slow)
+    _start_camera(client)
+    r = _push(client)
+    release.set()
+    assert r.status_code == 409 and r.json() == {"detail": "no live replay is running"}
+    _wait_phase(client, "running")
+
+
+def test_push_to_a_clip_replay_is_409(client, fake):
+    _start(client)
+    _wait_phase(client, "running")
+    replay = fake[0][3]
+    r = _push(client)
+    assert r.status_code == 409
+    assert r.json() == {"detail": 'this replay plays a clip; start it with clip "camera" to push frames'}
+    assert replay.pushed == []
+
+
+@pytest.mark.parametrize("run", ["stale000", "", None])
+def test_push_with_a_wrong_or_missing_run_id_is_409(client, camera, run):
+    r = _push(client, run=run)
+    assert r.status_code == 409 and r.json() == {"detail": "stale run id; reload the page"}
+    assert camera.pushed == []
+
+
+def test_push_over_the_size_limit_is_413_and_never_reaches_the_engine(client, camera):
+    r = _push(client, data=b"\xff" * (PUSH_LIMIT + 1))
+    assert r.status_code == 413 and "2 MB" in r.json()["detail"]
+    assert camera.pushed == []
+
+
+def test_push_at_exactly_the_limit_is_accepted(client, camera):
+    assert _push(client, data=b"\xff" * PUSH_LIMIT).status_code == 200
+
+
+def test_chunked_push_over_the_limit_is_413_without_a_content_length(client, camera):
+    chunks = [b"\xff" * 700_000] * 3  # 2.1 MB, sent chunked: there is no Content-Length to trust
+    r = _push(client, data=iter(chunks))
+    assert r.status_code == 413 and camera.pushed == []
+
+
+def test_push_of_an_undecodable_jpeg_is_400_and_does_not_count_as_a_poll(client, camera):
+    r = _push(client, data=b"junk")
+    assert r.status_code == 400 and r.json() == {"detail": "not a decodable JPEG"}
+    assert camera.pushed == [b"junk"]
+    live_routes._state["last_poll"] = 0.0
+    _push(client, data=b"junk")
+    assert live_routes._state["last_poll"] == 0.0  # only a frame the engine accepted keeps the run alive
+
+
+def test_push_when_the_engine_stopped_underneath_is_409(client, camera):
+    camera.fail_push = RuntimeError("not running")  # stopped between the route's check and the call
+    r = _push(client)
+    assert r.status_code == 409 and r.json() == {"detail": "no live replay is running"}
+
+
+def test_push_to_a_dead_engine_reaps_it(client, camera):
+    camera.alive = False
+    assert _push(client).status_code == 409
+    assert camera.stopped and live_routes._state["phase"] == "idle"
+    assert client.get("/api/live/stats").json()["error"] == live_routes.ENGINE_DIED
+
+
+def test_push_after_stop_is_409(client, camera):
+    client.post("/api/live/stop")
+    assert _push(client).status_code == 409
+
+
+class RecordingEngine:
+    """Stands in for censor.live.LiveReplay in push mode: records how make_replay built it."""
+
+    def __init__(self, clip, detect, height, push=False):
+        self.clip, self.detect, self.height, self.push_mode = clip, detect, height, push
+
+
+@pytest.fixture()
+def camera_engine(real_mode, monkeypatch):
+    """real_mode (fake EgoBlurDetector + probe) with a censor.live that knows push mode and yunet_detect."""
+    yunet_calls = []
+    engine_mod = types.ModuleType("censor.live")
+    engine_mod.LiveReplay = RecordingEngine
+    engine_mod.egoblur_detect = lambda infer: ("egoblur", infer)
+    engine_mod.sidecar_detect = None
+
+    def fake_yunet(path, score=0.6):
+        yunet_calls.append(path)
+        return ("yunet", path)
+
+    engine_mod.yunet_detect = fake_yunet
+    monkeypatch.setitem(sys.modules, "censor.live", engine_mod)
+    monkeypatch.setattr(real_mode, "yunet_calls", yunet_calls, raising=False)
+    return real_mode
+
+
+def test_make_replay_camera_in_real_mode_uses_the_warmed_egoblur_detector(camera_engine):
+    r = live_routes.make_replay("camera", 540, False)
+    assert (r.clip, r.height, r.push_mode) == (None, 540, True)
+    assert r.detect == ("egoblur", camera_engine.made[0].infer)
+    assert camera_engine.warmed == [((540, 960),)]  # 540 * 16 / 9 = 960
+
+
+def test_make_replay_camera_shares_the_detector_cache_with_clips(camera_engine):
+    live_routes.make_replay("a.mp4", 540, False)  # the probe is 16:9, so the same (540, 960) size
+    r = live_routes.make_replay("camera", 540, False)
+    assert len(camera_engine.made) == 1 and camera_engine.warmed == [((540, 960),)]
+    assert r.push_mode is True
+    live_routes.make_replay("camera", 720, False)  # a new size is a new warm-up
+    assert camera_engine.warmed[-1] == ((720, 1280),)
+
+
+@pytest.mark.parametrize("height,width", [(540, 960), (720, 1280), (361, 642), (480, 854), (1080, 1920)])
+def test_camera_warm_size_is_the_even_16_9_width(camera_engine, height, width):
+    live_routes.make_replay("camera", height, False)
+    assert camera_engine.warmed == [((height, width),)]
+
+
+def test_make_replay_camera_stub_without_yunet_detects_nothing(camera_engine):
+    r = live_routes.make_replay("camera", 540, True)
+    assert (r.clip, r.height, r.push_mode) == (None, 540, True)
+    assert r.detect(0, None) == {"face": [], "license plate": []}
+    assert camera_engine.made == [] and camera_engine.yunet_calls == []  # no EgoBlur, no YuNet
+
+
+def test_make_replay_camera_stub_with_yunet_uses_the_onnx_file(camera_engine, monkeypatch):
+    monkeypatch.setenv("CENSOR_YUNET", "/models/yunet.onnx")
+    r = live_routes.make_replay("camera", 540, True)
+    assert r.detect == ("yunet", "/models/yunet.onnx") and r.push_mode is True
+    assert camera_engine.made == []
+
+
+def test_make_replay_camera_stub_with_a_missing_yunet_file_raises(camera_engine, monkeypatch):
+    def missing(path, score=0.6):
+        raise FileNotFoundError(path)
+
+    sys.modules["censor.live"].yunet_detect = missing
+    monkeypatch.setenv("CENSOR_YUNET", "/nope.onnx")
+    with pytest.raises(FileNotFoundError):
+        live_routes.make_replay("camera", 540, True)
+
+
+def test_make_replay_for_clips_is_unchanged(real_mode):
+    a = live_routes.make_replay("a.mp4", 720, False)
+    assert (a.path, a.height) == ("a.mp4", 720)  # no push kwarg for a clip
+
+
 def _live_routes_in_fresh_process(live_flag):
     env = {**os.environ, "PYTHONPATH": str(ROOT), "CENSOR_STUB": "1", "CENSOR_WARMUP": "0"}
     env.pop("CENSOR_LIVE", None)
@@ -520,4 +798,6 @@ def test_demo_app_has_no_live_routes_without_the_flag():
 
 def test_demo_app_has_live_routes_with_the_flag():
     paths = _live_routes_in_fresh_process("1")
-    assert {"/api/live/start", "/api/live/stop", "/api/live/stats", "/api/live/frame", "/api/live/live"} <= set(paths)
+    expected = {"/api/live/start", "/api/live/stop", "/api/live/stats", "/api/live/frame", "/api/live/live",
+                "/api/live/push"}
+    assert expected <= set(paths)
