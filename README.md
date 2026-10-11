@@ -74,7 +74,7 @@ Clips are listed in `bench/clips/manifest.yaml` (the videos are gitignored; `bas
 | `street_plates` | 33 | the 13 largest only, not the whole crowd | not labeled | 6 |
 | `street_talk` | 52 | 3 | the same 3 | none (side-on, unreadable) |
 
-Read before quoting a number: the face labels are **head** boxes (hair to chin), while EgoBlur masks the face, so a fully masked face can land just under the 90% coverage that counts as covered and face recall reads low (IMPLEMENTATION.md open item 3). On `street_plates`, person recall and over-blur mean nothing, because persons aren't labeled there. How the labels were made: IMPLEMENTATION.md open item 7.
+Read before quoting a number: on `street_walk` the face labels are face boxes (forehead to chin, ear to ear, redrawn Sun from OpenCV YuNet and checked by eye); on `street_talk` and `street_plates` they are still **head** boxes (hair to chin), while EgoBlur masks the face, so a fully masked face there can land just under the 90% coverage that counts as covered and face recall reads low (IMPLEMENTATION.md open item 3). On `street_plates`, person recall and over-blur mean nothing, because persons aren't labeled there. How the labels were made: IMPLEMENTATION.md open item 7.
 
 **The request success rate (target: at least 15 of 20).** `bench/requests.yaml` has 7 requests on the synthetic clip and 20 on the real clips (7 / 5 / 8 on walk / plates / talk), each naming the label ids that must end up masked (`must_mask`) and must stay visible (`must_not_mask`), with an optional time `window` and `before` requests applied first (for "unblur" and "undo"). Score the 20 on the real clips only, with the model server running, and keep the tracked report files untouched while trying things:
 ```bash
